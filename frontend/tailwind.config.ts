@@ -11,14 +11,45 @@ const config: Config = {
         sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"]
       },
       colors: {
+        background: withOpacity("--background"),
+        foreground: withOpacity("--foreground"),
+        card: {
+          DEFAULT: withOpacity("--card"),
+          foreground: withOpacity("--card-foreground")
+        },
+        popover: {
+          DEFAULT: withOpacity("--popover"),
+          foreground: withOpacity("--popover-foreground")
+        },
+        primary: {
+          DEFAULT: withOpacity("--primary"),
+          foreground: withOpacity("--primary-foreground")
+        },
+        secondary: {
+          DEFAULT: withOpacity("--secondary"),
+          foreground: withOpacity("--secondary-foreground")
+        },
+        destructive: {
+          DEFAULT: withOpacity("--destructive"),
+          foreground: withOpacity("--destructive-foreground")
+        },
+        ring: withOpacity("--ring"),
+        input: withOpacity("--input"),
         surface: withOpacity("--color-surface"),
         ink: withOpacity("--color-ink"),
         accent: {
+          DEFAULT: withOpacity("--accent"),
+          foreground: withOpacity("--accent-foreground")
+        },
+        brand: {
           DEFAULT: withOpacity("--color-accent"),
           foreground: withOpacity("--color-accent-foreground")
         },
         border: withOpacity("--color-border"),
-        muted: withOpacity("--color-muted"),
+        muted: {
+          DEFAULT: withOpacity("--muted"),
+          foreground: withOpacity("--muted-foreground")
+        },
         panel: withOpacity("--color-panel"),
         "accent-soft": withOpacity("--color-accent-soft"),
         code: withOpacity("--color-code"),
@@ -26,15 +57,20 @@ const config: Config = {
         danger: withOpacity("--color-danger"),
         "danger-foreground": withOpacity("--color-danger-foreground")
       },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)"
+      },
       boxShadow: {
-        panel: "0 20px 60px rgba(15, 23, 42, 0.14)",
-        focus: "0 0 0 4px rgba(139, 92, 246, 0.2)",
-        glow: "0 18px 48px rgba(139, 92, 246, 0.22)"
+        panel: "0 1px 2px rgba(15, 23, 42, 0.06)",
+        focus: "0 0 0 3px rgb(var(--ring) / 0.18)",
+        glow: "0 8px 24px rgba(15, 23, 42, 0.08)"
       },
       backgroundImage: {
-        "app-mesh": "radial-gradient(circle at 14% 10%, rgba(139, 92, 246, 0.18), transparent 28%), radial-gradient(circle at 86% 24%, rgba(6, 182, 212, 0.14), transparent 30%), linear-gradient(180deg, var(--app-base-from), var(--app-base-to))",
-        "glass-sheen": "linear-gradient(135deg, rgba(255,255,255,0.42), rgba(255,255,255,0.08) 42%, rgba(6,182,212,0.08))",
-        "primary-gradient": "linear-gradient(135deg, rgb(124, 58, 237), rgb(8, 145, 178))"
+        "app-mesh": "linear-gradient(180deg, var(--app-base-from), var(--app-base-to))",
+        "glass-sheen": "linear-gradient(180deg, rgb(var(--card)), rgb(var(--card)))",
+        "primary-gradient": "linear-gradient(180deg, rgb(var(--primary)), rgb(var(--primary)))"
       },
       animation: {
         "fade-in": "fadeIn 220ms ease-out both",

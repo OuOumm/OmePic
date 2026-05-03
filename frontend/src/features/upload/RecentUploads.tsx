@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Grid3X3, ImageOff } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/CopyButton";
 import { ImageLightbox } from "@/components/shared/ImageLightbox";
@@ -26,17 +27,17 @@ export function RecentUploads({ title, items }: RecentUploadsProps) {
     <Card className="space-y-5 p-5 sm:p-6" variant="strong">
       <PageSectionHeader
         badge={
-          <span className="rounded-full bg-white/60 px-3 py-1 text-xs font-semibold text-muted backdrop-blur-xl dark:bg-slate-800/60">
+          <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
             {t.common.items(items.length)}
           </span>
         }
         description={items.length === 0 ? t.upload.emptyRecent : undefined}
-        icon={<GridIcon />}
+        icon={<Grid3X3 aria-hidden="true" className="h-4 w-4" />}
         title={title}
       />
 
       {items.length === 0 ? (
-        <ImgGalleryEmptyState icon={<EmptyImageIcon />} title={t.upload.emptyRecent} />
+        <ImgGalleryEmptyState icon={<ImageOff aria-hidden="true" className="h-10 w-10" />} title={t.upload.emptyRecent} />
       ) : (
         <ul className="gallery-grid">
           {items.map((item, index) => (
@@ -92,21 +93,5 @@ export function RecentUploads({ title, items }: RecentUploadsProps) {
         onClose={() => setPreviewRecord(null)}
       />
     </Card>
-  );
-}
-
-function GridIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5 text-violet-500 dark:text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M4 5a1 1 0 0 1 1-1h5v5H4V5Zm10-1h5a1 1 0 0 1 1 1v5h-6V4ZM4 14h6v6H5a1 1 0 0 1-1-1v-5Zm10 0h6v5a1 1 0 0 1-1 1h-5v-6Z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function EmptyImageIcon() {
-  return (
-    <svg aria-hidden="true" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-      <path d="m4 16 4.6-4.6a2 2 0 0 1 2.8 0L16 16m-2-2 1.6-1.6a2 2 0 0 1 2.8 0L20 14M14 8h.01M6 20h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

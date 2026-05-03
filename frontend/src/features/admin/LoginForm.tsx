@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2, LockKeyhole } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { Button } from "@/components/ui/Button";
@@ -39,25 +40,24 @@ export function LoginForm() {
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-170px)] max-w-md items-center justify-center animate-scale-in">
-      <Card className="relative w-full overflow-hidden p-6 sm:p-8" variant="strong">
-        <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 via-transparent to-cyan-500/10" />
-        <div className="relative space-y-6">
+      <Card className="w-full p-6 sm:p-8" variant="strong">
+        <div className="space-y-6">
           <div className="space-y-3 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-500 text-white shadow-lg shadow-violet-500/25">
-              <LockIcon />
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground">
+              <LockKeyhole aria-hidden="true" className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-violet-600 dark:text-violet-300">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {t.admin.loginEyebrow}
               </p>
-              <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
                 {t.admin.loginTitle}
               </h1>
             </div>
           </div>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <label className="block space-y-2">
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{t.admin.password}</span>
+              <span className="text-sm font-medium text-foreground">{t.admin.password}</span>
               <Input
                 aria-describedby={errorMessage ? "admin-login-error" : undefined}
                 aria-invalid={errorMessage ? true : undefined}
@@ -69,34 +69,17 @@ export function LoginForm() {
               />
             </label>
             {errorMessage ? (
-              <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" id="admin-login-error" role="alert">
+              <p className="rounded-md border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" id="admin-login-error" role="alert">
                 {errorMessage}
               </p>
             ) : null}
             <Button className="w-full" disabled={submitting} type="submit">
-              {submitting ? <SpinnerIcon /> : <LockIcon />}
+              {submitting ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <LockKeyhole aria-hidden="true" className="h-4 w-4" />}
               {submitting ? t.admin.signingIn : t.admin.signIn}
             </Button>
           </form>
         </div>
       </Card>
     </div>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M8 10V7a4 4 0 1 1 8 0v3m-9 0h10a1 1 0 0 1 1 1v9H6v-9a1 1 0 0 1 1-1Z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SpinnerIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-      <path className="opacity-75" d="M4 12a8 8 0 0 1 8-8" stroke="currentColor" strokeLinecap="round" strokeWidth={4} />
-    </svg>
   );
 }

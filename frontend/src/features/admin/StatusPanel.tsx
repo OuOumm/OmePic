@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CalendarDays, Database, Images, KeyRound } from "lucide-react";
 
 import { PageSectionHeader } from "@/components/shared/PageLayout";
 import { Card } from "@/components/ui/Card";
@@ -82,10 +83,10 @@ export function StatusPanel() {
     <Card className="space-y-5 p-5 sm:p-6" variant="strong">
       <PageSectionHeader title={t.admin.dashboardTitle} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={<GalleryIcon />} label={t.admin.stats.totalImages} value={String(displayStatus.total_images)} />
-        <StatCard icon={<StorageIcon />} label={t.admin.stats.storageSize} value={formatBytes(displayStatus.total_storage_size)} />
-        <StatCard icon={<TodayIcon />} label={t.admin.stats.todaysUploads} value={String(displayStatus.today_uploads)} />
-        <StatCard icon={<TokenIcon />} label={t.admin.stats.uniqueTokens} value={String(displayStatus.unique_tokens)} />
+        <StatCard icon={<Images aria-hidden="true" className="h-5 w-5" />} label={t.admin.stats.totalImages} value={String(displayStatus.total_images)} />
+        <StatCard icon={<Database aria-hidden="true" className="h-5 w-5" />} label={t.admin.stats.storageSize} value={formatBytes(displayStatus.total_storage_size)} />
+        <StatCard icon={<CalendarDays aria-hidden="true" className="h-5 w-5" />} label={t.admin.stats.todaysUploads} value={String(displayStatus.today_uploads)} />
+        <StatCard icon={<KeyRound aria-hidden="true" className="h-5 w-5" />} label={t.admin.stats.uniqueTokens} value={String(displayStatus.unique_tokens)} />
       </div>
     </Card>
   );
@@ -93,49 +94,16 @@ export function StatusPanel() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <Card className="group relative overflow-hidden p-5 transition-all duration-300 hover:-translate-y-1 hover:border-violet-300/50 hover:shadow-glow dark:hover:border-violet-400/30" variant="subtle">
-      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 via-transparent to-cyan-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-      <div className="relative">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20 text-violet-600 dark:text-violet-200">
+    <Card className="p-5" variant="subtle">
+      <div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card text-muted-foreground">
           {icon}
         </div>
-        <p className="mt-4 text-sm font-semibold text-muted">{label}</p>
-        <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white">
+        <p className="mt-4 text-sm font-medium text-muted-foreground">{label}</p>
+        <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-foreground">
           {value}
         </p>
       </div>
     </Card>
-  );
-}
-
-function GalleryIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Zm3 12 3.5-4 2.5 3 2-2.4 2 3.4M15 8h.01" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function StorageIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3Zm0 0v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TodayIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M7 3v3m10-3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a2 2 0 0 1 2-2Z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TokenIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M15.75 7.5a5.25 5.25 0 1 0-4 5.1L5 19.35V22h2.65l1.2-1.2V19h1.8l1.4-1.4v-1.8l2.85-2.85a5.22 5.22 0 0 0 .85-5.45ZM16.5 6.75h.01" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

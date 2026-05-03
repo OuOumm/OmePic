@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { PageSectionHeader } from "@/components/shared/PageLayout";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { useUiTranslations } from "@/hooks/useUiPreferences";
 import {
@@ -207,12 +208,12 @@ export function SettingsForm() {
       <Card
         className={cn(
           "flex items-center gap-4 p-5 text-sm",
-          errorMessage ? "border-rose-400/30 bg-rose-500/10 text-danger" : "text-muted"
+          errorMessage ? "border-rose-400/30 bg-rose-500/10 text-danger" : "text-muted-foreground"
         )}
         role={errorMessage ? "alert" : "status"}
         variant="strong"
       >
-        {!errorMessage ? <span className="skeleton-glass h-10 w-10 rounded-xl" /> : null}
+        {!errorMessage ? <span className="skeleton-glass h-10 w-10 rounded-md" /> : null}
         {errorMessage || t.admin.settingsLoading}
       </Card>
     );
@@ -236,7 +237,7 @@ export function SettingsForm() {
             });
           }}
         >
-          <PlusIcon />
+          <Plus aria-hidden="true" className="h-4 w-4" />
           {t.admin.createStorageInstance}
         </Button>
 
@@ -246,10 +247,10 @@ export function SettingsForm() {
             return (
               <button
                 className={cn(
-                  "w-full rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+                  "w-full rounded-md border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive
-                    ? "border-violet-400/60 bg-violet-500/10 shadow-glow"
-                    : "border-white/50 bg-white/50 hover:-translate-y-0.5 hover:border-violet-300/60 hover:bg-white/70 dark:border-white/10 dark:bg-slate-950/30 dark:hover:border-violet-400/40 dark:hover:bg-white/10"
+                    ? "border-primary bg-muted"
+                    : "border-border bg-card hover:bg-muted/50"
                 )}
                 key={item.storage_key}
                 onClick={() => {
@@ -260,12 +261,12 @@ export function SettingsForm() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-slate-900 dark:text-white">{item.name}</p>
-                    <p className="mt-1 font-mono text-xs text-muted">{item.storage_key}</p>
+                    <p className="font-medium text-foreground">{item.name}</p>
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">{item.storage_key}</p>
                   </div>
                   {item.is_default ? <Badge>{t.admin.defaultBadge}</Badge> : null}
                 </div>
-                <p className="mt-3 text-sm text-muted">{backendLabel(item.storage_backend, t)}</p>
+                <p className="mt-3 text-sm text-muted-foreground">{backendLabel(item.storage_backend, t)}</p>
               </button>
             );
           })}
@@ -280,13 +281,13 @@ export function SettingsForm() {
           />
 
           {notice ? (
-            <p className="rounded-2xl border border-violet-300/40 bg-violet-500/10 p-3 text-sm text-slate-800 dark:text-violet-100" role="status">
+            <p className="rounded-md border border-border bg-muted/50 p-3 text-sm text-foreground" role="status">
               {notice}
             </p>
           ) : null}
 
           {errorMessage ? (
-            <p className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" role="alert">
+            <p className="rounded-md border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" role="alert">
               {errorMessage}
             </p>
           ) : null}
@@ -303,18 +304,22 @@ export function SettingsForm() {
               <div className="space-y-2">
                 <Select
                   disabled={!isCreating}
-                  onChange={(event) =>
-                    setDraft({ ...draft, storage_backend: event.target.value as StorageBackend })
+                  onValueChange={(value) =>
+                    setDraft({ ...draft, storage_backend: value as StorageBackend })
                   }
-                  title={!isCreating ? t.admin.storageBackendLockedHint : undefined}
                   value={draft.storage_backend}
                 >
-                  <option value="local">{t.admin.backends.local}</option>
-                  <option value="s3">{t.admin.backends.s3}</option>
-                  <option value="webdav">{t.admin.backends.webdav}</option>
+                  <SelectTrigger title={!isCreating ? t.admin.storageBackendLockedHint : undefined}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">{t.admin.backends.local}</SelectItem>
+                    <SelectItem value="s3">{t.admin.backends.s3}</SelectItem>
+                    <SelectItem value="webdav">{t.admin.backends.webdav}</SelectItem>
+                  </SelectContent>
                 </Select>
                 {!isCreating ? (
-                  <p className="text-xs text-muted">{t.admin.storageBackendLockedHint}</p>
+                  <p className="text-xs text-muted-foreground">{t.admin.storageBackendLockedHint}</p>
                 ) : null}
               </div>
             </Field>
@@ -396,7 +401,7 @@ export function SettingsForm() {
               <label className="flex items-center gap-3 text-sm">
                 <input
                   checked={draft.s3_use_ssl}
-                  className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500 dark:border-slate-700"
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
                   onChange={(event) => setDraft({ ...draft, s3_use_ssl: event.target.checked })}
                   type="checkbox"
                 />
@@ -405,7 +410,7 @@ export function SettingsForm() {
               <label className="flex items-center gap-3 text-sm">
                 <input
                   checked={draft.s3_force_path_style}
-                  className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500 dark:border-slate-700"
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
                   onChange={(event) =>
                     setDraft({ ...draft, s3_force_path_style: event.target.checked })
                   }
@@ -459,7 +464,7 @@ function Field({
 }) {
   return (
     <label className="space-y-2">
-      <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</span>
+      <span className="text-sm font-medium text-foreground">{label}</span>
       {children}
     </label>
   );
@@ -505,12 +510,4 @@ function backendLabel(backend: string, t: ReturnType<typeof useUiTranslations>) 
     default:
       return t.admin.backends.local;
   }
-}
-
-function PlusIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }

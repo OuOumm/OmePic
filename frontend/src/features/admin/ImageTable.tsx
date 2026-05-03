@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Grid3X3, Images, List, Search, SquareCheckBig, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { CopyButton } from "@/components/shared/CopyButton";
@@ -10,6 +11,14 @@ import { PageDetailPill, PageIntro, PageSectionHeader } from "@/components/share
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/Table";
 import { useUiLocale, useUiTranslations } from "@/hooks/useUiPreferences";
 import { adminDeleteImages, adminImages, apiUrl } from "@/lib/api";
 import { formatBytes, formatDate } from "@/lib/format";
@@ -139,12 +148,12 @@ export function ImageTable() {
         <PageSectionHeader
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex rounded-2xl border border-white/50 bg-white/60 p-1 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/50">
+              <div className="flex rounded-md border border-border bg-muted p-1">
                 <ViewButton active={viewMode === "grid"} label={t.admin.gridView} onClick={() => setViewMode("grid")}>
-                  <GridIcon />
+                  <Grid3X3 aria-hidden="true" className="h-4 w-4" />
                 </ViewButton>
                 <ViewButton active={viewMode === "list"} label={t.admin.listView} onClick={() => setViewMode("list")}>
-                  <ListIcon />
+                  <List aria-hidden="true" className="h-4 w-4" />
                 </ViewButton>
               </div>
               <Button
@@ -152,7 +161,7 @@ export function ImageTable() {
                 onClick={toggleVisible}
                 variant="secondary"
               >
-                <SelectIcon />
+                <SquareCheckBig aria-hidden="true" className="h-4 w-4" />
                 {visibleSelected ? t.admin.deselectVisible : t.admin.selectVisible}
               </Button>
               <Button
@@ -161,7 +170,7 @@ export function ImageTable() {
                 title={t.admin.deleteSelectedTitle}
                 variant="danger"
               >
-                <TrashIcon />
+                <Trash2 aria-hidden="true" className="h-4 w-4" />
                 {t.admin.deleteSelected}
               </Button>
             </div>
@@ -172,7 +181,7 @@ export function ImageTable() {
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative flex-1" role="search">
-            <SearchIcon />
+            <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label={t.admin.searchInputLabel}
               aria-describedby={errorMessage ? "admin-images-error" : undefined}
@@ -185,7 +194,7 @@ export function ImageTable() {
         </div>
 
         {errorMessage ? (
-          <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" id="admin-images-error" role="alert">
+          <p className="rounded-md border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" id="admin-images-error" role="alert">
             {errorMessage}
           </p>
         ) : null}
@@ -193,7 +202,7 @@ export function ImageTable() {
         {loading ? (
           <LoadingGrid />
         ) : items.length === 0 ? (
-          <ImgGalleryEmptyState icon={<GalleryIcon />} title={t.admin.noImagesFound} />
+          <ImgGalleryEmptyState icon={<Images aria-hidden="true" className="h-10 w-10" />} title={t.admin.noImagesFound} />
         ) : viewMode === "grid" ? (
           <div className="gallery-grid">
             {items.map((item, index) => (
@@ -210,55 +219,55 @@ export function ImageTable() {
           </div>
         ) : (
           <div className="table-surface">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-white/60 text-xs uppercase tracking-wide text-muted backdrop-blur-xl dark:bg-slate-950/60">
-                <tr>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.select}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.uid}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.type}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.size}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.token}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.md5}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.storageKey}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.backend}</th>
-                  <th className="px-3 py-3" scope="col">{t.admin.table.created}</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead scope="col">{t.admin.table.select}</TableHead>
+                  <TableHead scope="col">{t.admin.table.uid}</TableHead>
+                  <TableHead scope="col">{t.admin.table.type}</TableHead>
+                  <TableHead scope="col">{t.admin.table.size}</TableHead>
+                  <TableHead scope="col">{t.admin.table.token}</TableHead>
+                  <TableHead scope="col">{t.admin.table.md5}</TableHead>
+                  <TableHead scope="col">{t.admin.table.storageKey}</TableHead>
+                  <TableHead scope="col">{t.admin.table.backend}</TableHead>
+                  <TableHead scope="col">{t.admin.table.created}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {items.map((item) => {
                   const checked = selected.includes(item.uid);
                   return (
-                    <tr
+                    <TableRow
                       className={cn(
-                        "border-t border-white/50 transition-colors duration-200 hover:bg-violet-500/10 dark:border-white/10",
-                        checked ? "bg-violet-500/10" : "bg-white/25 dark:bg-slate-950/20"
+                        "hover:bg-muted/60",
+                        checked ? "bg-muted" : ""
                       )}
                       key={item.uid}
                     >
-                      <td className="px-3 py-3">
+                      <TableCell>
                         <ImageCheckbox
                           checked={checked}
                           label={t.admin.selectImage(item.uid)}
                           onChange={(value) => toggleSelected(item.uid, value)}
                         />
-                      </td>
-                      <td className="px-3 py-3 font-mono text-xs">{item.uid}</td>
-                      <td className="px-3 py-3">{item.mime_type}</td>
-                      <td className="px-3 py-3 tabular-nums">{formatBytes(item.size)}</td>
-                      <td className="px-3 py-3 font-mono text-xs">{item.token}</td>
-                      <td className="px-3 py-3 font-mono text-xs">{item.md5_hash}</td>
-                      <td className="px-3 py-3 font-mono text-xs">{item.storage_key}</td>
-                      <td className="px-3 py-3">{item.storage_backend}</td>
-                      <td className="whitespace-nowrap px-3 py-3">{formatDate(item.created_at, locale)}</td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{item.uid}</TableCell>
+                      <TableCell>{item.mime_type}</TableCell>
+                      <TableCell className="tabular-nums">{formatBytes(item.size)}</TableCell>
+                      <TableCell className="font-mono text-xs">{item.token}</TableCell>
+                      <TableCell className="font-mono text-xs">{item.md5_hash}</TableCell>
+                      <TableCell className="font-mono text-xs">{item.storage_key}</TableCell>
+                      <TableCell>{item.storage_backend}</TableCell>
+                      <TableCell className="whitespace-nowrap">{formatDate(item.created_at, locale)}</TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
 
-        <div className="flex flex-col gap-3 border-t border-white/50 pt-4 text-sm text-muted sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+        <div className="flex flex-col gap-3 border-t border-border pt-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <p>{t.common.totalResults(total)}</p>
           <div className="flex gap-2">
             <Button
@@ -287,20 +296,20 @@ export function ImageTable() {
 
       <div
         className={cn(
-          "fixed inset-x-4 bottom-5 z-40 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-[24px] border border-white/50 bg-white/80 p-3 shadow-glow backdrop-blur-xl transition-all duration-300 dark:border-white/10 dark:bg-slate-900/90",
+          "fixed inset-x-4 bottom-5 z-40 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-lg border border-border bg-popover p-3 shadow-lg transition-all duration-300",
           selected.length > 0 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-6 opacity-0"
         )}
       >
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+        <p className="text-sm font-medium text-foreground">
           {t.common.items(selected.length)}
         </p>
         <div className="flex gap-2">
           <Button onClick={toggleVisible} size="sm" variant="secondary">
-            <SelectIcon />
+            <SquareCheckBig aria-hidden="true" className="h-4 w-4" />
             {visibleSelected ? t.admin.deselectVisible : t.admin.selectVisible}
           </Button>
           <Button onClick={() => void handleBatchDelete()} size="sm" variant="danger">
-            <TrashIcon />
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
             {t.admin.deleteSelected}
           </Button>
         </div>
@@ -401,8 +410,8 @@ function ImageCheckbox({
         onChange={(event) => onChange(event.target.checked)}
         type="checkbox"
       />
-      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-white/70 bg-white/40 text-white shadow-sm backdrop-blur-md transition-all duration-200 peer-checked:border-violet-300 peer-checked:bg-gradient-to-br peer-checked:from-violet-500 peer-checked:to-cyan-500 peer-focus-visible:ring-2 peer-focus-visible:ring-violet-400">
-        {checked ? <CheckIcon /> : null}
+      <span className="flex h-5 w-5 items-center justify-center rounded-sm border border-input bg-background text-primary transition-colors peer-checked:border-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
+        {checked ? <Check aria-hidden="true" className="h-4 w-4" /> : null}
       </span>
     </label>
   );
@@ -424,10 +433,10 @@ function ViewButton({
       aria-label={label}
       aria-pressed={active}
       className={cn(
-        "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+        "flex h-9 w-9 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md shadow-violet-500/20"
-          : "text-muted hover:bg-white/70 hover:text-violet-700 dark:hover:bg-white/10 dark:hover:text-violet-200"
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
       )}
       onClick={onClick}
       type="button"
@@ -442,68 +451,12 @@ function LoadingGrid() {
     <div className="gallery-grid" role="status">
       {[0, 1, 2, 3, 4, 5].map((item) => (
         <div
-          className="overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm dark:border-slate-700/40 dark:bg-slate-800/60"
+          className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
           key={item}
         >
           <div className="skeleton-glass aspect-square rounded-none" />
         </div>
       ))}
     </div>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="m21 21-5.8-5.8M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function GridIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M4 5a1 1 0 0 1 1-1h5v5H4V5Zm10-1h5a1 1 0 0 1 1 1v5h-6V4ZM4 14h6v6H5a1 1 0 0 1-1-1v-5Zm10 0h6v5a1 1 0 0 1-1 1h-5v-6Z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ListIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SelectIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="M9 11 12 14 22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="m19 7-.8 12.1A2 2 0 0 1 16.2 21H7.8a2 2 0 0 1-2-1.9L5 7m5 4v6m4-6v6M9 7V4h6v3M4 7h16" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function GalleryIcon() {
-  return (
-    <svg aria-hidden="true" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Zm3 12 3.5-4 2.5 3 2-2.4 2 3.4M15 8h.01" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path d="m5 13 4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

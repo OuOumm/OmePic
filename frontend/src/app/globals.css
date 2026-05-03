@@ -4,6 +4,7 @@
 
 :root {
   color-scheme: light;
+  --radius: 0.5rem;
   --color-surface: 248 250 252;
   --color-ink: 15 23 42;
   --color-accent: 124 58 237;
@@ -17,10 +18,30 @@
   --color-danger: 225 29 72;
   --color-danger-foreground: 255 241 242;
   --app-base-from: #f8fafc;
-  --app-base-to: #eef2ff;
+  --app-base-to: #f8fafc;
+  --background: var(--color-surface);
+  --foreground: var(--color-ink);
+  --card: var(--color-panel);
+  --card-foreground: var(--color-ink);
+  --popover: 255 255 255;
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-foreground);
+  --secondary: var(--color-accent-soft);
+  --secondary-foreground: 67 56 202;
+  --muted: 241 245 249;
+  --muted-foreground: var(--color-muted);
+  --accent: var(--color-accent-soft);
+  --accent-foreground: 67 56 202;
+  --destructive: var(--color-danger);
+  --destructive-foreground: var(--color-danger-foreground);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-accent);
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+.dark {
   color-scheme: dark;
   --color-surface: 2 6 23;
   --color-ink: 226 232 240;
@@ -36,6 +57,25 @@
   --color-danger-foreground: 255 241 242;
   --app-base-from: #020617;
   --app-base-to: #0f172a;
+  --background: var(--color-surface);
+  --foreground: var(--color-ink);
+  --card: var(--color-panel);
+  --card-foreground: var(--color-ink);
+  --popover: 15 23 42;
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-foreground);
+  --secondary: 30 41 59;
+  --secondary-foreground: 226 232 240;
+  --muted: 30 41 59;
+  --muted-foreground: var(--color-muted);
+  --accent: 46 16 101;
+  --accent-foreground: 237 233 254;
+  --destructive: var(--color-danger);
+  --destructive-foreground: var(--color-danger-foreground);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-accent);
 }
 
 html {
@@ -45,12 +85,7 @@ html {
 
 body {
   @apply min-h-screen bg-surface font-sans text-ink antialiased;
-  background-attachment: fixed;
-  background-image:
-    radial-gradient(circle at 12% 4%, rgba(139, 92, 246, 0.18), transparent 28%),
-    radial-gradient(circle at 88% 18%, rgba(6, 182, 212, 0.14), transparent 30%),
-    radial-gradient(circle at 50% 100%, rgba(14, 165, 233, 0.08), transparent 26%),
-    linear-gradient(180deg, var(--app-base-from), var(--app-base-to));
+  background: rgb(var(--background));
 }
 
 a {
@@ -86,23 +121,23 @@ a {
 
 @layer components {
   .glass-panel {
-    @apply border border-white/50 bg-white/70 shadow-panel backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60;
+    @apply rounded-lg border border-border bg-card text-card-foreground shadow-sm;
   }
 
   .glass-panel-strong {
-    @apply border border-white/60 bg-white/80 shadow-panel backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/75;
+    @apply rounded-lg border border-border bg-card text-card-foreground shadow-sm;
   }
 
   .gradient-text {
-    @apply bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500 bg-clip-text text-transparent dark:from-violet-300 dark:via-fuchsia-300 dark:to-cyan-300;
+    @apply text-foreground;
   }
 
   .eyebrow-label {
-    @apply text-xs font-bold uppercase tracking-[0.24em] text-violet-600 dark:text-violet-300;
+    @apply text-xs font-medium uppercase tracking-wider text-muted-foreground;
   }
 
   .toolbar-surface {
-    @apply rounded-[24px] border border-white/45 bg-white/60 p-3 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/45;
+    @apply rounded-lg border border-border bg-card p-3 shadow-sm;
   }
 
   .gallery-grid {
@@ -110,7 +145,7 @@ a {
   }
 
   .table-surface {
-    @apply overflow-x-auto rounded-[24px] border border-white/45 bg-white/40 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/35;
+    @apply overflow-x-auto rounded-lg border border-border bg-card shadow-sm;
   }
 
   .link-underline {
@@ -118,7 +153,7 @@ a {
   }
 
   .link-underline::after {
-    background: linear-gradient(90deg, #a78bfa, #22d3ee);
+    background: rgb(var(--primary));
     border-radius: 9999px;
     bottom: -3px;
     content: "";
@@ -137,7 +172,7 @@ a {
   }
 
   .skeleton-glass {
-    @apply animate-pulse rounded-2xl bg-slate-200/70 dark:bg-slate-700/50;
+    @apply animate-pulse rounded-md bg-muted;
   }
 }
 

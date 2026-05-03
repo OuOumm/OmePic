@@ -16,8 +16,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html className="dark" data-theme="dark" data-theme-mode="dark" lang="en" suppressHydrationWarning>
-      <body className="selection:bg-violet-500/25">
+    <html data-theme="light" data-theme-mode="light" lang="en" suppressHydrationWarning>
+      <body>
         <Script id="omepic-preferences-init" strategy="beforeInteractive">
           {createPreferenceInitScript()}
         </Script>
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           position="top-right"
           toastOptions={{
             className:
-              "glass-panel-strong rounded-2xl border-white/50 text-sm text-ink shadow-glow dark:border-white/10"
+              "rounded-md border border-border bg-popover text-sm text-popover-foreground shadow-md"
           }}
         />
       </body>

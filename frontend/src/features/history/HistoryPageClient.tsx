@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Images, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { CopyButton } from "@/components/shared/CopyButton";
@@ -76,7 +77,7 @@ export function HistoryPageClient() {
       <PageIntro
         actions={
           <Button disabled={records.length === 0} onClick={() => void handleClear()} variant="secondary">
-            <TrashIcon />
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
             {t.historyPage.clear}
           </Button>
         }
@@ -92,7 +93,7 @@ export function HistoryPageClient() {
       />
 
       {message ? (
-        <Card className="border-violet-300/40 bg-violet-500/10 p-4 text-sm text-slate-800 dark:text-violet-100" role="status" variant="subtle">
+        <Card className="p-4 text-sm text-foreground" role="status" variant="subtle">
           {message}
         </Card>
       ) : null}
@@ -104,7 +105,7 @@ export function HistoryPageClient() {
       ) : null}
 
       {records.length === 0 ? (
-        <ImgGalleryEmptyState icon={<GalleryIcon />} title={t.historyPage.empty} />
+        <ImgGalleryEmptyState icon={<Images aria-hidden="true" className="h-10 w-10" />} title={t.historyPage.empty} />
       ) : (
         <ul className="gallery-grid">
           {records.map((record, index) => {
@@ -143,7 +144,7 @@ export function HistoryPageClient() {
                 }
                 variant="danger"
               >
-                <TrashIcon />
+                <Trash2 aria-hidden="true" className="h-4 w-4" />
                 {t.historyPage.deleteUid}
               </Button>
             </>
@@ -176,21 +177,5 @@ export function HistoryPageClient() {
         onClose={() => setPreviewRecord(null)}
       />
     </div>
-  );
-}
-
-function GalleryIcon() {
-  return (
-    <svg aria-hidden="true" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Zm3 12 3.5-4 2.5 3 2-2.4 2 3.4M15 8h.01" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path d="m19 7-.8 12.1A2 2 0 0 1 16.2 21H7.8a2 2 0 0 1-2-1.9L5 7m5 4v6m4-6v6M9 7V4h6v3M4 7h16" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
