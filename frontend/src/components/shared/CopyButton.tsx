@@ -8,11 +8,12 @@ import { useUiTranslations } from "@/hooks/useUiPreferences";
 import { Button } from "@/components/ui/Button";
 
 type CopyButtonProps = {
+  className?: string;
   label: string;
   value: string;
 };
 
-export function CopyButton({ label, value }: CopyButtonProps) {
+export function CopyButton({ className, label, value }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const t = useUiTranslations();
 
@@ -24,7 +25,7 @@ export function CopyButton({ label, value }: CopyButtonProps) {
   }
 
   return (
-    <Button onClick={handleCopy} size="sm" variant={copied ? "primary" : "secondary"}>
+    <Button className={className} onClick={handleCopy} size="sm" variant={copied ? "primary" : "secondary"}>
       {copied ? <Check aria-hidden="true" className="h-4 w-4" /> : <Copy aria-hidden="true" className="h-4 w-4" />}
       {copied ? t.copyButton.copied(label) : t.copyButton.copy(label)}
     </Button>

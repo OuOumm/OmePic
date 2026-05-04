@@ -21,6 +21,7 @@ import (
 const maxUploadSizeBytes = 20 * 1024 * 1024
 
 var allowedExtensions = map[string]struct{}{
+	".avif": {},
 	".png":  {},
 	".jpg":  {},
 	".jpeg": {},

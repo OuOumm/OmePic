@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2, LockKeyhole } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -17,7 +16,6 @@ export function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const setToken = useAdminSessionStore((state) => state.setToken);
-  const router = useRouter();
   const t = useUiTranslations();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -28,7 +26,6 @@ export function LoginForm() {
       const token = await adminLogin(password);
       setToken(token);
       toast.success(t.admin.loginSuccessToast);
-      router.push("/admin/dashboard");
     } catch (error) {
       const nextError = error instanceof Error ? error.message : t.admin.loginFailed;
       setErrorMessage(nextError);

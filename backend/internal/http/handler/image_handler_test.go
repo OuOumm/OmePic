@@ -118,6 +118,12 @@ func TestServeRejectsBareUIDRoute(t *testing.T) {
 	}
 }
 
+func TestDetectContentTypeRecognizesAVIF(t *testing.T) {
+	if contentType := detectContentType("remote-image.avif"); contentType != "image/avif" {
+		t.Fatalf("expected image/avif, got %q", contentType)
+	}
+}
+
 func TestStorageOptionsReturnsSafePublicCatalog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

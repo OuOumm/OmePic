@@ -9,7 +9,19 @@ import type { ApiResponse } from "@/types/api";
 import type { PublicStorageOptionsResponse } from "@/types/storage";
 import type { UploadResponseData } from "@/types/upload";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+
+function resolveApiBase() {
+  if (configuredApiBase) {
+    return configuredApiBase.replace(/\/+$/, "");
+  }
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:8080";
+  }
+  return "";
+}
+
+const API_BASE = resolveApiBase();
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";

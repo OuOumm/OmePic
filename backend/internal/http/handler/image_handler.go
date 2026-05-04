@@ -167,6 +167,8 @@ func (h *ImageHandler) publicURL(c *gin.Context) string {
 
 func detectContentType(filename string) string {
 	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".avif":
+		return "image/avif"
 	case ".png":
 		return "image/png"
 	case ".jpg", ".jpeg":

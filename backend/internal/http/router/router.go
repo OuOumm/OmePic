@@ -16,6 +16,7 @@ type Dependencies struct {
 	AdminHandler  *handler.AdminHandler
 	HealthHandler *handler.HealthHandler
 	JWTSecret     string
+	FrontendDir   string
 }
 
 func New(deps Dependencies) *gin.Engine {
@@ -46,6 +47,8 @@ func New(deps Dependencies) *gin.Engine {
 	admin.PUT("/config/storage-instances/:storageKey", deps.AdminHandler.UpdateStorageConfig)
 	admin.DELETE("/config/storage-instances/:storageKey", deps.AdminHandler.DeleteStorageConfig)
 	admin.POST("/config/default", deps.AdminHandler.SetDefaultStorageConfig)
+
+	registerFrontendRoutes(engine, deps.FrontendDir, deps.Logger)
 
 	return engine
 }

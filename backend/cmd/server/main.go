@@ -88,6 +88,7 @@ func main() {
 		AdminHandler:  handler.NewAdminHandler(adminService, logger),
 		HealthHandler: handler.NewHealthHandler(repo, imageCache),
 		JWTSecret:     cfg.JWTSecret,
+		FrontendDir:   "web",
 	})
 
 	logger.Info("server starting", "addr", cfg.HTTPAddr, "default_storage_key", storageManager.CurrentKey(), "storage_backend", storageManager.CurrentBackend())

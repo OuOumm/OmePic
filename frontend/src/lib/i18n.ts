@@ -34,7 +34,9 @@ const en = {
     copyTargets: {
       url: "URL",
       markdown: "Markdown",
-      bbcode: "BBCode"
+      markdownShort: "MD",
+      bbcode: "BBCode",
+      bbcodeShort: "BB"
     },
     items: (count: number) => `${count} items`,
     totalResults: (count: number) => `Total results: ${count}`
@@ -46,6 +48,7 @@ const en = {
     navLabel: "Primary navigation",
     openMenu: "Open menu",
     closeMenu: "Close menu",
+    settings: "Settings",
     languages: {
       zh: "中文",
       en: "English"
@@ -71,6 +74,7 @@ const en = {
     statusSuccess: "Upload completed and stored as AVIF.",
     statusUploading: (progress: number) => `Uploading ${progress}%`,
     latestResult: "Latest result",
+    uploadingCardTitle: "Uploading",
     previewAlt: "Uploaded preview",
     uploadCompleteToast: "Upload complete",
     duplicateUploadToast: "Duplicate upload linked",
@@ -85,10 +89,23 @@ const en = {
     storageOptionsFailed: "Failed to load storage options",
     dropTitle: "Drop an image here",
     dropDescription:
-      "Supports PNG, JPG, JPEG, GIF, WEBP, BMP up to 20 MB. Uploads are converted to AVIF before storage, and duplicate original uploads reuse the same stored AVIF file.",
+      "Supports AVIF, PNG, JPG, JPEG, GIF, WEBP, BMP up to 20 MB. Uploads are converted to AVIF before storage, and duplicate original uploads reuse the same stored AVIF file.",
     fileInputLabel: "Choose an image file to upload",
     chooseFile: "Choose file",
     browseLocally: "Browse locally",
+    quickHistory: "View history",
+    quickApi: "API examples",
+    quickPasteHint: "Paste an image anywhere in the upload area",
+    quickSourceBadge: "File, paste, or URL",
+    sourceHelp: "HTTP and HTTPS image URLs are downloaded in your browser, then uploaded with the current token and storage target.",
+    urlInputLabel: "Image URL",
+    urlInputPlaceholder: "https://example.com/image.jpg",
+    urlUploadAction: "Upload URL",
+    urlFilenameFallback: "remote-image",
+    clipboardNoImage: "The clipboard does not contain an image.",
+    urlInvalid: "Enter a valid HTTP or HTTPS image URL.",
+    urlNotImage: "The URL did not return an image.",
+    urlDownloadFailed: "Could not download the image URL.",
     emptyRecent: "No uploads yet."
   },
   historyPage: {
@@ -256,7 +273,9 @@ const zh: typeof en = {
     copyTargets: {
       url: "URL",
       markdown: "Markdown",
-      bbcode: "BBCode"
+      markdownShort: "MD",
+      bbcode: "BBCode",
+      bbcodeShort: "BB"
     },
     items: (count: number) => `${count} 项`,
     totalResults: (count: number) => `总结果数：${count}`
@@ -268,6 +287,7 @@ const zh: typeof en = {
     navLabel: "主导航",
     openMenu: "打开菜单",
     closeMenu: "关闭菜单",
+    settings: "设置",
     languages: {
       zh: "中文",
       en: "English"
@@ -293,6 +313,7 @@ const zh: typeof en = {
     statusSuccess: "上传完成，已保存为 AVIF。",
     statusUploading: (progress: number) => `正在上传 ${progress}%`,
     latestResult: "最新结果",
+    uploadingCardTitle: "正在上传",
     previewAlt: "上传预览",
     uploadCompleteToast: "上传完成",
     duplicateUploadToast: "已关联到重复上传",
@@ -307,10 +328,23 @@ const zh: typeof en = {
     storageOptionsFailed: "加载存储选项失败",
     dropTitle: "将图片拖到这里",
     dropDescription:
-      "支持 PNG、JPG、JPEG、GIF、WEBP、BMP，最大 20 MB。上传前会转换为 AVIF，重复的原始上传会复用同一个已存储的 AVIF 文件。",
+      "支持 AVIF、PNG、JPG、JPEG、GIF、WEBP、BMP，最大 20 MB。上传前会转换为 AVIF，重复的原始上传会复用同一个已存储的 AVIF 文件。",
     fileInputLabel: "选择要上传的图片文件",
     chooseFile: "选择文件",
     browseLocally: "本地浏览",
+    quickHistory: "查看历史",
+    quickApi: "接口示例",
+    quickPasteHint: "在上传区域内粘贴图片即可上传",
+    quickSourceBadge: "文件、粘贴或 URL",
+    sourceHelp: "HTTP 和 HTTPS 图片 URL 会先在浏览器中下载，再使用当前令牌和存储目标上传。",
+    urlInputLabel: "图片 URL",
+    urlInputPlaceholder: "https://example.com/image.jpg",
+    urlUploadAction: "上传 URL",
+    urlFilenameFallback: "remote-image",
+    clipboardNoImage: "剪贴板中没有图片。",
+    urlInvalid: "请输入有效的 HTTP 或 HTTPS 图片 URL。",
+    urlNotImage: "该 URL 返回的内容不是图片。",
+    urlDownloadFailed: "无法下载该图片 URL。",
     emptyRecent: "还没有上传记录。"
   },
   historyPage: {

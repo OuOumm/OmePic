@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:backend": "next build && node scripts/copy-static-to-backend.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },

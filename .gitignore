@@ -33,8 +33,10 @@ go.work.sum
 backend/.codex-run/
 backend/.gocache/
 backend/data/
+backend/web/
 frontend/.next/
 frontend/node_modules/
+frontend/out/
 frontend/tsconfig.tsbuildinfo
 
 # Editor/IDE

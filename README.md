@@ -85,7 +85,37 @@ npm run dev
 ```
 
 The UI listens on `http://localhost:3000` by default and talks to the backend
-through `NEXT_PUBLIC_API_BASE_URL`.
+through `NEXT_PUBLIC_API_BASE_URL`. When that variable is omitted in
+development, the frontend falls back to `http://localhost:8080`.
+
+### Single-port production build
+
+For production deployments that should run without a Node.js frontend server,
+export the frontend and copy it into the backend-owned static directory:
+
+```powershell
+cd frontend
+npm run build:backend
+```
+
+This writes the raw Next.js static export to `frontend/out/` and copies it to
+`backend/web/`. Then run the backend as usual:
+
+```powershell
+cd ../backend
+go build ./cmd/server
+./server
+```
+
+The backend serves API routes first and then serves `backend/web/` for browser
+page routes on the same port. Direct visits such as `/`, `/history`, and
+`/admin/dashboard` load the exported frontend while `/health`, `/v1/*`,
+`/i/*`, and backend admin API routes keep their JSON/API behavior. In the
+exported production build, frontend requests use same-origin relative URLs
+unless `NEXT_PUBLIC_API_BASE_URL` is explicitly set.
+
+If `backend/web/index.html` is missing, the backend runs in API-only mode, so
+the split-port development workflow remains unchanged.
 
 ## Storage behavior
 
@@ -145,4 +175,5 @@ cd frontend
 npm run lint
 npm run typecheck
 npm run build
+npm run build:backend
 ```

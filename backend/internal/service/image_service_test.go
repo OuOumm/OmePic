@@ -179,6 +179,42 @@ func TestUploadConvertsToAVIFAndBuildsAVIFURL(t *testing.T) {
 	}
 }
 
+func TestUploadAcceptsAVIFSourceAndStoresAVIFOutput(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, rootDir, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-avif-source")
+
+	sourceBytes := mustAVIFBytes(t, color.RGBA{R: 10, G: 120, B: 240, A: 255})
+	result, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "remote-image.avif",
+		MIMEType:         "image/avif",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("Upload returned error: %v", err)
+	}
+	if result.MIMEType != publicImageMIMEType {
+		t.Fatalf("expected mime %q, got %q", publicImageMIMEType, result.MIMEType)
+	}
+	if !strings.HasSuffix(result.URL, "/i/uid-avif-source"+publicImageExtension) {
+		t.Fatalf("expected avif url, got %q", result.URL)
+	}
+
+	record, err := repo.FindByUID(ctx, "uid-avif-source")
+	if err != nil {
+		t.Fatalf("FindByUID returned error: %v", err)
+	}
+	storedBytes, err := os.ReadFile(filepath.Join(rootDir, filepath.FromSlash(record.FilePath)))
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	if _, err := avif.Decode(bytes.NewReader(storedBytes)); err != nil {
+		t.Fatalf("expected stored bytes to decode as avif: %v", err)
+	}
+}
+
 func TestUploadDeduplicatesByOriginalBytesAndSharesStoredFile(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, rootDir, uidCodec := newImageServiceTestHarness(t)
@@ -971,6 +1007,26 @@ func mustPNGBytes(t *testing.T, fill color.Color) []byte {
 	var output bytes.Buffer
 	if err := png.Encode(&output, img); err != nil {
 		t.Fatalf("png.Encode returned error: %v", err)
+	}
+	return output.Bytes()
+}
+
+func mustAVIFBytes(t *testing.T, fill color.Color) []byte {
+	t.Helper()
+
+	img := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			img.Set(x, y, fill)
+		}
+	}
+
+	var output bytes.Buffer
+	if err := avif.Encode(&output, img, avif.Options{
+		Quality: 60,
+		Speed:   8,
+	}); err != nil {
+		t.Fatalf("avif.Encode returned error: %v", err)
 	}
 	return output.Bytes()
 }

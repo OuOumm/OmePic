@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { BarChart3, Images, LogOut, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -14,13 +14,13 @@ import { useAdminSessionStore } from "@/stores/admin-session-store";
 import type { AdminStatus } from "@/types/admin";
 
 import { AdminStatusProvider } from "./admin-status-context";
+import { LoginForm } from "./LoginForm";
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const token = useAdminSessionStore((state) => state.token);
   const hasHydrated = useAdminSessionStore((state) => state.hasHydrated);
   const clearToken = useAdminSessionStore((state) => state.clearToken);
   const pathname = usePathname();
-  const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [verifiedStatus, setVerifiedStatus] = useState<AdminStatus | null>(null);
   const t = useUiTranslations();
@@ -42,7 +42,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       if (!token) {
         setVerifiedStatus(null);
         setChecking(false);
-        router.replace("/admin/login");
         return;
       }
 
@@ -60,7 +59,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         clearToken();
         setVerifiedStatus(null);
         setChecking(false);
-        router.replace("/admin/login");
       }
     }
 
@@ -68,7 +66,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [clearToken, hasHydrated, router, token]);
+  }, [clearToken, hasHydrated, token]);
 
   if (!hasHydrated || checking) {
     return (
@@ -77,6 +75,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <span>{t.admin.checkingSession}</span>
       </Card>
     );
+  }
+
+  if (!token) {
+    return <LoginForm />;
   }
 
   return (
@@ -91,28 +93,29 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <h1 className="text-xl font-semibold text-foreground">{t.admin.shellTitle}</h1>
             </div>
             <nav className="mt-2 grid gap-1" aria-label={t.admin.shellTitle}>
-              {navItems.map((item) => (
-                <Link
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    pathname === item.href
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                  )}
-                  href={item.href}
-                  key={item.href}
-                >
-                  {item.icon}
-                  {item.label}
-                </Link>
-              ))}
+              {navItems.map((item) => {
+                return (
+                  <Link
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      pathname === item.href
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                    )}
+                    href={item.href}
+                    key={item.href}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                );
+              })}
             </nav>
             <div className="mt-4 border-t border-border pt-3">
               <Button
                 className="w-full justify-start"
                 onClick={() => {
                   clearToken();
-                  router.push("/admin/login");
                 }}
                 variant="ghost"
               >
