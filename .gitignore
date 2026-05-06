@@ -44,6 +44,7 @@ frontend/tsconfig.tsbuildinfo
 # .vscode/
 .agents/
 .codex/
+.claude/
 .trellis/
 任务.md
 AGENTS.md
