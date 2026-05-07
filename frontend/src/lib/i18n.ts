@@ -89,6 +89,7 @@ const en: TranslationMap = {
   "image.storageKey": "Storage Key",
   "image.storageBackend": "Storage Backend",
   "image.token": "Token",
+  "image.ip": "IP",
   "image.md5": "MD5",
   "image.duplicate": "Duplicate",
   "image.filename": "Filename",
@@ -115,7 +116,7 @@ const en: TranslationMap = {
 
   // Admin images
   "admin.imagesTitle": "Image Management",
-  "admin.imagesSearch": "Search by UID...",
+  "admin.imagesSearch": "Search by UID, Token, IP, MD5, or Storage Key...",
   "admin.imagesTotal": "{total} images",
   "admin.imagesSelected": "{count} selected",
   "admin.imagesSelectAll": "Select Page",
@@ -244,6 +245,7 @@ const zh: TranslationMap = {
   "image.storageKey": "存储标识",
   "image.storageBackend": "存储后端",
   "image.token": "Token",
+  "image.ip": "IP",
   "image.md5": "MD5",
   "image.duplicate": "重复",
   "image.filename": "文件名",
@@ -270,7 +272,7 @@ const zh: TranslationMap = {
 
   // Admin images
   "admin.imagesTitle": "图片管理",
-  "admin.imagesSearch": "按 UID 搜索...",
+  "admin.imagesSearch": "按 UID、Token、IP、MD5 或存储标识搜索...",
   "admin.imagesTotal": "共 {total} 张",
   "admin.imagesSelected": "已选 {count} 张",
   "admin.imagesSelectAll": "选择当前页",

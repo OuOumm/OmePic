@@ -216,6 +216,7 @@ export function ImageTable() {
                 <TableHead>{t(lang, "image.type")}</TableHead>
                 <TableHead>{t(lang, "image.size")}</TableHead>
                 <TableHead>{t(lang, "image.token")}</TableHead>
+                <TableHead>{t(lang, "image.ip")}</TableHead>
                 <TableHead>MD5</TableHead>
                 <TableHead>{t(lang, "image.storageKey")}</TableHead>
                 <TableHead>{t(lang, "image.storageBackend")}</TableHead>
@@ -241,6 +242,7 @@ export function ImageTable() {
                   <TableCell className="text-xs">{img.mime_type}</TableCell>
                   <TableCell className="text-xs">{formatBytes(img.size)}</TableCell>
                   <TableCell className="font-mono text-xs">{img.token.slice(0, 8)}...</TableCell>
+                  <TableCell className="font-mono text-xs whitespace-nowrap">{img.ip_address}</TableCell>
                   <TableCell className="font-mono text-xs">{img.md5_hash.slice(0, 8)}...</TableCell>
                   <TableCell className="text-xs">{img.storage_key}</TableCell>
                   <TableCell className="text-xs">{img.storage_backend}</TableCell>
