@@ -1,81 +1,78 @@
 "use client";
 
-import { PageIntro } from "@/components/shared/PageLayout";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { useUiTranslations } from "@/hooks/useUiPreferences";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Separator } from "@/components/ui/Separator";
+import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
+import { t } from "@/lib/i18n";
 
 export function ApiPageContent() {
-  const t = useUiTranslations();
+  const language = useUiPreferencesStore((state) => state.language);
+  const lang = language;
+
   const endpoints = [
     {
       method: "POST",
       path: "/v1/image",
-      description: t.apiPage.uploadDescription,
-      example: `curl -X POST http://localhost:8080/v1/image \\
-  -H "X-Token: <your-token>" \\
-  -F "file=@./example.png" \\
-  -F "storage_key=<optional-storage-key>"`
+      desc: lang === "zh"
+        ? "上传图片，multipart/form-data，字段 file（必填），可选 storage_key。Header X-Token 必填。"
+        : "Upload image. multipart/form-data, field file (required), optional storage_key. Header X-Token required.",
+      curl: `curl -X POST "<BASE>/v1/image" \\
+  -H "X-Token: <your-client-token>" \\
+  -F "file=@image.png" \\
+  -F "storage_key=<optional-storage-key>"`,
     },
     {
       method: "GET",
       path: "/v1/storage-options",
-      description: t.apiPage.storageOptionsDescription,
-      example: "curl http://localhost:8080/v1/storage-options"
+      desc: lang === "zh"
+        ? "获取可公开显示的存储选项列表，包含 storage_key、name、storage_backend、is_default。不暴露路径、凭据或密钥。"
+        : "Get publicly visible storage options: storage_key, name, storage_backend, is_default. Credentials/keys are not exposed.",
+      curl: `curl -X GET "<BASE>/v1/storage-options"`,
     },
     {
       method: "DELETE",
       path: "/i/:uid.avif",
-      description: t.apiPage.deleteDescription,
-      example: `curl -X DELETE http://localhost:8080/i/<uid>.avif \\
-  -H "X-Token: <your-token>"`
-    }
+      desc: lang === "zh"
+        ? "删除当前 token 拥有的图片。Header X-Token 必填，只能删除该 token 上传的图片。"
+        : "Delete image owned by the current token. Header X-Token required. Only deletes images uploaded with this token.",
+      curl: `curl -X DELETE "<BASE>/i/<uid>.avif" \\
+  -H "X-Token: <your-client-token>"`,
+    },
   ];
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <PageIntro
-        description={t.apiPage.uploadDescription}
-        eyebrow={t.apiPage.eyebrow}
-        title={t.apiPage.title}
-      />
+  const methodColors: Record<string, string> = {
+    POST: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    GET: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    DELETE: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  };
 
-      <div className="grid gap-4">
-        {endpoints.map((endpoint, index) => (
-          <Card
-            className="overflow-hidden"
-            key={`${endpoint.method}-${endpoint.path}`}
-            style={{ animationDelay: `${index * 45}ms` }}
-            variant="strong"
-          >
-            <div className="flex flex-col gap-4 border-b border-border p-5 md:flex-row md:items-start md:justify-between">
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <Badge className={methodClass(endpoint.method)}>{endpoint.method}</Badge>
-                <h2 className="break-all font-mono text-lg font-semibold text-foreground">
-                  {endpoint.path}
-                </h2>
-              </div>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{endpoint.description}</p>
-            </div>
-            <div className="bg-slate-950/95 p-4">
-              <pre className="overflow-x-auto rounded-md border border-slate-800 bg-slate-950 p-4 text-sm leading-6 text-slate-100 shadow-inner">
-                <code>{endpoint.example}</code>
-              </pre>
-            </div>
-          </Card>
-        ))}
+  return (
+    <div className="space-y-6 max-w-3xl" id="main-content">
+      <div>
+        <h1 className="text-xl font-bold">{t(lang, "api.title")}</h1>
       </div>
+
+      {endpoints.map((ep, i) => (
+        <Card key={i}>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold ${methodColors[ep.method]}`}
+              >
+                {ep.method}
+              </span>
+              <CardTitle className="text-sm font-mono">{ep.path}</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">{ep.desc}</p>
+            <Separator />
+            <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto font-mono whitespace-pre-wrap">
+              {ep.curl}
+            </pre>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
-}
-
-function methodClass(method: string) {
-  switch (method) {
-    case "POST":
-      return "border-transparent bg-primary text-primary-foreground";
-    case "DELETE":
-      return "border-transparent bg-destructive text-destructive-foreground";
-    default:
-      return "border-border bg-secondary text-secondary-foreground";
-  }
 }

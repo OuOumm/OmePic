@@ -1,31 +1,24 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext } from "react";
+import type { AdminStatus } from "@/types";
 
-import type { AdminStatus } from "@/types/admin";
-
-type AdminStatusContextValue = {
-  verifiedStatus: AdminStatus | null;
-};
-
-const AdminStatusContext = createContext<AdminStatusContextValue>({ verifiedStatus: null });
+const AdminStatusContext = createContext<AdminStatus | null>(null);
 
 export function AdminStatusProvider({
   children,
-  verifiedStatus
+  verifiedStatus,
 }: {
   children: React.ReactNode;
   verifiedStatus: AdminStatus | null;
 }) {
-  const value = useMemo(() => ({ verifiedStatus }), [verifiedStatus]);
-
   return (
-    <AdminStatusContext.Provider value={value}>
+    <AdminStatusContext.Provider value={verifiedStatus}>
       {children}
     </AdminStatusContext.Provider>
   );
 }
 
-export function useVerifiedAdminStatus() {
-  return useContext(AdminStatusContext).verifiedStatus;
+export function useAdminStatus() {
+  return useContext(AdminStatusContext);
 }

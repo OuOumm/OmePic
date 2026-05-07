@@ -1,81 +1,80 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, LockKeyhole } from "lucide-react";
-import toast from "react-hot-toast";
-
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { useUiTranslations } from "@/hooks/useUiPreferences";
+import { Button } from "@/components/ui/Button";
+import { Label } from "@/components/ui/Label";
 import { adminLogin } from "@/lib/api";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
+import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
+import { t } from "@/lib/i18n";
+import { Loader2, Lock, AlertCircle } from "lucide-react";
+import toast from "react-hot-toast";
 
 export function LoginForm() {
-  const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const language = useUiPreferencesStore((state) => state.language);
   const setToken = useAdminSessionStore((state) => state.setToken);
-  const t = useUiTranslations();
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setErrorMessage(null);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password.trim()) return;
+    setLoading(true);
+    setError("");
     try {
       const token = await adminLogin(password);
       setToken(token);
-      toast.success(t.admin.loginSuccessToast);
-    } catch (error) {
-      const nextError = error instanceof Error ? error.message : t.admin.loginFailed;
-      setErrorMessage(nextError);
-      toast.error(nextError);
+      toast.success(t(language, "admin.loginSuccess"));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t(language, "admin.loginError");
+      setError(msg);
+      toast.error(msg);
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
-  }
+  };
+
+  const lang = language;
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-170px)] max-w-md items-center justify-center animate-scale-in">
-      <Card className="w-full p-6 sm:p-8" variant="strong">
-        <div className="space-y-6">
-          <div className="space-y-3 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground">
-              <LockKeyhole aria-hidden="true" className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t.admin.loginEyebrow}
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                {t.admin.loginTitle}
-              </h1>
-            </div>
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Lock className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>{t(lang, "admin.login")}</CardTitle>
           </div>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <label className="block space-y-2">
-              <span className="text-sm font-medium text-foreground">{t.admin.password}</span>
+          <CardDescription>OmePic Admin</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="admin-password">{t(lang, "admin.password")}</Label>
               <Input
-                aria-describedby={errorMessage ? "admin-login-error" : undefined}
-                aria-invalid={errorMessage ? true : undefined}
-                autoComplete="current-password"
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder={t.admin.passwordPlaceholder}
+                id="admin-password"
                 type="password"
                 value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                disabled={loading}
+                autoFocus
               />
-            </label>
-            {errorMessage ? (
-              <p className="rounded-md border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" id="admin-login-error" role="alert">
-                {errorMessage}
-              </p>
-            ) : null}
-            <Button className="w-full" disabled={submitting} type="submit">
-              {submitting ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <LockKeyhole aria-hidden="true" className="h-4 w-4" />}
-              {submitting ? t.admin.signingIn : t.admin.signIn}
+            </div>
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-destructive" role="alert">
+                <AlertCircle className="h-4 w-4" />
+                {error}
+              </div>
+            )}
+            <Button type="submit" className="w-full cursor-pointer" disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {loading ? t(lang, "admin.loggingIn") : t(lang, "admin.loginBtn")}
             </Button>
           </form>
-        </div>
+        </CardContent>
       </Card>
     </div>
   );

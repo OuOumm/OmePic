@@ -1,71 +1,100 @@
-import type { UploadHistoryRecord } from "@/types/upload";
+import type { UploadHistoryRecord } from "@/types";
 
-const DATABASE_NAME = "omepic";
-const DATABASE_VERSION = 1;
+const DB_NAME = "omepic";
 const STORE_NAME = "uploads";
+const DB_VERSION = 1;
 
-function openDatabase() {
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.onerror = () => reject(request.error);
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        database.createObjectStore(STORE_NAME, { keyPath: "uid" });
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "uid" });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
   });
 }
 
-async function withStore<T>(mode: IDBTransactionMode, handler: (store: IDBObjectStore) => void | Promise<T>) {
-  const database = await openDatabase();
-  return new Promise<T>((resolve, reject) => {
-    const transaction = database.transaction(STORE_NAME, mode);
-    const store = transaction.objectStore(STORE_NAME);
-    Promise.resolve(handler(store))
-      .then((value) => {
-        transaction.oncomplete = () => resolve(value as T);
-      })
-      .catch(reject);
-    transaction.onerror = () => reject(transaction.error);
+export async function saveUploadToHistory(
+  record: UploadHistoryRecord
+): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 
-export async function saveUploadRecord(record: UploadHistoryRecord) {
-  await withStore<void>("readwrite", (store) => {
-    store.put(record);
+export async function getRecentUploads(
+  limit = 10
+): Promise<UploadHistoryRecord[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const records: UploadHistoryRecord[] = [];
+    store.openCursor(null, "prev").onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+      if (cursor && records.length < limit) {
+        records.push(cursor.value);
+        cursor.continue();
+      } else {
+        resolve(records);
+      }
+    };
+    tx.onerror = () => reject(tx.error);
   });
 }
 
-export async function listUploadRecords() {
-  return withStore<UploadHistoryRecord[]>("readonly", (store) => {
-    return new Promise<UploadHistoryRecord[]>((resolve, reject) => {
-      const request = store.getAll();
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const items = (request.result as UploadHistoryRecord[]).sort((a, b) =>
-          b.created_at.localeCompare(a.created_at)
-        );
-        resolve(items);
-      };
-    });
+export async function getAllUploads(): Promise<UploadHistoryRecord[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const records: UploadHistoryRecord[] = [];
+    tx.objectStore(STORE_NAME).openCursor(null, "prev").onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+      if (cursor) {
+        records.push(cursor.value);
+        cursor.continue();
+      } else {
+        resolve(records);
+      }
+    };
+    tx.onerror = () => reject(tx.error);
   });
 }
 
-export async function listRecentUploadRecords(limit: number) {
-  const items = await listUploadRecords();
-  return items.slice(0, limit);
-}
-
-export async function removeUploadRecord(uid: string) {
-  await withStore<void>("readwrite", (store) => {
-    store.delete(uid);
+export async function deleteUploadFromHistory(uid: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).delete(uid);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 
-export async function clearUploadRecords() {
-  await withStore<void>("readwrite", (store) => {
-    store.clear();
+export async function clearUploadHistory(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getUploadCount(): Promise<number> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const req = tx.objectStore(STORE_NAME).count();
+    req.onsuccess = () => resolve(req.result);
+    tx.onerror = () => reject(tx.error);
   });
 }

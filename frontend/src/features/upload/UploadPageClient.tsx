@@ -1,440 +1,510 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ClipboardEvent } from "react";
-import Link from "next/link";
-import { Clipboard, Link2, Sparkles } from "lucide-react";
-import toast from "react-hot-toast";
-
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { useClientToken } from "@/hooks/useClientToken";
-import { useUiTranslations } from "@/hooks/useUiPreferences";
-import { uploadImageWithProgress } from "@/lib/api";
-import { listRecentUploadRecords, saveUploadRecord } from "@/lib/indexeddb/upload-history";
-import { useUploadStore } from "@/stores/upload-store";
-import type { UploadHistoryRecord } from "@/types/upload";
-
-import { RecentUploads } from "./RecentUploads";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { UploadDropzone } from "./UploadDropzone";
+import { StorageSelector } from "./StorageSelector";
+import { ImageLightbox } from "@/components/shared/ImageLightbox";
+import { ImgStyleImageCard } from "@/components/shared/ImgStyleImageCard";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { useUploadStore } from "@/stores/upload-store";
+import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
+import { uploadImageWithProgress } from "@/lib/api";
+import { getClientToken } from "@/lib/preferences";
+import {
+  saveUploadToHistory,
+  getRecentUploads,
+} from "@/lib/indexeddb/upload-history";
+import { t } from "@/lib/i18n";
+import { formatBytes, formatDate } from "@/lib/utils";
+import { Loader2, Link } from "lucide-react";
+import toast from "react-hot-toast";
+import type { UploadResult, UploadHistoryRecord } from "@/types";
 
-const pasteInputSelector = "input, textarea, [contenteditable='true'], [role='textbox']";
-const supportedSourceImageTypes = new Set([
-  "image/avif",
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/bmp"
-]);
-const binaryResponseTypes = new Set([
-  "",
-  "application/octet-stream",
-  "binary/octet-stream"
-]);
+interface UploadTask {
+  id: string;
+  file: File;
+  progress: number;
+  status: "pending" | "uploading" | "success" | "error";
+  result?: UploadResult;
+  error?: string;
+}
+
+let taskIdCounter = 0;
 
 export function UploadPageClient() {
-  const { token, ready } = useClientToken();
-  const t = useUiTranslations();
-  const phase = useUploadStore((state) => state.phase);
-  const progress = useUploadStore((state) => state.progress);
-  const result = useUploadStore((state) => state.result);
-  const error = useUploadStore((state) => state.error);
+  const language = useUiPreferencesStore((state) => state.language);
   const selectedStorageKey = useUploadStore((state) => state.selectedStorageKey);
-  const start = useUploadStore((state) => state.start);
-  const setProgress = useUploadStore((state) => state.setProgress);
-  const succeed = useUploadStore((state) => state.succeed);
-  const fail = useUploadStore((state) => state.fail);
-  const [isDragging, setIsDragging] = useState(false);
-  const [recent, setRecent] = useState<UploadHistoryRecord[]>([]);
-  const [imageUrl, setImageUrl] = useState("");
-  const uploadDisabled = !ready || phase === "uploading";
-  const urlInputId = "upload-image-url";
-  const uploadSourceHelpId = "upload-source-help";
+  const hasHydrated = useUiPreferencesStore((state) => state.hasHydrated);
 
-  const readRecentUploads = useCallback(async () => {
+  const [tasks, setTasks] = useState<UploadTask[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [recentUploads, setRecentUploads] = useState<UploadHistoryRecord[]>([]);
+  const [previewRecord, setPreviewRecord] = useState<UploadHistoryRecord | null>(null);
+
+  // URL upload state
+  const [urlInput, setUrlInput] = useState("");
+  const [urlUploading, setUrlUploading] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const processingRef = useRef(false);
+  const languageRef = useRef(language);
+  const storageKeyRef = useRef(selectedStorageKey);
+  languageRef.current = language;
+  storageKeyRef.current = selectedStorageKey;
+
+  const loadRecentUploads = useCallback(async () => {
     try {
-      return await listRecentUploadRecords(10);
-    } catch {
-      return null;
-    }
+      const records = await getRecentUploads(10);
+      setRecentUploads(records);
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
-    if (!ready) {
-      return;
-    }
-    let cancelled = false;
-    void readRecentUploads().then((items) => {
-      if (!cancelled) {
-        setRecent(items ?? []);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [readRecentUploads, ready]);
+    loadRecentUploads();
+  }, [loadRecentUploads]);
 
-  const handleUpload = useCallback(async (file: File) => {
-    if (!token) {
-      return false;
-    }
+  const processQueue = useCallback(() => {
+    if (processingRef.current) return;
 
-    start();
-    try {
-      const uploaded = await uploadImageWithProgress(file, token, setProgress, selectedStorageKey);
-      succeed(uploaded);
-      const record: UploadHistoryRecord = {
-        ...uploaded,
-        token,
-        original_filename: file.name
-      };
-      setRecent((current) => [
-        record,
-        ...current.filter((item) => item.uid !== record.uid)
-      ].slice(0, 10));
-      toast.success(uploaded.duplicate ? t.upload.duplicateUploadToast : t.upload.uploadCompleteToast);
-      try {
-        await saveUploadRecord(record);
-        const items = await readRecentUploads();
-        if (items) {
-          setRecent(items);
-        } else {
-          toast.error(t.upload.localHistorySaveFailed);
+    setTasks((prev) => {
+      const pending = prev.filter((t) => t.status === "pending");
+      if (pending.length === 0) return prev;
+
+      processingRef.current = true;
+
+      // Mark pending tasks as uploading
+      const updated = prev.map((t) =>
+        t.status === "pending" ? { ...t, status: "uploading" as const, progress: 0 } : t
+      );
+
+      const lang = languageRef.current;
+      const storageKey = storageKeyRef.current || undefined;
+
+      // Start all uploads concurrently in the background
+      (async () => {
+        const token = getClientToken();
+
+        const settled = await Promise.allSettled(
+          pending.map((task) =>
+            uploadImageWithProgress(
+              task.file,
+              token,
+              (pct) =>
+                setTasks((prev) =>
+                  prev.map((t) => (t.id === task.id ? { ...t, progress: pct } : t))
+                ),
+              storageKey
+            )
+              .then((result) => {
+                setTasks((prev) =>
+                  prev.map((t) =>
+                    t.id === task.id
+                      ? { ...t, status: "success" as const, result, progress: 100 }
+                      : t
+                  )
+                );
+                return { task, result: result as UploadResult };
+              })
+              .catch((err) => {
+                const msg = err instanceof Error ? err.message : t(lang, "upload.error");
+                setTasks((prev) =>
+                  prev.map((t) =>
+                    t.id === task.id
+                      ? { ...t, status: "error" as const, error: msg }
+                      : t
+                  )
+                );
+                return { task, result: null };
+              })
+          )
+        );
+
+        // Collect successful results
+        const savedResults: { task: UploadTask; result: UploadResult }[] = [];
+        for (const s of settled) {
+          if (s.status === "fulfilled" && s.value.result) {
+            savedResults.push(s.value);
+          }
         }
-      } catch {
-        toast.error(t.upload.localHistorySaveFailed);
-      }
-      return true;
-    } catch (uploadError) {
-      const message = uploadError instanceof Error ? uploadError.message : t.upload.uploadFailed;
-      fail(message);
-      toast.error(message);
-      return false;
-    }
-  }, [
-    fail,
-    selectedStorageKey,
-    setProgress,
-    start,
-    succeed,
-    readRecentUploads,
-    t.upload.duplicateUploadToast,
-    t.upload.localHistorySaveFailed,
-    t.upload.uploadCompleteToast,
-    t.upload.uploadFailed,
-    token
-  ]);
 
-  const reportSourceError = useCallback((message: string) => {
-    fail(message);
-    toast.error(message);
-  }, [fail]);
+        // Save all successful results to IndexedDB
+        const totalCount = pending.length;
+        for (const { task: tsk, result: r } of savedResults) {
+          const record: UploadHistoryRecord = {
+            uid: r.uid,
+            url: r.url,
+            mime_type: r.mime_type,
+            size: r.size,
+            created_at: r.created_at,
+            is_duplicate: r.is_duplicate,
+            storage_key: r.storage_key,
+            storage_backend: r.storage_backend,
+            markdown: r.markdown,
+            bbcode: r.bbcode,
+            client_token: token,
+            original_filename: tsk.file.name,
+            saved_at: new Date().toISOString(),
+          };
+          saveUploadToHistory(record).catch(() => {});
+        }
 
-  const handlePaste = useCallback((event: ClipboardEvent<HTMLElement>) => {
-    if (uploadDisabled) {
-      return;
-    }
+        // Show toast summary
+        const successCount = savedResults.length;
+        if (successCount === totalCount && totalCount === 1) {
+          const r = savedResults[0].result;
+          toast.success(
+            r.is_duplicate ? t(lang, "upload.duplicate") : t(lang, "upload.success")
+          );
+        } else if (successCount === totalCount) {
+          toast.success(t(lang, "upload.multiSuccess", { count: successCount }));
+        } else if (successCount > 0) {
+          toast(t(lang, "upload.multiPartial", { success: successCount, total: totalCount }));
+        }
+        // If all failed, individual error toasts are handled in the catch above
+        // via setTasks, and the user sees the error card
 
-    if (event.target instanceof Element && event.target.closest(pasteInputSelector)) {
-      return;
-    }
+        // Refresh recent uploads
+        try {
+          const recent = await getRecentUploads(10);
+          setRecentUploads(recent);
+        } catch { /* ignore */ }
 
-    event.stopPropagation();
-    const file = fileFromClipboard(event.clipboardData);
-    if (!file) {
-      reportSourceError(t.upload.clipboardNoImage);
-      return;
-    }
+        processingRef.current = false;
+        // Check for newly added pending tasks
+        processQueue();
+      })();
 
-    event.preventDefault();
-    void handleUpload(file);
-  }, [handleUpload, reportSourceError, t.upload.clipboardNoImage, uploadDisabled]);
+      return updated;
+    });
+  }, []);
 
-  const handleUrlUpload = useCallback(async () => {
-    if (uploadDisabled) {
-      return;
-    }
+  const handleUploads = useCallback(
+    (files: File[]) => {
+      const newTasks: UploadTask[] = files.map((file) => ({
+        id: `task-${++taskIdCounter}`,
+        file,
+        progress: 0,
+        status: "pending" as const,
+      }));
 
-    let sourceUrl: URL;
-    try {
-      sourceUrl = parseImageUrl(imageUrl);
-    } catch {
-      reportSourceError(t.upload.urlInvalid);
-      return;
-    }
-
-    try {
-      const file = await downloadImageUrl(sourceUrl, t.upload.urlFilenameFallback);
-      if (await handleUpload(file)) {
-        setImageUrl("");
-      }
-    } catch (downloadError) {
-      if (downloadError instanceof UrlImageDownloadError) {
-        reportSourceError(t.upload[downloadError.reason]);
-        return;
-      }
-      reportSourceError(t.upload.urlDownloadFailed);
-    }
-  }, [
-    handleUpload,
-    imageUrl,
-    reportSourceError,
-    t.upload,
-    uploadDisabled
-  ]);
-
-  useEffect(() => {
-    function handleWindowPaste(event: globalThis.ClipboardEvent) {
-      if (uploadDisabled) {
-        return;
-      }
-      if (event.target instanceof Element && event.target.closest(pasteInputSelector)) {
-        return;
-      }
-
-      const file = event.clipboardData ? fileFromClipboard(event.clipboardData) : null;
-      if (!file) {
-        reportSourceError(t.upload.clipboardNoImage);
-        return;
-      }
-
-      event.preventDefault();
-      void handleUpload(file);
-    }
-
-    window.addEventListener("paste", handleWindowPaste);
-    return () => {
-      window.removeEventListener("paste", handleWindowPaste);
-    };
-  }, [
-    handleUpload,
-    reportSourceError,
-    t.upload.clipboardNoImage,
-    uploadDisabled
-  ]);
-
-  const activeUpload = useMemo(
-    () =>
-      phase === "uploading"
-        ? { progress, status: t.upload.statusUploading(progress) }
-        : null,
-    [phase, progress, t.upload]
+      setTasks((prev) => [...prev, ...newTasks]);
+      // Schedule processing after state is committed
+      setTimeout(() => processQueue(), 0);
+    },
+    [processQueue]
   );
 
+  const handleUrlUpload = useCallback(async () => {
+    let url = urlInput.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error(t(language, "upload.invalidUrl"));
+      return;
+    }
+
+    setUrlUploading(true);
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error("Download failed");
+      const blob = await resp.blob();
+      let mimeType = resp.headers.get("Content-Type") || "";
+      if (
+        !mimeType ||
+        mimeType === "application/octet-stream" ||
+        mimeType === "binary/octet-stream"
+      ) {
+        // Infer from extension
+        const extMap: Record<string, string> = {
+          avif: "image/avif",
+          png: "image/png",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          gif: "image/gif",
+          webp: "image/webp",
+          bmp: "image/bmp",
+        };
+        const ext = url.split(".").pop()?.toLowerCase().split("?")[0] ?? "";
+        mimeType = extMap[ext] || "";
+      }
+      if (!mimeType.startsWith("image/")) {
+        toast.error(t(language, "upload.urlNotImage"));
+        return;
+      }
+      const filename = url.split("/").pop()?.split("?")[0] || "image";
+      const file = new File([blob], filename, { type: mimeType });
+      toast.success(t(language, "upload.urlSuccess"));
+      setUrlInput("");
+      handleUploads([file]);
+    } catch {
+      toast.error(t(language, "upload.urlDownloadFail"));
+    } finally {
+      setUrlUploading(false);
+    }
+  }, [urlInput, language, handleUploads]);
+
+  // Global paste handler
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      )
+        return;
+      // Skip if paste happened inside the dropzone (which handles it via React onPaste)
+      if (target.closest("[data-paste-managed]")) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith("image/")) {
+          e.preventDefault();
+          const file = items[i].getAsFile();
+          if (file) handleUploads([file]);
+          return;
+        }
+      }
+      // No image found in clipboard — notify the user
+      toast.error(t(language, "upload.noClipboard"));
+    };
+    document.addEventListener("paste", handler);
+    return () => document.removeEventListener("paste", handler);
+  }, [handleUploads, language]);
+
+  // Determine if any upload is in progress
+  const isUploading = tasks.some(
+    (t) => t.status === "pending" || t.status === "uploading"
+  );
+
+  // Unified grid: uploading/pending tasks first, error tasks next, then recent history.
+  // Within each group, newest first (task id descending, saved_at descending).
+  const mergedItems = useMemo(() => {
+    const extractTaskNum = (task: UploadTask) => {
+      const parts = task.id.split("-");
+      return parseInt(parts[parts.length - 1], 10) || 0;
+    };
+
+    // Uploading/pending tasks — newest first
+    const activeTasks = tasks
+      .filter((t) => t.status === "pending" || t.status === "uploading")
+      .sort((a, b) => extractTaskNum(b) - extractTaskNum(a));
+
+    // Error tasks — newest first
+    const errorTasks = tasks
+      .filter((t) => t.status === "error")
+      .sort((a, b) => extractTaskNum(b) - extractTaskNum(a));
+
+    // History records — newest first by saved_at
+    const sortedHistory = [...recentUploads].sort(
+      (a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime()
+    );
+
+    const items: Array<
+      | { type: "task"; task: UploadTask }
+      | { type: "history"; record: UploadHistoryRecord }
+    > = [];
+
+    for (const task of activeTasks) {
+      items.push({ type: "task", task });
+    }
+    for (const task of errorTasks) {
+      items.push({ type: "task", task });
+    }
+    for (const rec of sortedHistory) {
+      items.push({ type: "history", record: rec });
+    }
+
+    return items.slice(0, 12);
+  }, [tasks, recentUploads]);
+
+  if (!hasHydrated) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const lang = language;
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl animate-fade-in flex-col gap-6 lg:gap-8" onPaste={handlePaste}>
-      <section className="flex min-h-[calc(100vh-8rem)] flex-col justify-center gap-4">
-        <UploadDropzone
-          disabled={uploadDisabled}
-          isDragging={isDragging}
-          onDragStateChange={setIsDragging}
-          onPasteImage={handlePaste}
-          onSelectFile={handleUpload}
-        />
-
-        <Card className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_minmax(280px,420px)] lg:items-center" variant="default">
-          <div className="flex flex-wrap items-center gap-3">
-            <Link className="text-sm font-medium text-primary underline-offset-4 hover:underline" href="/history">
-              {t.upload.quickHistory}
-            </Link>
-            <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
-            <Link className="text-sm font-medium text-primary underline-offset-4 hover:underline" href="/api">
-              {t.upload.quickApi}
-            </Link>
-            <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
-            <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Clipboard aria-hidden="true" className="h-4 w-4" />
-              {t.upload.quickPasteHint}
-            </span>
-            <Badge className="w-fit" variant="secondary">
-              <Sparkles aria-hidden="true" className="h-3 w-3" />
-              {t.upload.quickSourceBadge}
-            </Badge>
+    <div className="space-y-8" id="main-content">
+      {/* Upload area */}
+      <Card>
+        <CardContent className="pt-6">
+          <StorageSelector />
+          <div className="mt-4">
+            <UploadDropzone
+            disabled={isUploading}
+            isDragging={isDragOver}
+            onDragStateChange={setIsDragOver}
+            onSelectFiles={handleUploads}
+            fileInputRef={fileInputRef}
+            language={lang}
+          />
           </div>
+        </CardContent>
+      </Card>
 
-          <form
-            aria-describedby={uploadSourceHelpId}
-            className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleUrlUpload();
-            }}
-          >
-            <label className="sr-only" htmlFor={urlInputId}>
-              {t.upload.urlInputLabel}
-            </label>
-            <Input
-              aria-describedby={uploadSourceHelpId}
-              disabled={uploadDisabled}
-              id={urlInputId}
-              inputMode="url"
-              onChange={(event) => setImageUrl(event.target.value)}
-              placeholder={t.upload.urlInputPlaceholder}
-              type="url"
-              value={imageUrl}
-            />
-            <Button disabled={uploadDisabled || imageUrl.trim().length === 0} type="submit">
-              <Link2 aria-hidden="true" className="h-4 w-4" />
-              {t.upload.urlUploadAction}
+      {/* URL upload */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-end">
+            <div className="flex-1 w-full">
+              <Label htmlFor="url-upload" className="text-xs">
+                {t(lang, "upload.urlLabel")}
+              </Label>
+              <Input
+                id="url-upload"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder={t(lang, "upload.urlPlaceholder")}
+                className="h-8 text-sm"
+                onKeyDown={(e) => e.key === "Enter" && handleUrlUpload()}
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUrlUpload}
+              disabled={urlUploading || isUploading || !urlInput.trim()}
+              className="cursor-pointer h-8"
+            >
+              {urlUploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Link className="h-3.5 w-3.5" />
+              )}
+              {t(lang, "upload.urlUpload")}
             </Button>
-            <p className="text-xs text-muted-foreground sm:col-span-2" id={uploadSourceHelpId}>
-              {t.upload.sourceHelp}
-            </p>
-          </form>
-        </Card>
+          </div>
+        </CardContent>
+      </Card>
 
-        {phase === "error" && error ? (
-          <Card className="border-danger/40 bg-danger/5 p-4 text-sm font-medium text-danger" role="alert">
-            {error}
-          </Card>
-        ) : null}
-      </section>
+      {/* Unified image card grid */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">
+          {t(lang, "upload.recentTitle")}
+        </h2>
+        {mergedItems.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t(lang, "upload.noRecent")}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {mergedItems.map((item) => {
+              if (item.type === "task") {
+                const task = item.task;
+                return (
+                  <ImgStyleImageCard
+                    key={task.id}
+                    alt={task.file.name}
+                    uploadStatus={task.status}
+                    uploadProgress={task.progress}
+                    filename={task.file.name}
+                  />
+                );
+              }
 
-      <RecentUploads
-        activeUpload={activeUpload}
-        items={recent}
-        latestResultUid={phase === "success" && result ? result.uid : null}
-        title={t.upload.recentUploads}
+              // History record — success card with hover action buttons
+              const rec = item.record;
+              return (
+                <ImgStyleImageCard
+                  key={rec.uid}
+                  src={rec.url}
+                  alt={rec.original_filename || rec.uid}
+                  title={rec.uid}
+                  filename={rec.original_filename}
+                  sizeLabel={formatBytes(rec.size)}
+                  onPreview={() => setPreviewRecord(rec)}
+                  previewLabel={t(lang, "common.openPreview", {
+                    title: rec.uid,
+                  })}
+                  actionButtons={[
+                    {
+                      label: "URL",
+                      onClick: () => {
+                        navigator.clipboard.writeText(rec.url);
+                        toast.success(t(lang, "common.copied"));
+                      },
+                    },
+                    {
+                      label: "MD",
+                      onClick: () => {
+                        navigator.clipboard.writeText(
+                          rec.markdown || `![](${rec.url})`
+                        );
+                        toast.success(t(lang, "common.copied"));
+                      },
+                    },
+                    {
+                      label: "BB",
+                      onClick: () => {
+                        navigator.clipboard.writeText(
+                          rec.bbcode || `[img]${rec.url}[/img]`
+                        );
+                        toast.success(t(lang, "common.copied"));
+                      },
+                    },
+                  ]}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Preview lightbox */}
+      <ImageLightbox
+        open={!!previewRecord}
+        onClose={() => setPreviewRecord(null)}
+        initialIndex={previewRecord ? recentUploads.findIndex((r) => r.uid === previewRecord.uid) : 0}
+        images={recentUploads.map((r) => ({
+          url: r.url,
+          alt: r.original_filename,
+          metadata: [
+            { label: t(lang, "image.uid"), value: r.uid },
+            { label: t(lang, "image.storageKey"), value: r.storage_key },
+            { label: t(lang, "image.storageBackend"), value: r.storage_backend },
+            { label: t(lang, "image.type"), value: r.mime_type },
+            { label: t(lang, "image.size"), value: formatBytes(r.size) },
+            { label: t(lang, "image.created"), value: formatDate(r.created_at) },
+          ],
+        }))}
+        getActions={(_, idx) => {
+          const r = recentUploads[idx];
+          if (!r) return [];
+          return [
+            {
+              label: t(lang, "common.copyUrl"),
+              onClick: () => {
+                navigator.clipboard.writeText(r.url);
+                toast.success(t(lang, "common.copied"));
+              },
+            },
+            {
+              label: t(lang, "common.copyMarkdown"),
+              onClick: () => {
+                navigator.clipboard.writeText(r.markdown || `![](${r.url})`);
+                toast.success(t(lang, "common.copied"));
+              },
+            },
+            {
+              label: t(lang, "common.copyBBCode"),
+              onClick: () => {
+                navigator.clipboard.writeText(r.bbcode || `[img]${r.url}[/img]`);
+                toast.success(t(lang, "common.copied"));
+              },
+            },
+          ];
+        }}
+        closeLabel={t(lang, "common.close")}
+        metadataLabel={t(lang, "history.viewPreview")}
       />
     </div>
   );
-}
-
-function fileFromClipboard(data: DataTransfer) {
-  for (const item of Array.from(data.items)) {
-    if (item.kind !== "file" || !isSupportedSourceImageType(item.type)) {
-      continue;
-    }
-    const blob = item.getAsFile();
-    if (!blob) {
-      continue;
-    }
-    return new File([blob], clipboardFilename(item.type), {
-      type: blob.type || item.type,
-      lastModified: Date.now()
-    });
-  }
-  return null;
-}
-
-function parseImageUrl(value: string) {
-  const url = new URL(value.trim());
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Unsupported URL protocol");
-  }
-  return url;
-}
-
-type UrlImageDownloadErrorReason = "urlDownloadFailed" | "urlNotImage";
-
-class UrlImageDownloadError extends Error {
-  constructor(readonly reason: UrlImageDownloadErrorReason) {
-    super(reason);
-  }
-}
-
-async function downloadImageUrl(url: URL, fallbackName: string) {
-  let response: Response;
-  try {
-    response = await fetch(url.toString());
-  } catch {
-    throw new UrlImageDownloadError("urlDownloadFailed");
-  }
-
-  if (!response.ok) {
-    throw new UrlImageDownloadError("urlDownloadFailed");
-  }
-
-  const responseType = normalizeMimeType(response.headers.get("content-type") ?? "");
-  if (!isSupportedSourceImageType(responseType) && !canInferImageTypeFromUrl(url, responseType)) {
-    throw new UrlImageDownloadError("urlNotImage");
-  }
-
-  let blob: Blob;
-  try {
-    blob = await response.blob();
-  } catch {
-    throw new UrlImageDownloadError("urlDownloadFailed");
-  }
-  const blobType = normalizeMimeType(blob.type || responseType);
-  const inferredType = isSupportedSourceImageType(blobType) ? blobType : imageTypeFromUrl(url);
-  if (!inferredType) {
-    throw new UrlImageDownloadError("urlNotImage");
-  }
-
-  return new File([blob], filenameFromUrl(url, inferredType, fallbackName), {
-    type: inferredType,
-    lastModified: Date.now()
-  });
-}
-
-function clipboardFilename(type: string) {
-  return `clipboard-image.${extensionFromMimeType(type)}`;
-}
-
-function isSupportedSourceImageType(type: string) {
-  return supportedSourceImageTypes.has(normalizeMimeType(type));
-}
-
-function filenameFromUrl(url: URL, type: string, fallbackName: string) {
-  const pathnameName = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() ?? "");
-  const safeName = pathnameName.replace(/[\\/:*?"<>|]+/g, "-").trim();
-  if (safeName) {
-    return safeName;
-  }
-  return `${fallbackName}.${extensionFromMimeType(type)}`;
-}
-
-function canInferImageTypeFromUrl(url: URL, type: string) {
-  return binaryResponseTypes.has(normalizeMimeType(type)) && imageTypeFromUrl(url) !== "";
-}
-
-function imageTypeFromUrl(url: URL) {
-  return mimeTypeFromExtension(decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() ?? ""));
-}
-
-function normalizeMimeType(type: string) {
-  return type.split(";")[0]?.trim().toLowerCase() ?? "";
-}
-
-function mimeTypeFromExtension(value: string) {
-  const extension = value.match(/\.(avif|png|jpe?g|gif|webp|bmp)$/i)?.[1]?.toLowerCase();
-  switch (extension) {
-    case "avif":
-      return "image/avif";
-    case "jpg":
-    case "jpeg":
-      return "image/jpeg";
-    case "png":
-      return "image/png";
-    case "gif":
-      return "image/gif";
-    case "webp":
-      return "image/webp";
-    case "bmp":
-      return "image/bmp";
-    default:
-      return "";
-  }
-}
-
-function extensionFromMimeType(type: string) {
-  switch (normalizeMimeType(type)) {
-    case "image/avif":
-      return "avif";
-    case "image/jpeg":
-      return "jpg";
-    case "image/png":
-      return "png";
-    case "image/gif":
-      return "gif";
-    case "image/webp":
-      return "webp";
-    case "image/bmp":
-      return "bmp";
-    default:
-      return "image";
-  }
 }

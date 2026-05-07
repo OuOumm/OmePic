@@ -1,513 +1,410 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
-import toast from "react-hot-toast";
-
-import { PageSectionHeader } from "@/components/shared/PageLayout";
+import { useState, useEffect, useCallback } from "react";
+import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
+import { Separator } from "@/components/ui/Separator";
 import { Badge } from "@/components/ui/Badge";
-import { useUiTranslations } from "@/hooks/useUiPreferences";
-import {
-  adminCreateStorageConfig,
-  adminDeleteStorageConfig,
-  adminGetConfig,
-  adminSetDefaultStorageConfig,
-  adminUpdateStorageConfig
-} from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
-import type {
-  AdminConfig,
-  AdminStorageConfig,
-  AdminStorageConfigCreateInput,
-  AdminStorageConfigUpdateInput,
-  StorageBackend
-} from "@/types/admin";
+import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
+import {
+  adminGetConfig,
+  adminCreateStorageInstance,
+  adminUpdateStorageInstance,
+  adminDeleteStorageInstance,
+  adminSetDefaultStorage,
+} from "@/lib/api";
+import { t } from "@/lib/i18n";
+import {
+  Plus,
+  Trash2,
+  Loader2,
+  AlertCircle,
+  Star,
+  Database,
+  Globe,
+  FolderOpen,
+  Settings,
+  Check,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import type { StorageInstance, AdminConfig } from "@/types";
 
-const maskedPrefix = "****";
+function maskSecret(val: string | undefined): string {
+  if (!val) return "";
+  if (val.startsWith("****")) return "****__MASKED__";
+  return val;
+}
 
-type StorageDraft = {
-  name: string;
-  storage_backend: StorageBackend;
-  local_storage_path: string;
-  s3_endpoint: string;
-  s3_region: string;
-  s3_bucket: string;
-  s3_access_key: string;
-  s3_secret_key: string;
-  s3_use_ssl: boolean;
-  s3_force_path_style: boolean;
-  webdav_url: string;
-  webdav_user: string;
-  webdav_pass: string;
-};
+function buildSubmitPayload(
+  instance: Partial<StorageInstance>,
+  isUpdate: boolean
+): Partial<StorageInstance> {
+  const payload = { ...instance };
+  // For update, skip masked secret fields
+  if (isUpdate) {
+    if (payload.s3_secret_key?.startsWith("****")) {
+      delete payload.s3_secret_key;
+    }
+    if (payload.webdav_pass?.startsWith("****")) {
+      delete payload.webdav_pass;
+    }
+  }
+  return payload;
+}
 
-const emptyDraft: StorageDraft = {
-  name: "",
-  storage_backend: "local",
-  local_storage_path: "",
-  s3_endpoint: "",
-  s3_region: "auto",
-  s3_bucket: "",
-  s3_access_key: "",
-  s3_secret_key: "",
-  s3_use_ssl: false,
-  s3_force_path_style: true,
-  webdav_url: "",
-  webdav_user: "",
-  webdav_pass: ""
-};
+const BACKENDS: { key: StorageInstance["storage_backend"]; label: string; icon: typeof FolderOpen }[] = [
+  { key: "local", label: "Local", icon: FolderOpen },
+  { key: "s3", label: "S3", icon: Database },
+  { key: "webdav", label: "WebDAV", icon: Globe },
+];
 
 export function SettingsForm() {
   const token = useAdminSessionStore((state) => state.token);
-  const t = useUiTranslations();
+  const language = useUiPreferencesStore((state) => state.language);
+
   const [config, setConfig] = useState<AdminConfig | null>(null);
-  const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [draft, setDraft] = useState<StorageDraft>(emptyDraft);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedKey, setSelectedKey] = useState<string>("");
+  const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Form state
+  const [form, setForm] = useState<Partial<StorageInstance>>({});
+
+  const loadConfig = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const c = await adminGetConfig(token);
+      setConfig(c);
+      // Auto-select default or first
+      if (!selectedKey || !c.storage_configs.find((i) => i.storage_key === selectedKey)) {
+        const def = c.storage_configs.find((i) => i.is_default);
+        setSelectedKey(def?.storage_key ?? c.storage_configs[0]?.storage_key ?? "");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load config");
+    } finally {
+      setLoading(false);
+    }
+  }, [token, selectedKey]);
 
   useEffect(() => {
-    let cancelled = false;
+    loadConfig();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    void adminGetConfig(token)
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        setConfig(result);
-        setErrorMessage(null);
-        if (result.storage_configs.length > 0) {
-          const nextActiveKey = result.default_storage_key || result.storage_configs[0].storage_key;
-          setActiveKey(nextActiveKey);
-          setDraft(toDraft(result.storage_configs.find((item) => item.storage_key === nextActiveKey) ?? result.storage_configs[0]));
-        }
-      })
-      .catch((error: Error) => {
-        if (!cancelled) {
-          setErrorMessage(error.message);
-          toast.error(error.message);
-        }
+  // Load instance into form
+  useEffect(() => {
+    if (!config) return;
+    const inst = config.storage_configs.find((i) => i.storage_key === selectedKey);
+    if (inst) {
+      setIsNew(false);
+      setForm({
+        ...inst,
+        s3_secret_key: maskSecret(inst.s3_secret_key),
+        webdav_pass: maskSecret(inst.webdav_pass),
       });
+    }
+  }, [config, selectedKey]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+  const handleNew = () => {
+    setIsNew(true);
+    setSelectedKey("");
+    setForm({ name: "", storage_backend: "local", local_storage_path: "" });
+  };
 
-  const activeItem = config?.storage_configs.find((item) => item.storage_key === activeKey) ?? null;
-  const isCreating = activeKey === null;
+  const handleSelect = (key: string) => {
+    setIsNew(false);
+    setSelectedKey(key);
+  };
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!config) {
+  const updateField = (field: string, value: string | boolean) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!token || !form.name) return;
+    setSaving(true);
+    try {
+      if (isNew) {
+        if (!form.storage_backend) return;
+        const createdConfig = await adminCreateStorageInstance(
+          token,
+          buildSubmitPayload(form, false)
+        );
+        toast.success(t(language, "admin.settingsCreated"));
+        setConfig(createdConfig);
+        const created = createdConfig.storage_configs.find((inst) => !config?.storage_configs.some((oldInst) => oldInst.storage_key === inst.storage_key));
+        setSelectedKey(created?.storage_key ?? createdConfig.default_storage_key ?? createdConfig.storage_configs[0]?.storage_key ?? "");
+      } else {
+        const updatedConfig = await adminUpdateStorageInstance(
+          token,
+          selectedKey,
+          buildSubmitPayload(form, true)
+        );
+        toast.success(t(language, "admin.settingsSaved"));
+        setConfig(updatedConfig);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(language, "common.error"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!token || !selectedKey) return;
+    const inst = config?.storage_configs.find((i) => i.storage_key === selectedKey);
+    if (!inst || inst.is_default) {
+      toast.error("Cannot delete the default storage instance");
       return;
     }
-
-    setSaving(true);
-    setNotice(null);
-    setErrorMessage(null);
+    if (!window.confirm(t(language, "admin.settingsDeleteConfirm", { name: inst.name }))) return;
+    setDeleting(true);
     try {
-      const previousKeys = new Set(config.storage_configs.map((item) => item.storage_key));
-      const next = isCreating
-        ? await adminCreateStorageConfig(token, buildCreatePayload(draft))
-        : await adminUpdateStorageConfig(token, activeKey, buildUpdatePayload(draft));
-      setConfig(next);
+      const deletedConfig = await adminDeleteStorageInstance(token, selectedKey);
+      toast.success(t(language, "admin.settingsDeleted"));
+      setConfig(deletedConfig);
+      const def = deletedConfig.storage_configs.find((i) => i.is_default);
+      setSelectedKey(def?.storage_key ?? deletedConfig.storage_configs[0]?.storage_key ?? "");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(language, "common.error"));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-      if (isCreating) {
-        const created = next.storage_configs.find((item) => !previousKeys.has(item.storage_key));
-        const nextActive = created?.storage_key ?? next.default_storage_key ?? next.storage_configs[0]?.storage_key ?? null;
-        setActiveKey(nextActive);
-        if (nextActive) {
-          const selected = next.storage_configs.find((item) => item.storage_key === nextActive);
-          if (selected) {
-            setDraft(toDraft(selected));
-          }
-        }
-        setNotice(t.admin.storageCreateSuccessToast);
-        toast.success(t.admin.storageCreateSuccessToast);
-      } else {
-        const updated = next.storage_configs.find((item) => item.storage_key === activeKey);
-        if (updated) {
-          setDraft(toDraft(updated));
-        }
-        setNotice(t.admin.storageUpdateSuccessToast);
-        toast.success(t.admin.storageUpdateSuccessToast);
-      }
-    } catch (error) {
-      const nextError = error instanceof Error ? error.message : t.admin.configUpdateFailed;
-      setErrorMessage(nextError);
-      toast.error(nextError);
+  const handleSetDefault = async () => {
+    if (!token || !selectedKey) return;
+    setSaving(true);
+    try {
+      await adminSetDefaultStorage(token, selectedKey);
+      toast.success(t(language, "common.success"));
+      await loadConfig();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(language, "common.error"));
     } finally {
       setSaving(false);
     }
-  }
+  };
 
-  async function handleDelete() {
-    if (!config || !activeKey) {
-      return;
-    }
+  const lang = language;
 
-    setSaving(true);
-    setNotice(null);
-    setErrorMessage(null);
-    try {
-      const next = await adminDeleteStorageConfig(token, activeKey);
-      setConfig(next);
-      const nextActive = next.default_storage_key || next.storage_configs[0]?.storage_key || null;
-      setActiveKey(nextActive);
-      if (nextActive) {
-        const selected = next.storage_configs.find((item) => item.storage_key === nextActive);
-        if (selected) {
-          setDraft(toDraft(selected));
-        }
-      } else {
-        setDraft(emptyDraft);
-      }
-      setNotice(t.admin.storageDeleteSuccessToast);
-      toast.success(t.admin.storageDeleteSuccessToast);
-    } catch (error) {
-      const nextError = error instanceof Error ? error.message : t.admin.storageDeleteFailed;
-      setErrorMessage(nextError);
-      toast.error(nextError);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleSetDefault(storageKey: string) {
-    setSaving(true);
-    setNotice(null);
-    setErrorMessage(null);
-    try {
-      const next = await adminSetDefaultStorageConfig(token, storageKey);
-      setConfig(next);
-      const selected = next.storage_configs.find((item) => item.storage_key === storageKey);
-      if (selected) {
-        setActiveKey(storageKey);
-        setDraft(toDraft(selected));
-      }
-      setNotice(t.admin.defaultStorageUpdatedToast);
-      toast.success(t.admin.defaultStorageUpdatedToast);
-    } catch (error) {
-      const nextError = error instanceof Error ? error.message : t.admin.defaultStorageUpdateFailed;
-      setErrorMessage(nextError);
-      toast.error(nextError);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!config) {
+  if (loading) {
     return (
-      <Card
-        className={cn(
-          "flex items-center gap-4 p-5 text-sm",
-          errorMessage ? "border-rose-400/30 bg-rose-500/10 text-danger" : "text-muted-foreground"
-        )}
-        role={errorMessage ? "alert" : "status"}
-        variant="strong"
-      >
-        {!errorMessage ? <span className="skeleton-glass h-10 w-10 rounded-md" /> : null}
-        {errorMessage || t.admin.settingsLoading}
-      </Card>
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 text-destructive" role="alert">
+        <AlertCircle className="h-5 w-5" />
+        {error}
+      </div>
+    );
+  }
+
+  const selectedInst = config?.storage_configs.find((i) => i.storage_key === selectedKey);
+  const backendType = isNew ? form.storage_backend : selectedInst?.storage_backend;
+  const isDefault = selectedInst?.is_default ?? false;
+
   return (
-    <div className="grid gap-5 animate-fade-in xl:grid-cols-[340px_1fr]">
-      <Card className="h-fit overflow-hidden p-5 xl:sticky xl:top-24" variant="strong">
-        <PageSectionHeader
-          description={t.admin.settingsDescription}
-          title={t.admin.settingsTitle}
-        />
-
-        <Button
-          className="mt-5 w-full"
-          onClick={() => {
-            setActiveKey(null);
-            setDraft({
-              ...emptyDraft,
-              local_storage_path: config.storage_configs[0]?.local_storage_path ?? ""
-            });
-          }}
-        >
-          <Plus aria-hidden="true" className="h-4 w-4" />
-          {t.admin.createStorageInstance}
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl font-bold">{t(lang, "admin.settingsTitle")}</h1>
+        <Button size="sm" onClick={handleNew} className="cursor-pointer gap-1" variant="outline">
+          <Plus className="h-3.5 w-3.5" />
+          {t(lang, "admin.settingsNew")}
         </Button>
+      </div>
 
-        <div className="mt-5 space-y-3">
-          {config.storage_configs.map((item) => {
-            const isActive = item.storage_key === activeKey;
-            return (
-              <button
-                className={cn(
-                  "w-full rounded-md border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  isActive
-                    ? "border-primary bg-muted"
-                    : "border-border bg-card hover:bg-muted/50"
-                )}
-                key={item.storage_key}
-                onClick={() => {
-                  setActiveKey(item.storage_key);
-                  setDraft(toDraft(item));
-                }}
-                type="button"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-foreground">{item.name}</p>
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">{item.storage_key}</p>
-                  </div>
-                  {item.is_default ? <Badge>{t.admin.defaultBadge}</Badge> : null}
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground">{backendLabel(item.storage_backend, t)}</p>
-              </button>
-            );
-          })}
+      <div className="flex gap-6">
+        {/* Instance list */}
+        <div className="w-56 shrink-0 space-y-1">
+          {config?.storage_configs.map((inst) => (
+            <Button
+              key={inst.storage_key}
+              variant={selectedKey === inst.storage_key && !isNew ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => handleSelect(inst.storage_key)}
+              className="w-full justify-start cursor-pointer gap-2"
+            >
+              {inst.is_default ? <Star className="h-3.5 w-3.5 text-amber-500" /> : <Settings className="h-3.5 w-3.5" />}
+              <span className="truncate">{inst.name}</span>
+              <Badge variant="outline" className="ml-auto text-[10px] text-xs">
+                {inst.storage_backend}
+              </Badge>
+            </Button>
+          ))}
+          {isNew && (
+            <Button variant="secondary" size="sm" className="w-full justify-start cursor-pointer gap-2">
+              <Plus className="h-3.5 w-3.5" />
+              <span className="truncate">{form.name || "New Instance"}</span>
+            </Button>
+          )}
         </div>
-      </Card>
 
-      <Card className="overflow-hidden p-5 sm:p-6" variant="strong">
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          <PageSectionHeader
-            description={isCreating ? t.admin.createStorageDescription : t.admin.editStorageDescription}
-            title={isCreating ? t.admin.createStorageTitle : t.admin.editStorageTitle}
-          />
-
-          {notice ? (
-            <p className="rounded-md border border-border bg-muted/50 p-3 text-sm text-foreground" role="status">
-              {notice}
-            </p>
-          ) : null}
-
-          {errorMessage ? (
-            <p className="rounded-md border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-danger" role="alert">
-              {errorMessage}
-            </p>
-          ) : null}
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label={t.admin.fields.storageName}>
+        {/* Form */}
+        <Card className="flex-1">
+          <CardContent className="pt-6 space-y-4">
+            {/* Name */}
+            <div className="space-y-2">
+              <Label htmlFor="inst-name">{t(lang, "admin.settingsName")}</Label>
               <Input
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                value={draft.name}
+                id="inst-name"
+                value={form.name || ""}
+                onChange={(e) => updateField("name", e.target.value)}
+                className="h-8"
               />
-            </Field>
+            </div>
 
-            <Field label={t.admin.fields.storageBackend}>
-              <div className="space-y-2">
-                <Select
-                  disabled={!isCreating}
-                  onValueChange={(value) =>
-                    setDraft({ ...draft, storage_backend: value as StorageBackend })
-                  }
-                  value={draft.storage_backend}
-                >
-                  <SelectTrigger title={!isCreating ? t.admin.storageBackendLockedHint : undefined}>
+            {/* Backend (locked on edit) */}
+            <div className="space-y-2">
+              <Label htmlFor="inst-backend">{t(lang, "admin.settingsBackend")}</Label>
+              {isNew ? (
+                <Select value={String(form.storage_backend)} onValueChange={(v) => updateField("storage_backend", v as StorageInstance["storage_backend"])}>
+                  <SelectTrigger id="inst-backend" className="h-8 cursor-pointer">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="local">{t.admin.backends.local}</SelectItem>
-                    <SelectItem value="s3">{t.admin.backends.s3}</SelectItem>
-                    <SelectItem value="webdav">{t.admin.backends.webdav}</SelectItem>
+                    {BACKENDS.map((b) => (
+                      <SelectItem key={b.key} value={b.key}>{b.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                {!isCreating ? (
-                  <p className="text-xs text-muted-foreground">{t.admin.storageBackendLockedHint}</p>
-                ) : null}
-              </div>
-            </Field>
-
-            <Field label={t.admin.fields.localStoragePath}>
-              <Input
-                onChange={(event) => setDraft({ ...draft, local_storage_path: event.target.value })}
-                value={draft.local_storage_path}
-              />
-            </Field>
-
-            {activeItem ? (
-              <Field label={t.admin.fields.storageKey}>
-                <Input disabled value={activeItem.storage_key} />
-              </Field>
-            ) : null}
-
-            {draft.storage_backend === "s3" ? (
-              <>
-                <Field label={t.admin.fields.s3Endpoint}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, s3_endpoint: event.target.value })}
-                    value={draft.s3_endpoint}
-                  />
-                </Field>
-                <Field label={t.admin.fields.s3Region}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, s3_region: event.target.value })}
-                    value={draft.s3_region}
-                  />
-                </Field>
-                <Field label={t.admin.fields.s3Bucket}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, s3_bucket: event.target.value })}
-                    value={draft.s3_bucket}
-                  />
-                </Field>
-                <Field label={t.admin.fields.s3AccessKey}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, s3_access_key: event.target.value })}
-                    value={draft.s3_access_key}
-                  />
-                </Field>
-                <Field label={t.admin.fields.s3SecretKey}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, s3_secret_key: event.target.value })}
-                    value={draft.s3_secret_key}
-                  />
-                </Field>
-              </>
-            ) : null}
-
-            {draft.storage_backend === "webdav" ? (
-              <>
-                <Field label={t.admin.fields.webdavUrl}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, webdav_url: event.target.value })}
-                    value={draft.webdav_url}
-                  />
-                </Field>
-                <Field label={t.admin.fields.webdavUser}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, webdav_user: event.target.value })}
-                    value={draft.webdav_user}
-                  />
-                </Field>
-                <Field label={t.admin.fields.webdavPassword}>
-                  <Input
-                    onChange={(event) => setDraft({ ...draft, webdav_pass: event.target.value })}
-                    value={draft.webdav_pass}
-                  />
-                </Field>
-              </>
-            ) : null}
-          </div>
-
-          {draft.storage_backend === "s3" ? (
-            <div className="grid gap-3">
-              <label className="flex items-center gap-3 text-sm">
-                <input
-                  checked={draft.s3_use_ssl}
-                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-                  onChange={(event) => setDraft({ ...draft, s3_use_ssl: event.target.checked })}
-                  type="checkbox"
-                />
-                {t.admin.toggles.s3UseSsl}
-              </label>
-              <label className="flex items-center gap-3 text-sm">
-                <input
-                  checked={draft.s3_force_path_style}
-                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-                  onChange={(event) =>
-                    setDraft({ ...draft, s3_force_path_style: event.target.checked })
-                  }
-                  type="checkbox"
-                />
-                {t.admin.toggles.s3ForcePathStyle}
-              </label>
+              ) : (
+                <Input value={backendType} disabled className="h-8" />
+              )}
             </div>
-          ) : null}
 
-          <div className="flex flex-wrap gap-3">
-            <Button disabled={saving} type="submit">
-              {saving ? t.admin.saving : isCreating ? t.admin.createStorageSubmit : t.admin.saveSettings}
-            </Button>
+            {/* Storage Key (read-only display) */}
+            {!isNew && (
+              <div className="space-y-2">
+                <Label>{t(lang, "admin.settingsKey")}</Label>
+                <Input value={selectedKey} disabled className="h-8 font-mono text-xs" />
+              </div>
+            )}
 
-            {activeItem && !activeItem.is_default ? (
-              <Button
-                disabled={saving}
-                onClick={() => void handleSetDefault(activeItem.storage_key)}
-                type="button"
-                variant="secondary"
-              >
-                {t.admin.makeDefault}
+            <Separator />
+
+            {/* Local fields */}
+            {backendType === "local" && (
+              <div className="space-y-2">
+                <Label htmlFor="local-path">{t(lang, "admin.settingsLocalPath")}</Label>
+                <Input
+                  id="local-path"
+                  value={form.local_storage_path || ""}
+                  onChange={(e) => updateField("local_storage_path", e.target.value)}
+                  className="h-8"
+                  placeholder="/data/images"
+                />
+              </div>
+            )}
+
+            {/* S3 fields */}
+            {backendType === "s3" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="s3-endpoint">{t(lang, "admin.settingsS3Endpoint")}</Label>
+                    <Input id="s3-endpoint" value={form.s3_endpoint || ""} onChange={(e) => updateField("s3_endpoint", e.target.value)} className="h-8" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="s3-region">{t(lang, "admin.settingsS3Region")}</Label>
+                    <Input id="s3-region" value={form.s3_region || ""} onChange={(e) => updateField("s3_region", e.target.value)} className="h-8" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="s3-bucket">{t(lang, "admin.settingsS3Bucket")}</Label>
+                  <Input id="s3-bucket" value={form.s3_bucket || ""} onChange={(e) => updateField("s3_bucket", e.target.value)} className="h-8" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="s3-access">{t(lang, "admin.settingsS3AccessKey")}</Label>
+                    <Input id="s3-access" value={form.s3_access_key || ""} onChange={(e) => updateField("s3_access_key", e.target.value)} className="h-8" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="s3-secret">{t(lang, "admin.settingsS3SecretKey")}</Label>
+                    <Input id="s3-secret" type="password" value={form.s3_secret_key || ""} onChange={(e) => updateField("s3_secret_key", e.target.value)} className="h-8" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!form.s3_use_ssl}
+                      onChange={(e) => updateField("s3_use_ssl", e.target.checked)}
+                      className="cursor-pointer"
+                    />
+                    {t(lang, "admin.settingsS3SSL")}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!form.s3_force_path_style}
+                      onChange={(e) => updateField("s3_force_path_style", e.target.checked)}
+                      className="cursor-pointer"
+                    />
+                    {t(lang, "admin.settingsS3PathStyle")}
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* WebDAV fields */}
+            {backendType === "webdav" && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="webdav-url">{t(lang, "admin.settingsWebdavUrl")}</Label>
+                  <Input id="webdav-url" value={form.webdav_url || ""} onChange={(e) => updateField("webdav_url", e.target.value)} className="h-8" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="webdav-user">{t(lang, "admin.settingsWebdavUser")}</Label>
+                    <Input id="webdav-user" value={form.webdav_user || ""} onChange={(e) => updateField("webdav_user", e.target.value)} className="h-8" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="webdav-pass">{t(lang, "admin.settingsWebdavPassword")}</Label>
+                    <Input id="webdav-pass" type="password" value={form.webdav_pass || ""} onChange={(e) => updateField("webdav_pass", e.target.value)} className="h-8" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={handleSave} disabled={saving || !form.name} className="cursor-pointer gap-1">
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {t(lang, "common.save")}
               </Button>
-            ) : null}
-
-            {activeItem ? (
-              <Button
-                disabled={saving || activeItem.is_default}
-                onClick={() => void handleDelete()}
-                title={activeItem.is_default ? t.admin.defaultDeleteBlockedHint : undefined}
-                type="button"
-                variant="danger"
-              >
-                {t.admin.deleteStorageInstance}
-              </Button>
-            ) : null}
-          </div>
-        </form>
-      </Card>
+              {!isNew && !isDefault && (
+                <>
+                  <Button size="sm" variant="outline" onClick={handleSetDefault} disabled={saving} className="cursor-pointer">
+                    <Star className="h-3.5 w-3.5" />
+                    {t(lang, "admin.settingsSetDefault")}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting} className="cursor-pointer">
+                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    {t(lang, "admin.settingsDelete")}
+                  </Button>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
-}
-
-function Field({
-  children,
-  label
-}: {
-  children: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <label className="space-y-2">
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function toDraft(config: AdminStorageConfig): StorageDraft {
-  return {
-    name: config.name,
-    storage_backend: config.storage_backend as StorageBackend,
-    local_storage_path: config.local_storage_path,
-    s3_endpoint: config.s3_endpoint,
-    s3_region: config.s3_region,
-    s3_bucket: config.s3_bucket,
-    s3_access_key: config.s3_access_key,
-    s3_secret_key: config.s3_secret_key,
-    s3_use_ssl: config.s3_use_ssl,
-    s3_force_path_style: config.s3_force_path_style,
-    webdav_url: config.webdav_url,
-    webdav_user: config.webdav_user,
-    webdav_pass: config.webdav_pass
-  };
-}
-
-function buildCreatePayload(draft: StorageDraft): AdminStorageConfigCreateInput {
-  return { ...draft };
-}
-
-function buildUpdatePayload(draft: StorageDraft): AdminStorageConfigUpdateInput {
-  return {
-    ...draft,
-    s3_access_key: draft.s3_access_key.startsWith(maskedPrefix) ? undefined : draft.s3_access_key,
-    s3_secret_key: draft.s3_secret_key.startsWith(maskedPrefix) ? undefined : draft.s3_secret_key,
-    webdav_pass: draft.webdav_pass.startsWith(maskedPrefix) ? undefined : draft.webdav_pass
-  };
-}
-
-function backendLabel(backend: string, t: ReturnType<typeof useUiTranslations>) {
-  switch (backend) {
-    case "s3":
-      return t.admin.backends.s3;
-    case "webdav":
-      return t.admin.backends.webdav;
-    default:
-      return t.admin.backends.local;
-  }
 }

@@ -1,109 +1,58 @@
 import type { Config } from "tailwindcss";
 
-const withOpacity = (variableName: string) => `rgb(var(${variableName}) / <alpha-value>)`;
-
-const config: Config = {
+export default {
   darkMode: "class",
-  content: ["./src/**/*.{ts,tsx}"],
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"]
-      },
       colors: {
-        background: withOpacity("--background"),
-        foreground: withOpacity("--foreground"),
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
         card: {
-          DEFAULT: withOpacity("--card"),
-          foreground: withOpacity("--card-foreground")
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
         },
         popover: {
-          DEFAULT: withOpacity("--popover"),
-          foreground: withOpacity("--popover-foreground")
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
         },
         primary: {
-          DEFAULT: withOpacity("--primary"),
-          foreground: withOpacity("--primary-foreground")
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
-          DEFAULT: withOpacity("--secondary"),
-          foreground: withOpacity("--secondary-foreground")
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
         },
         destructive: {
-          DEFAULT: withOpacity("--destructive"),
-          foreground: withOpacity("--destructive-foreground")
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
         },
-        ring: withOpacity("--ring"),
-        input: withOpacity("--input"),
-        surface: withOpacity("--color-surface"),
-        ink: withOpacity("--color-ink"),
-        accent: {
-          DEFAULT: withOpacity("--accent"),
-          foreground: withOpacity("--accent-foreground")
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        chart: {
+          "1": "hsl(var(--chart-1))",
+          "2": "hsl(var(--chart-2))",
+          "3": "hsl(var(--chart-3))",
+          "4": "hsl(var(--chart-4))",
+          "5": "hsl(var(--chart-5))",
         },
-        brand: {
-          DEFAULT: withOpacity("--color-accent"),
-          foreground: withOpacity("--color-accent-foreground")
-        },
-        border: withOpacity("--color-border"),
-        muted: {
-          DEFAULT: withOpacity("--muted"),
-          foreground: withOpacity("--muted-foreground")
-        },
-        panel: withOpacity("--color-panel"),
-        "accent-soft": withOpacity("--color-accent-soft"),
-        code: withOpacity("--color-code"),
-        "code-foreground": withOpacity("--color-code-foreground"),
-        danger: withOpacity("--color-danger"),
-        "danger-foreground": withOpacity("--color-danger-foreground")
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)"
+        sm: "calc(var(--radius) - 4px)",
       },
-      boxShadow: {
-        panel: "0 1px 2px rgba(15, 23, 42, 0.06)",
-        focus: "0 0 0 3px rgb(var(--ring) / 0.18)",
-        glow: "0 8px 24px rgba(15, 23, 42, 0.08)"
-      },
-      backgroundImage: {
-        "app-mesh": "linear-gradient(180deg, var(--app-base-from), var(--app-base-to))",
-        "glass-sheen": "linear-gradient(180deg, rgb(var(--card)), rgb(var(--card)))",
-        "primary-gradient": "linear-gradient(180deg, rgb(var(--primary)), rgb(var(--primary)))"
-      },
-      animation: {
-        "fade-in": "fadeIn 220ms ease-out both",
-        "slide-up": "slideUp 320ms cubic-bezier(0.16, 1, 0.3, 1) both",
-        "scale-in": "scaleIn 220ms ease-out both",
-        "pulse-glow": "pulseGlow 1.8s ease-in-out infinite",
-        shimmer: "shimmer 2s linear infinite"
-      },
-      keyframes: {
-        fadeIn: {
-          "0%": { opacity: "0" },
-          "100%": { opacity: "1" }
-        },
-        slideUp: {
-          "0%": { opacity: "0", transform: "translateY(16px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" }
-        },
-        scaleIn: {
-          "0%": { opacity: "0", transform: "scale(0.96)" },
-          "100%": { opacity: "1", transform: "scale(1)" }
-        },
-        pulseGlow: {
-          "0%, 100%": { boxShadow: "0 0 28px rgba(139, 92, 246, 0.18)" },
-          "50%": { boxShadow: "0 0 54px rgba(139, 92, 246, 0.34), 0 0 76px rgba(6, 182, 212, 0.16)" }
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" }
-        }
-      }
-    }
+    },
   },
-  plugins: []
-};
-
-export default config;
+  plugins: [],
+} satisfies Config;

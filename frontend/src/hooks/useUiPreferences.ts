@@ -1,22 +1,26 @@
 "use client";
 
-import { getDictionary, getLocaleForLanguage } from "@/lib/i18n";
+import { useEffect } from "react";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
+import { resolveTheme } from "@/lib/preferences";
 
-export function useLanguage() {
-  return useUiPreferencesStore((state) => state.language);
-}
+export function useUiPreferences() {
+  const language = useUiPreferencesStore((state) => state.language);
+  const theme = useUiPreferencesStore((state) => state.theme);
+  const hasHydrated = useUiPreferencesStore((state) => state.hasHydrated);
 
-export function useThemeMode() {
-  return useUiPreferencesStore((state) => state.theme);
-}
+  useEffect(() => {
+    if (!hasHydrated) return;
+    const resolved = resolveTheme(theme);
+    document.documentElement.lang = language;
+    document.documentElement.dataset.theme = resolved;
+    document.documentElement.dataset.themeMode = theme;
+    if (resolved === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [language, theme, hasHydrated]);
 
-export function useUiTranslations() {
-  const language = useLanguage();
-  return getDictionary(language);
-}
-
-export function useUiLocale() {
-  const language = useLanguage();
-  return getLocaleForLanguage(language);
+  return { language, theme, hasHydrated };
 }

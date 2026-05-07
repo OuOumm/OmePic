@@ -1,131 +1,135 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { BarChart3, Images, LogOut, Settings } from "lucide-react";
-import { useEffect, useState } from "react";
-
+import { useState, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { useUiTranslations } from "@/hooks/useUiPreferences";
-import { adminStatus } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { useAdminSessionStore } from "@/stores/admin-session-store";
-import type { AdminStatus } from "@/types/admin";
-
-import { AdminStatusProvider } from "./admin-status-context";
+import { Separator } from "@/components/ui/Separator";
 import { LoginForm } from "./LoginForm";
+import { AdminStatusProvider } from "./admin-status-context";
+import { useAdminSessionStore } from "@/stores/admin-session-store";
+import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
+import { adminGetStatus } from "@/lib/api";
+import { t } from "@/lib/i18n";
+import {
+  LayoutDashboard,
+  Image,
+  Settings,
+  LogOut,
+  Loader2,
+} from "lucide-react";
+import type { AdminStatus } from "@/types";
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const token = useAdminSessionStore((state) => state.token);
-  const hasHydrated = useAdminSessionStore((state) => state.hasHydrated);
-  const clearToken = useAdminSessionStore((state) => state.clearToken);
+  const router = useRouter();
   const pathname = usePathname();
-  const [checking, setChecking] = useState(true);
-  const [verifiedStatus, setVerifiedStatus] = useState<AdminStatus | null>(null);
-  const t = useUiTranslations();
+  const token = useAdminSessionStore((state) => state.token);
+  const clearToken = useAdminSessionStore((state) => state.clearToken);
+  const hasHydrated = useAdminSessionStore((state) => state.hasHydrated);
+  const language = useUiPreferencesStore((state) => state.language);
 
-  const navItems = [
-    { href: "/admin/dashboard", label: t.admin.nav.status, icon: <BarChart3 aria-hidden="true" className="h-4 w-4" /> },
-    { href: "/admin/dashboard/images", label: t.admin.nav.images, icon: <Images aria-hidden="true" className="h-4 w-4" /> },
-    { href: "/admin/dashboard/settings", label: t.admin.nav.settings, icon: <Settings aria-hidden="true" className="h-4 w-4" /> }
-  ];
+  const [validating, setValidating] = useState(!!token);
+  const [verifiedStatus, setVerifiedStatus] = useState<AdminStatus | null>(null);
 
   useEffect(() => {
-    if (!hasHydrated) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function verify() {
-      if (!token) {
-        setVerifiedStatus(null);
-        setChecking(false);
-        return;
-      }
-
-      setChecking(true);
-      try {
-        const status = await adminStatus(token);
-        if (!cancelled) {
+    if (hasHydrated && token) {
+      setValidating(true);
+      adminGetStatus(token)
+        .then((status) => {
           setVerifiedStatus(status);
-          setChecking(false);
-        }
-      } catch {
-        if (cancelled) {
-          return;
-        }
-        clearToken();
-        setVerifiedStatus(null);
-        setChecking(false);
-      }
+          setValidating(false);
+        })
+        .catch(() => {
+          clearToken();
+          setValidating(false);
+        });
     }
+  }, [hasHydrated, token, clearToken]);
 
-    void verify();
-    return () => {
-      cancelled = true;
-    };
-  }, [clearToken, hasHydrated, token]);
+  const handleLogout = () => {
+    clearToken();
+    router.push("/admin/dashboard");
+  };
 
-  if (!hasHydrated || checking) {
+  const lang = language;
+
+  // Not hydrated yet
+  if (!hasHydrated) {
     return (
-      <Card className="flex items-center gap-4 p-6 text-sm text-muted-foreground" role="status" variant="strong">
-        <span className="skeleton-glass h-10 w-10 rounded-md" />
-        <span>{t.admin.checkingSession}</span>
-      </Card>
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
+  // No token, show login
   if (!token) {
     return <LoginForm />;
   }
 
+  // Validating token
+  if (validating) {
+    return (
+      <div className="flex items-center justify-center py-20 gap-2">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">{t(lang, "common.loading")}</span>
+      </div>
+    );
+  }
+
+  const sidebarItems = [
+    {
+      href: "/admin/dashboard",
+      label: t(lang, "admin.sidebarStatus"),
+      icon: LayoutDashboard,
+    },
+    {
+      href: "/admin/dashboard/images",
+      label: t(lang, "admin.sidebarImages"),
+      icon: Image,
+    },
+    {
+      href: "/admin/dashboard/settings",
+      label: t(lang, "admin.sidebarSettings"),
+      icon: Settings,
+    },
+  ];
+
   return (
     <AdminStatusProvider verifiedStatus={verifiedStatus}>
-      <div className="grid gap-6 xl:grid-cols-[260px_1fr]">
-        <aside className="xl:sticky xl:top-24 xl:h-fit">
-          <Card className="overflow-hidden p-3" variant="strong">
-            <div className="space-y-1 px-2 py-3">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t.admin.shellEyebrow}
-              </p>
-              <h1 className="text-xl font-semibold text-foreground">{t.admin.shellTitle}</h1>
-            </div>
-            <nav className="mt-2 grid gap-1" aria-label={t.admin.shellTitle}>
-              {navItems.map((item) => {
-                return (
-                  <Link
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      pathname === item.href
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                    )}
-                    href={item.href}
-                    key={item.href}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-            <div className="mt-4 border-t border-border pt-3">
-              <Button
-                className="w-full justify-start"
-                onClick={() => {
-                  clearToken();
-                }}
-                variant="ghost"
-              >
-                <LogOut aria-hidden="true" className="h-4 w-4" />
-                {t.admin.signOut}
-              </Button>
-            </div>
-          </Card>
+      <div className="flex gap-6" id="main-content">
+        {/* Sidebar */}
+        <aside className="w-48 shrink-0 hidden md:block">
+          <nav className="sticky top-20 space-y-1">
+            {sidebarItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Button
+                  key={item.href}
+                  variant={isActive ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => router.push(item.href)}
+                  className="w-full justify-start cursor-pointer"
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Button>
+              );
+            })}
+            <Separator className="my-2" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="w-full justify-start cursor-pointer text-muted-foreground hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+              {t(lang, "admin.logout")}
+            </Button>
+          </nav>
         </aside>
-        <section className="min-w-0">{children}</section>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">{children}</div>
       </div>
     </AdminStatusProvider>
   );

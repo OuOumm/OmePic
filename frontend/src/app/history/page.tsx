@@ -1,5 +1,10 @@
+import { PageLayout } from "@/components/shared/PageLayout";
 import { HistoryPageClient } from "@/features/history/HistoryPageClient";
 
 export default function HistoryPage() {
-  return <HistoryPageClient />;
+  return (
+    <PageLayout>
+      <HistoryPageClient />
+    </PageLayout>
+  );
 }

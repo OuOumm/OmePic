@@ -1,199 +1,249 @@
+import { getApiBaseUrl } from "./utils";
+
 import type {
-  AdminConfig,
-  AdminImageList,
+  ApiResponse,
+  UploadResult,
+  StorageOption,
   AdminStatus,
-  AdminStorageConfigCreateInput,
-  AdminStorageConfigUpdateInput
-} from "@/types/admin";
-import type { ApiResponse } from "@/types/api";
-import type { PublicStorageOptionsResponse } from "@/types/storage";
-import type { UploadResponseData } from "@/types/upload";
+  AdminImagesResponse,
+  AdminConfig,
+  StorageInstance,
+} from "@/types";
 
-const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-
-function resolveApiBase() {
-  if (configuredApiBase) {
-    return configuredApiBase.replace(/\/+$/, "");
+async function apiFetch<T>(
+  path: string,
+  options: RequestInit & { params?: Record<string, string> } = {}
+): Promise<T> {
+  const base = getApiBaseUrl();
+  let url = `${base}${path}`;
+  if (options.params) {
+    const searchParams = new URLSearchParams(options.params);
+    url += `?${searchParams.toString()}`;
   }
-  if (process.env.NODE_ENV === "development") {
-    return "http://localhost:8080";
+  delete options.params;
+
+  const res = await fetch(url, { cache: "no-store", ...options });
+  const json: ApiResponse<T> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg =
+      "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
   }
-  return "";
-}
-
-const API_BASE = resolveApiBase();
-
-type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  body?: BodyInit | null;
-  headers?: HeadersInit;
-  signal?: AbortSignal;
-};
-
-export function apiUrl(path: string) {
-  return `${API_BASE}${path}`;
-}
-
-export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const response = await fetch(apiUrl(path), {
-    method: options.method || "GET",
-    body: options.body,
-    headers: options.headers,
-    cache: "no-store",
-    signal: options.signal
-  });
-
-  const payload = (await response.json()) as ApiResponse<T>;
-  if (!response.ok || !payload.success) {
-    const message = payload.success ? "Request failed" : payload.error.message;
-    throw new Error(message);
-  }
-  return payload.data;
+  return json.data as T;
 }
 
 export function uploadImageWithProgress(
   file: File,
   token: string,
-  onProgress: (progress: number) => void,
+  onProgress: (pct: number) => void,
   storageKey?: string
-) {
-  return new Promise<UploadResponseData>((resolve, reject) => {
+): Promise<UploadResult> {
+  return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", apiUrl("/v1/image"));
-    xhr.setRequestHeader("X-Token", token);
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) {
-        return;
+    const base = getApiBaseUrl();
+    const formData = new FormData();
+    formData.append("file", file);
+    if (storageKey) formData.append("storage_key", storageKey);
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
       }
-      onProgress(Math.round((event.loaded / event.total) * 100));
-    };
-    xhr.onload = () => {
-      try {
-        const payload = JSON.parse(xhr.responseText) as ApiResponse<UploadResponseData>;
-        if (xhr.status >= 200 && xhr.status < 300 && payload.success) {
-          resolve(payload.data);
-          return;
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const json: ApiResponse<UploadResult> = JSON.parse(xhr.responseText);
+          if (json.success) {
+            resolve(json.data as UploadResult);
+          } else {
+            reject(new Error("error" in json ? json.error.message : "Upload failed"));
+          }
+        } catch {
+          reject(new Error("Invalid response from server"));
         }
-        reject(new Error(payload.success ? "Upload failed" : payload.error.message));
-      } catch {
-        reject(new Error("Upload failed"));
+      } else {
+        reject(new Error(`Upload failed: HTTP ${xhr.status}`));
       }
-    };
-    xhr.onerror = () => reject(new Error("Upload failed"));
-    const data = new FormData();
-    data.append("file", file);
-    if (storageKey) {
-      data.append("storage_key", storageKey);
-    }
-    xhr.send(data);
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+
+    xhr.open("POST", `${base}/v1/image`);
+    xhr.setRequestHeader("X-Token", token);
+    xhr.send(formData);
   });
 }
 
-export async function publicStorageOptions(signal?: AbortSignal) {
-  return requestJson<PublicStorageOptionsResponse>("/v1/storage-options", { signal });
+// Public endpoints
+export async function getStorageOptions(signal?: AbortSignal): Promise<StorageOption[]> {
+  const data = await apiFetch<{ items: StorageOption[] }>("/v1/storage-options", { signal });
+  return data.items;
 }
 
-export async function deleteImage(uid: string, token: string) {
-  await requestJson<Record<string, never>>(`/i/${uid}.avif`, {
+export async function deleteImageByUid(uid: string, token: string): Promise<void> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/i/${uid}.avif`, {
     method: "DELETE",
-    headers: {
-      "X-Token": token
-    }
+    headers: { "X-Token": token },
+    cache: "no-store",
   });
+  const json: ApiResponse<null> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
 }
 
-export async function adminLogin(password: string) {
-  const result = await requestJson<{ token: string }>("/admin/login", {
+// Admin endpoints
+function adminHeaders(token: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export async function adminLogin(password: string): Promise<string> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/login`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
-    headers: {
-      "Content-Type": "application/json"
-    }
+    cache: "no-store",
   });
-  return result.token;
+  const json: ApiResponse<{ token: string }> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return json.data.token;
 }
 
-export async function adminStatus(token: string) {
-  return requestJson<AdminStatus>("/admin/status", {
-    headers: adminHeaders(token)
+export async function adminGetStatus(token: string): Promise<AdminStatus> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
   });
+  const json: ApiResponse<AdminStatus> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return json.data;
 }
 
-export async function adminImages(token: string, search: string, page: number, signal?: AbortSignal) {
-  const params = new URLSearchParams({
-    page: String(page),
-    pageSize: "20",
-    search
-  });
-  return requestJson<AdminImageList>(`/admin/images?${params.toString()}`, {
+export async function adminGetImages(
+  token: string,
+  page: number,
+  pageSize: number,
+  search?: string
+): Promise<AdminImagesResponse> {
+  return apiFetch<AdminImagesResponse>("/admin/images", {
     headers: adminHeaders(token),
-    signal
+    params: {
+      page: String(page),
+      pageSize: String(pageSize),
+      ...(search ? { search } : {}),
+    },
   });
 }
 
-export async function adminDeleteImages(token: string, uids: string[]) {
-  return requestJson<Record<string, never>>("/admin/images", {
+export async function adminDeleteImages(token: string, uids: string[]): Promise<void> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/images`, {
     method: "DELETE",
+    headers: adminHeaders(token),
     body: JSON.stringify({ uids }),
-    headers: {
-      ...adminHeaders(token),
-      "Content-Type": "application/json"
-    }
+    cache: "no-store",
+  });
+  const json: ApiResponse<null> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+}
+
+export async function adminGetConfig(token: string): Promise<AdminConfig> {
+  return apiFetch<AdminConfig>("/admin/config", {
+    headers: { Authorization: `Bearer ${token}` },
   });
 }
 
-export async function adminGetConfig(token: string) {
-  return requestJson<AdminConfig>("/admin/config", {
-    headers: adminHeaders(token)
-  });
-}
-
-export async function adminCreateStorageConfig(token: string, config: AdminStorageConfigCreateInput) {
-  return requestJson<AdminConfig>("/admin/config/storage-instances", {
+export async function adminCreateStorageInstance(
+  token: string,
+  instance: Partial<StorageInstance>
+): Promise<AdminConfig> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/config/storage-instances`, {
     method: "POST",
-    body: JSON.stringify(config),
-    headers: {
-      ...adminHeaders(token),
-      "Content-Type": "application/json"
-    }
+    headers: adminHeaders(token),
+    body: JSON.stringify(instance),
+    cache: "no-store",
   });
+  const json: ApiResponse<AdminConfig> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return json.data;
 }
 
-export async function adminUpdateStorageConfig(
+export async function adminUpdateStorageInstance(
   token: string,
   storageKey: string,
-  config: AdminStorageConfigUpdateInput
-) {
-  return requestJson<AdminConfig>(`/admin/config/storage-instances/${storageKey}`, {
+  instance: Partial<StorageInstance>
+): Promise<AdminConfig> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/config/storage-instances/${storageKey}`, {
     method: "PUT",
-    body: JSON.stringify(config),
-    headers: {
-      ...adminHeaders(token),
-      "Content-Type": "application/json"
-    }
+    headers: adminHeaders(token),
+    body: JSON.stringify(instance),
+    cache: "no-store",
   });
+  const json: ApiResponse<AdminConfig> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return json.data;
 }
 
-export async function adminDeleteStorageConfig(token: string, storageKey: string) {
-  return requestJson<AdminConfig>(`/admin/config/storage-instances/${storageKey}`, {
+export async function adminDeleteStorageInstance(
+  token: string,
+  storageKey: string
+): Promise<AdminConfig> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/config/storage-instances/${storageKey}`, {
     method: "DELETE",
-    headers: adminHeaders(token)
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
   });
+  const json: ApiResponse<AdminConfig> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return json.data;
 }
 
-export async function adminSetDefaultStorageConfig(token: string, storageKey: string) {
-  return requestJson<AdminConfig>("/admin/config/default", {
+export async function adminSetDefaultStorage(
+  token: string,
+  storageKey: string
+): Promise<AdminConfig> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/config/default`, {
     method: "POST",
+    headers: adminHeaders(token),
     body: JSON.stringify({ storage_key: storageKey }),
-    headers: {
-      ...adminHeaders(token),
-      "Content-Type": "application/json"
-    }
+    cache: "no-store",
   });
-}
-
-export function adminHeaders(token: string): HeadersInit {
-  return {
-    Authorization: `Bearer ${token}`
-  };
+  const json: ApiResponse<AdminConfig> = await res.json();
+  if (!res.ok || !json.success) {
+    const msg = "error" in json ? json.error.message : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return json.data;
 }

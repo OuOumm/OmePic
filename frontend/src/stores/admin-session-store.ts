@@ -1,30 +1,29 @@
-"use client";
-
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-type AdminSessionStore = {
-  token: string;
-  hasHydrated: boolean;
+interface AdminSessionState {
+  token: string | null;
   setToken: (token: string) => void;
   clearToken: () => void;
-  setHasHydrated: (value: boolean) => void;
-};
+  hasHydrated: boolean;
+  setHasHydrated: (v: boolean) => void;
+}
 
-export const useAdminSessionStore = create<AdminSessionStore>()(
+export const useAdminSessionStore = create<AdminSessionState>()(
   persist(
     (set) => ({
-      token: "",
-      hasHydrated: false,
+      token: null,
       setToken: (token) => set({ token }),
-      clearToken: () => set({ token: "" }),
-      setHasHydrated: (value) => set({ hasHydrated: value })
+      clearToken: () => set({ token: null }),
+      hasHydrated: false,
+      setHasHydrated: (v) => set({ hasHydrated: v }),
     }),
     {
-      name: "omepic-admin-session",
+      name: "omepic-admin-token",
+      partialize: (state) => ({ token: state.token }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
-      }
+      },
     }
   )
 );

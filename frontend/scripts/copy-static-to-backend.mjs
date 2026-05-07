@@ -1,15 +1,16 @@
-import { cp, mkdir, rm } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { cp, rm } from "node:fs/promises";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const frontendDir = resolve(scriptDir, "..");
-const repoRoot = resolve(frontendDir, "..");
-const sourceDir = join(frontendDir, "out");
-const targetDir = join(repoRoot, "backend", "web");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const outDir = join(__dirname, "..", "out");
+const targetDir = join(__dirname, "..", "..", "backend", "web");
 
-await rm(targetDir, { force: true, recursive: true });
-await mkdir(targetDir, { recursive: true });
-await cp(sourceDir, targetDir, { recursive: true });
-
-console.log(`Copied ${sourceDir} to ${targetDir}`);
+try {
+  await rm(targetDir, { recursive: true, force: true });
+  await cp(outDir, targetDir, { recursive: true });
+  console.log("Static files copied to backend/web/");
+} catch (err) {
+  console.error("Failed to copy static files:", err);
+  process.exit(1);
+}

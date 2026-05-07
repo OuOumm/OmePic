@@ -1,58 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
-
-import {
-  detectBrowserLanguage,
-  readStoredUiPreferences,
-  resolveThemeMode
-} from "@/lib/preferences";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
-import { languageToDocumentLang } from "@/types/preferences";
+import { resolveTheme } from "@/lib/preferences";
 
 export function UiPreferenceSync() {
   const language = useUiPreferencesStore((state) => state.language);
   const theme = useUiPreferencesStore((state) => state.theme);
   const hasHydrated = useUiPreferencesStore((state) => state.hasHydrated);
-  const setLanguage = useUiPreferencesStore((state) => state.setLanguage);
 
   useEffect(() => {
-    if (!hasHydrated) {
-      return;
+    if (!hasHydrated) return;
+    const resolved = resolveTheme(theme);
+    document.documentElement.lang = language;
+    document.documentElement.dataset.theme = resolved;
+    document.documentElement.dataset.themeMode = theme;
+    if (resolved === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
     }
-
-    const stored = readStoredUiPreferences();
-    if (!stored.language) {
-      setLanguage(detectBrowserLanguage(window.navigator.language));
-    }
-  }, [hasHydrated, setLanguage]);
-
-  useEffect(() => {
-    document.documentElement.lang = languageToDocumentLang(language);
-  }, [language]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const applyTheme = () => {
-      const resolvedTheme = resolveThemeMode(theme, mediaQuery.matches);
-      document.documentElement.dataset.theme = resolvedTheme;
-      document.documentElement.dataset.themeMode = theme;
-      document.documentElement.style.colorScheme = resolvedTheme;
-      document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
-    };
-
-    applyTheme();
-
-    if (theme !== "system") {
-      return;
-    }
-
-    mediaQuery.addEventListener("change", applyTheme);
-    return () => {
-      mediaQuery.removeEventListener("change", applyTheme);
-    };
-  }, [theme]);
+  }, [language, theme, hasHydrated]);
 
   return null;
 }
