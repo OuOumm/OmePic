@@ -2,40 +2,35 @@
   "name": "omepic-frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "build:backend": "next build && node scripts/copy-static-to-backend.mjs",
+    "dev": "vite dev --host 0.0.0.0",
+    "build": "vite build",
+    "build:backend": "vite build && node scripts/copy-static-to-backend.mjs",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@radix-ui/react-dialog": "^1.1.4",
-    "@radix-ui/react-dropdown-menu": "^2.1.4",
-    "@radix-ui/react-label": "^2.1.1",
-    "@radix-ui/react-select": "^2.1.4",
-    "@radix-ui/react-separator": "^1.1.1",
-    "@radix-ui/react-slot": "^1.1.1",
-    "@radix-ui/react-tabs": "^1.1.2",
-    "class-variance-authority": "^0.7.1",
+    "@sveltejs/adapter-static": "^3.0.10",
+    "@sveltejs/kit": "^2.59.1",
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.468.0",
-    "next": "16.2.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-hot-toast": "^2.5.2",
-    "tailwind-merge": "^3.3.1",
-    "zustand": "^5.0.8"
+    "lucide-svelte": "^0.468.0",
+    "svelte": "^5.55.5",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.36.0",
     "@types/node": "^24.6.0",
-    "@types/react": "^19.0.5",
-    "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.36.0",
-    "eslint-config-next": "16.2.4",
+    "eslint-plugin-svelte": "^3.13.0",
+    "globals": "^16.5.0",
     "postcss": "^8.5.6",
+    "svelte-check": "^4.3.4",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vite": "^7.2.7"
   }
 }

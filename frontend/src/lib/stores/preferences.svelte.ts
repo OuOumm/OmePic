@@ -1,0 +1,78 @@
+import type { Language, PublicRuntimeSettings, Theme } from '@/types';
+import { detectLanguage } from '@/i18n';
+
+const PREF_STORAGE_KEY = 'omepic-ui-preferences';
+const UPLOAD_PREF_KEY = 'omepic-upload-preferences';
+const ADMIN_TOKEN_KEY = 'omepic-admin-token';
+
+export type PreferencesState = {
+  language: Language;
+  theme: Theme;
+  selectedStorageKey: string;
+  adminToken: string | null;
+  runtimeSettings: PublicRuntimeSettings | null;
+};
+
+function readJSON<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJSON<T>(key: string, value: T) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+const uiPrefs = readJSON(PREF_STORAGE_KEY, { language: detectLanguage(), theme: 'dark' as Theme });
+const uploadPrefs = readJSON(UPLOAD_PREF_KEY, { selectedStorageKey: '' });
+const adminPrefs = readJSON(ADMIN_TOKEN_KEY, { token: null as string | null });
+
+export const preferences = $state<PreferencesState>({
+  language: uiPrefs.language === 'en' || uiPrefs.language === 'zh' ? uiPrefs.language : detectLanguage(),
+  theme: uiPrefs.theme === 'light' || uiPrefs.theme === 'dark' || uiPrefs.theme === 'system' ? uiPrefs.theme : 'dark',
+  selectedStorageKey: uploadPrefs.selectedStorageKey || '',
+  adminToken: adminPrefs.token ?? null,
+  runtimeSettings: null,
+});
+
+export function setLanguage(language: Language) {
+  preferences.language = language;
+  writeJSON(PREF_STORAGE_KEY, { language: preferences.language, theme: preferences.theme });
+}
+
+export function setTheme(theme: Theme) {
+  preferences.theme = theme;
+  writeJSON(PREF_STORAGE_KEY, { language: preferences.language, theme });
+}
+
+export function setSelectedStorageKey(selectedStorageKey: string) {
+  preferences.selectedStorageKey = selectedStorageKey;
+  writeJSON(UPLOAD_PREF_KEY, { selectedStorageKey });
+}
+
+export function setRuntimeSettings(runtimeSettings: PublicRuntimeSettings | null) {
+  preferences.runtimeSettings = runtimeSettings;
+}
+
+export function setAdminToken(token: string) {
+  preferences.adminToken = token;
+  writeJSON(ADMIN_TOKEN_KEY, { token });
+}
+
+export function clearAdminToken() {
+  preferences.adminToken = null;
+  if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+export function resolvedTheme() {
+  if (preferences.theme === 'system') {
+    if (typeof window === 'undefined') return 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return preferences.theme;
+}

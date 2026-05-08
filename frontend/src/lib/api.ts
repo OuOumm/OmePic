@@ -3,7 +3,6 @@ import { getApiBaseUrl } from "./utils";
 import type {
   ApiResponse,
   UploadResult,
-  StorageOption,
   AdminStatus,
   AdminImagesResponse,
   AdminConfig,
@@ -105,6 +104,11 @@ export function uploadImageWithProgress(
             return;
           }
         } catch {
+          reject(new ApiError(`Upload failed: HTTP ${xhr.status}`, {
+            status: xhr.status,
+            retryAfter: parseRetryAfter(xhr.getResponseHeader("Retry-After")),
+          }));
+          return;
         }
         reject(new ApiError(`Upload failed: HTTP ${xhr.status}`, {
           status: xhr.status,
