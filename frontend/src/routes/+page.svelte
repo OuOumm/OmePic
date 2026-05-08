@@ -3,13 +3,14 @@
   import CanvasDropzone from '@/components/studio/CanvasDropzone.svelte';
   import ImageDataRow from '@/components/studio/ImageDataRow.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
-  import { ApiError, getRuntimeSettings, uploadImageWithProgress } from '@/api';
+  import BlueprintFlow from '@/components/studio/BlueprintFlow.svelte';
+  import { ApiError, getAnnouncements, getRuntimeSettings, uploadImageWithProgress } from '@/api';
   import { getClientToken } from '@/preferences';
   import { saveUploadToHistory, getRecentUploads } from '@/indexeddb/upload-history';
   import { t } from '@/i18n';
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
-  import type { Language, UploadHistoryRecord, UploadResult } from '@/types';
+  import type { Announcement, Language, UploadHistoryRecord, UploadResult } from '@/types';
 
   type UploadTask = {
     id: string;
@@ -27,6 +28,7 @@
   let dragging = $state(false);
   let urlInput = $state('');
   let urlUploading = $state(false);
+  let announcements = $state<Announcement[]>([]);
   let counter = 0;
 
   const activeTasks = $derived(tasks.filter((task) => task.status === 'pending' || task.status === 'uploading' || task.status === 'error'));
@@ -65,6 +67,14 @@
       recentUploads = await getRecentUploads(10);
     } catch {
       recentUploads = [];
+    }
+  }
+
+  async function loadAnnouncements() {
+    try {
+      announcements = await getAnnouncements();
+    } catch {
+      announcements = [];
     }
   }
 
@@ -170,6 +180,7 @@
   $effect(() => {
     loadRuntime();
     loadRecent();
+    loadAnnouncements();
     const pasteHandler = (event: ClipboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
@@ -191,6 +202,19 @@
 
 <div class="grid gap-6 lg:grid-cols-[1fr_320px]">
   <section class="space-y-6">
+    {#if announcements.length}
+      <div class="paper-strip grid gap-3 py-4 sketch-enter">
+        {#each announcements as announcement (announcement.id)}
+          <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-blue))">{announcement.priority}</span>
+              <h2 class="mt-2 text-2xl font-black">{announcement.title}</h2>
+              <p class="text-sm font-semibold text-[hsl(var(--ink-muted))]">{announcement.content}</p>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#if runtimeError}
       <div class="studio-panel border-[hsl(var(--danger))] p-4 text-sm font-bold text-[hsl(var(--danger))]">{runtimeError}</div>
     {/if}
@@ -201,6 +225,8 @@
     <div role="presentation" ondragenter={() => (dragging = true)} ondragleave={() => (dragging = false)}>
       <CanvasDropzone language={preferences.language} disabled={uploadDisabled} {dragging} onFiles={handleFiles} />
     </div>
+
+    <BlueprintFlow label="Upload pipeline" steps={['select', 'validate', 'host', 'copy']} activeIndex={activeTasks.length ? 1 : recentUploads.length ? 3 : 0} />
 
     <div class="grid gap-3 border-y-[3px] ink-line py-5 md:grid-cols-[1fr_auto] md:items-end">
       <label class="grid gap-2 text-sm font-black">

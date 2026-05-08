@@ -38,7 +38,7 @@
 <svelte:head><title>{t(preferences.language, 'api.title')} · OmePic</title></svelte:head>
 
 <div class="space-y-8">
-  <PageTitle eyebrow="Developer notes" title={t(preferences.language, 'api.title')} subtitle={t(preferences.language, 'api.subtitle')} />
+  <PageTitle eyebrow="Developer notes" title={t(preferences.language, 'api.title')} subtitle={t(preferences.language, 'api.subtitle')} tone="green" />
 
   <section class="grid gap-6 lg:grid-cols-[260px_1fr]">
     <aside class="studio-panel h-fit p-5 rotate-[-0.35deg]">

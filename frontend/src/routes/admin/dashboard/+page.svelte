@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Loader2, Lock } from 'lucide-svelte';
+  import MetricStrip from '@/components/studio/MetricStrip.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { adminGetStatus, adminGetSystemSettings, adminLogin } from '@/api';
   import { t } from '@/i18n';
@@ -67,10 +68,10 @@
     {#if error}<div class="studio-panel p-4 text-[hsl(var(--danger))]">{error}</div>{/if}
     {#if status}
       <div class="grid gap-4 md:grid-cols-4">
-        <div class="border-y-[3px] ink-line py-4"><p class="text-xs uppercase">{t(preferences.language, 'admin.totalImages')}</p><p class="text-3xl font-black">{status.total_images}</p></div>
-        <div class="border-y-[3px] ink-line py-4"><p class="text-xs uppercase">{t(preferences.language, 'admin.totalSize')}</p><p class="text-3xl font-black">{formatBytes(status.total_storage_size)}</p></div>
-        <div class="border-y-[3px] ink-line py-4"><p class="text-xs uppercase">{t(preferences.language, 'admin.todayUploads')}</p><p class="text-3xl font-black">{status.today_uploads}</p></div>
-        <div class="border-y-[3px] ink-line py-4"><p class="text-xs uppercase">{t(preferences.language, 'admin.uniqueTokens')}</p><p class="text-3xl font-black">{status.unique_tokens}</p></div>
+        <MetricStrip label={t(preferences.language, 'admin.totalImages')} value={status.total_images} tone="yellow" />
+        <MetricStrip label={t(preferences.language, 'admin.totalSize')} value={formatBytes(status.total_storage_size)} tone="blue" />
+        <MetricStrip label={t(preferences.language, 'admin.todayUploads')} value={status.today_uploads} tone="green" />
+        <MetricStrip label={t(preferences.language, 'admin.uniqueTokens')} value={status.unique_tokens} tone="pink" />
       </div>
     {/if}
     {#if system}

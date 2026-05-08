@@ -56,7 +56,7 @@
 
 <div class="space-y-7">
   <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-    <PageTitle eyebrow="File desk" title={t(preferences.language, 'history.title')} subtitle={t(preferences.language, 'history.subtitle')} />
+    <PageTitle eyebrow="File desk" title={t(preferences.language, 'history.title')} subtitle={t(preferences.language, 'history.subtitle')} tone="blue" />
     {#if records.length > 0}
       <button class="studio-button" data-tone="danger" type="button" onclick={clearAll}>
         <Trash2 class="size-4" />
