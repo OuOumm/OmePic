@@ -2,13 +2,17 @@ import { Activity, Database, Globe2, HardDrive, KeyRound, Server, ShieldCheck, W
 
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import type { AdminSystemSettings, SecretStatus } from "@/types";
+import type { AdminSystemSettings, Language, SecretStatus } from "@/types";
+
+type StatusTone = "good" | "warn" | "muted";
 
 type StatusItem = {
   label: string;
   value: string;
-  tone?: "good" | "warn" | "muted";
+  tone?: StatusTone;
+  iconKind?: "secret" | "storage" | "database" | "network" | "activity";
 };
 
 type StatusSection = {
@@ -19,50 +23,53 @@ type StatusSection = {
 };
 
 type Props = {
+  language: Language;
   systemSettings: AdminSystemSettings | null;
 };
 
-export function SystemStatusPanel({ systemSettings }: Props) {
+export function SystemStatusPanel({ language, systemSettings }: Props) {
   const readonly = systemSettings?.readonly;
+  const booleanLabel = (value: boolean | undefined) => value ? t(language, "common.enabled") : t(language, "common.disabled");
+  const configuredLabel = (value: boolean | undefined) => value ? t(language, "admin.systemConfigured") : t(language, "admin.systemNotConfigured");
   const sections: StatusSection[] = [
     {
-      title: "运行环境",
-      description: "服务入口、数据路径与公开链接来源",
+      title: t(language, "admin.systemRuntimeTitle"),
+      description: t(language, "admin.systemRuntimeDescription"),
       icon: Server,
       items: [
-        { label: "HTTP 地址", value: readonly?.environment?.http_addr || "-", tone: "muted" },
-        { label: "数据库路径", value: readonly?.environment?.database_path || "-", tone: "muted" },
-        { label: "Redis", value: readonly?.environment?.redis_configured ? "已配置" : "未配置", tone: readonly?.environment?.redis_configured ? "good" : "muted" },
-        { label: "公开 URL 来源", value: readonly?.environment?.public_base_url_source || "-", tone: "muted" },
+        { label: t(language, "admin.systemHttpAddress"), value: readonly?.environment?.http_addr || "-", tone: "muted", iconKind: "network" },
+        { label: t(language, "admin.systemDatabasePath"), value: readonly?.environment?.database_path || "-", tone: "muted", iconKind: "database" },
+        { label: "Redis", value: configuredLabel(readonly?.environment?.redis_configured), tone: readonly?.environment?.redis_configured ? "good" : "muted", iconKind: "activity" },
+        { label: t(language, "admin.systemPublicUrlSource"), value: readonly?.environment?.public_base_url_source || "-", tone: "muted", iconKind: "network" },
       ],
     },
     {
-      title: "安全状态",
-      description: "关键密钥只展示配置状态，不显示明文",
+      title: t(language, "admin.systemSecurityTitle"),
+      description: t(language, "admin.systemSecurityDescription"),
       icon: ShieldCheck,
       items: [
-        secretItem("JWT Secret", readonly?.security?.jwt_secret),
-        secretItem("Admin Password", readonly?.security?.admin_password),
-        secretItem("UID Encryption Key", readonly?.security?.uid_encryption_key),
+        secretItem(language, "JWT Secret", readonly?.security?.jwt_secret),
+        secretItem(language, "Admin Password", readonly?.security?.admin_password),
+        secretItem(language, "UID Encryption Key", readonly?.security?.uid_encryption_key),
       ],
     },
     {
-      title: "存储状态",
-      description: "默认存储与上传侧选择策略",
+      title: t(language, "admin.systemStorageTitle"),
+      description: t(language, "admin.systemStorageDescription"),
       icon: HardDrive,
       items: [
-        { label: "默认存储", value: readonly?.storage?.default_storage_key || "-", tone: "muted" },
-        { label: "存储实例数量", value: String(readonly?.storage?.storage_config_count ?? "-"), tone: "muted" },
-        { label: "多存储选择", value: readonly?.storage?.allow_storage_selection ? "开启" : "关闭", tone: readonly?.storage?.allow_storage_selection ? "good" : "muted" },
+        { label: t(language, "admin.systemDefaultStorage"), value: readonly?.storage?.default_storage_key || "-", tone: "muted", iconKind: "storage" },
+        { label: t(language, "admin.systemStorageInstanceCount"), value: String(readonly?.storage?.storage_config_count ?? "-"), tone: "muted", iconKind: "storage" },
+        { label: t(language, "admin.systemStorageSelection"), value: booleanLabel(readonly?.storage?.allow_storage_selection), tone: readonly?.storage?.allow_storage_selection ? "good" : "muted", iconKind: "storage" },
       ],
     },
     {
-      title: "服务状态",
-      description: "健康状态与维护模式开关",
+      title: t(language, "admin.systemServiceTitle"),
+      description: t(language, "admin.systemServiceDescription"),
       icon: Activity,
       items: [
-        { label: "健康状态", value: readonly?.service?.health || "-", tone: readonly?.service?.health === "ok" ? "good" : "warn" },
-        { label: "维护模式", value: readonly?.service?.maintenance_mode ? "开启" : "关闭", tone: readonly?.service?.maintenance_mode ? "warn" : "good" },
+        { label: t(language, "admin.systemHealthStatus"), value: readonly?.service?.health || "-", tone: readonly?.service?.health === "ok" ? "good" : "warn", iconKind: "activity" },
+        { label: t(language, "admin.systemMaintenanceMode"), value: booleanLabel(readonly?.service?.maintenance_mode), tone: readonly?.service?.maintenance_mode ? "warn" : "good", iconKind: "activity" },
       ],
     },
   ];
@@ -78,16 +85,16 @@ export function SystemStatusPanel({ systemSettings }: Props) {
             <div className="rounded-xl border bg-background p-2 shadow-sm">
               <Wrench className="h-4 w-4 text-primary" />
             </div>
-            <h2 className="text-lg font-semibold tracking-tight">系统状态</h2>
+            <h2 className="text-lg font-semibold tracking-tight">{t(language, "admin.statusTitle")}</h2>
           </div>
-          <p className="text-sm text-muted-foreground">集中查看运行环境、安全配置、存储和服务健康情况。</p>
+          <p className="text-sm text-muted-foreground">{t(language, "admin.systemPanelDescription")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className={health ? toneClassName("good") : toneClassName("warn")}>
-            {health ? "服务正常" : "服务异常"}
+            {health ? t(language, "admin.systemServiceNormal") : t(language, "admin.systemServiceAbnormal")}
           </Badge>
           <Badge variant="outline" className={maintenance ? toneClassName("warn") : toneClassName("good")}>
-            {maintenance ? "维护中" : "对外开放"}
+            {maintenance ? t(language, "admin.systemServiceMaintenance") : t(language, "admin.systemServicePublic")}
           </Badge>
         </div>
       </div>
@@ -118,7 +125,7 @@ function SystemStatusCard({ section }: { section: StatusSection }) {
           {section.items.map((item) => (
             <div key={item.label} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
               <span className="flex items-center gap-2 text-muted-foreground">
-                <ItemIcon label={item.label} />
+                <ItemIcon iconKind={item.iconKind} />
                 {item.label}
               </span>
               <span className={cn("max-w-[55%] break-all text-right font-medium", item.tone && toneTextClassName(item.tone))}>
@@ -132,26 +139,32 @@ function SystemStatusCard({ section }: { section: StatusSection }) {
   );
 }
 
-function ItemIcon({ label }: { label: string }) {
-  if (label.includes("Secret") || label.includes("Password") || label.includes("Key")) {
-    return <KeyRound className="h-3.5 w-3.5" />;
+function ItemIcon({ iconKind }: { iconKind?: StatusItem["iconKind"] }) {
+  switch (iconKind) {
+    case "secret":
+      return <KeyRound className="h-3.5 w-3.5" />;
+    case "storage":
+    case "database":
+      return <Database className="h-3.5 w-3.5" />;
+    case "network":
+      return <Globe2 className="h-3.5 w-3.5" />;
+    default:
+      return <Activity className="h-3.5 w-3.5" />;
   }
-  if (label.includes("存储") || label.includes("数据库")) {
-    return <Database className="h-3.5 w-3.5" />;
-  }
-  if (label.includes("URL") || label.includes("HTTP")) {
-    return <Globe2 className="h-3.5 w-3.5" />;
-  }
-  return <Activity className="h-3.5 w-3.5" />;
 }
 
-function secretItem(label: string, status?: SecretStatus): StatusItem {
-  if (!status) return { label, value: "-", tone: "muted" };
-  if (!status.configured) return { label, value: "未配置", tone: "warn" };
-  return { label, value: status.using_default ? "已配置，使用默认值" : "已配置", tone: status.using_default ? "warn" : "good" };
+function secretItem(language: Language, label: string, status?: SecretStatus): StatusItem {
+  if (!status) return { label, value: "-", tone: "muted", iconKind: "secret" };
+  if (!status.configured) return { label, value: t(language, "admin.systemNotConfigured"), tone: "warn", iconKind: "secret" };
+  return {
+    label,
+    value: status.using_default ? t(language, "admin.systemConfiguredDefault") : t(language, "admin.systemConfigured"),
+    tone: status.using_default ? "warn" : "good",
+    iconKind: "secret",
+  };
 }
 
-function toneClassName(tone: "good" | "warn" | "muted"): string {
+function toneClassName(tone: StatusTone): string {
   switch (tone) {
     case "good":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
@@ -162,7 +175,7 @@ function toneClassName(tone: "good" | "warn" | "muted"): string {
   }
 }
 
-function toneTextClassName(tone: "good" | "warn" | "muted"): string {
+function toneTextClassName(tone: StatusTone): string {
   switch (tone) {
     case "good":
       return "text-emerald-700 dark:text-emerald-300";

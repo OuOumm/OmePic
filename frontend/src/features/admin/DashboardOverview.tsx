@@ -90,7 +90,7 @@ export function DashboardOverview() {
           </Card>
         ))}
       </div>
-      <SystemStatusPanel systemSettings={systemSettings} />
+      <SystemStatusPanel language={lang} systemSettings={systemSettings} />
     </div>
   );
 }
