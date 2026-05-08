@@ -17,6 +17,7 @@
 
   let { ip, reason, durationHours, onClose, onChanged }: Props = $props();
   let detail = $state<AdminAbuseIPDetail | null>(null);
+  let error = $state('');
   let loading = $state(false);
   let busy = $state(false);
 
@@ -26,10 +27,12 @@
       return;
     }
     loading = true;
+    error = '';
     try {
       detail = await adminGetAbuseIPDetail(preferences.adminToken, ip);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+      error = err instanceof Error ? err.message : t(preferences.language, 'common.error');
+      toast.error(error);
     } finally {
       loading = false;
     }
@@ -96,6 +99,14 @@
 
     {#if loading}
       <p class="font-black">{t(preferences.language, 'common.loading')}</p>
+    {:else if error}
+      <div class="grid gap-4">
+        <div class="border-[3px] border-dashed ink-line p-4">
+          <h3 class="text-xl font-black">Unable to load IP detail</h3>
+          <p class="mt-2 text-sm font-semibold text-[hsl(var(--ink-muted))]">{error}</p>
+        </div>
+        <button class="studio-button" data-tone="danger" type="button" disabled={busy} onclick={banIp}><Ban class="size-4" />Ban IP anyway</button>
+      </div>
     {:else if detail}
       <div class="grid gap-4">
         <div class="grid gap-3 sm:grid-cols-2">

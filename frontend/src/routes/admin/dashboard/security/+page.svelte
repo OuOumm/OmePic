@@ -66,10 +66,13 @@
     </div>
     <div class="grid gap-8 lg:grid-cols-2">
       <section>
-        <h2 class="border-b-[3px] ink-line pb-2 text-2xl font-black">Top IPs</h2>
+        <div class="mb-3 flex items-center justify-between border-b-[3px] ink-line pb-2">
+          <h2 class="text-2xl font-black">Top IPs</h2>
+          <span class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">Click IP for detail</span>
+        </div>
         {#each overview.top_ips as item (item.ip_address)}
           <div class="studio-table-row grid gap-3 py-3 text-sm md:grid-cols-[1fr_80px_110px_110px] md:items-center">
-            <span class="font-black">{item.ip_address_masked}</span>
+            <button class="text-left font-black hover:marker-highlight" type="button" onclick={() => (activeIp = item.ip_address)}>{item.ip_address_masked}</button>
             <span>{item.upload_count}</span>
             <span>{formatBytes(item.total_size)}</span>
             <button class="studio-button p-2 text-xs" data-tone={item.is_banned ? 'green' : 'danger'} type="button" disabled={item.is_banned} onclick={() => banIp(item.ip_address)}>
@@ -79,13 +82,16 @@
         {/each}
       </section>
       <section>
-        <h2 class="border-b-[3px] ink-line pb-2 text-2xl font-black">Banned IPs</h2>
+        <div class="mb-3 flex items-center justify-between border-b-[3px] ink-line pb-2">
+          <h2 class="text-2xl font-black">Banned IPs</h2>
+          <span class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">Click IP for detail</span>
+        </div>
         {#if bans.length === 0}
           <div class="grid min-h-32 place-items-center border-[3px] border-dashed ink-line"><p class="flex items-center gap-2 font-black"><ShieldCheck class="size-5" />No active bans</p></div>
         {/if}
         {#each bans as ban (ban.id)}
           <div class="studio-table-row grid gap-3 py-3 text-sm md:grid-cols-[1fr_auto] md:items-start">
-            <div><p class="font-black">{ban.ip_address_masked}</p><p class="text-[hsl(var(--ink-muted))]">{ban.reason}</p><p class="text-xs text-[hsl(var(--ink-muted))]">{ban.expires_at ?? 'never expires'}</p></div>
+            <div><button class="font-black hover:marker-highlight" type="button" onclick={() => (activeIp = ban.ip_address)}>{ban.ip_address_masked}</button><p class="text-[hsl(var(--ink-muted))]">{ban.reason}</p><p class="text-xs text-[hsl(var(--ink-muted))]">{ban.expires_at ?? 'never expires'}</p></div>
             <div class="flex gap-2">
               <button class="studio-button p-2" type="button" onclick={() => unban(ban.id)} aria-label="unban"><Ban class="size-4" /></button>
               <button class="studio-button p-2" data-tone="danger" type="button" onclick={() => purgeImages(ban.id)} aria-label="purge"><Trash2 class="size-4" /></button>
