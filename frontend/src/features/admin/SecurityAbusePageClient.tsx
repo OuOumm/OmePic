@@ -48,8 +48,8 @@ export function SecurityAbusePageClient() {
         adminGetAbuseOverview(token, from, to),
         adminGetIPBans(token),
       ]);
-      setOverview(nextOverview);
-      setBans(nextBans);
+      setOverview(normalizeOverview(nextOverview));
+      setBans(Array.isArray(nextBans) ? nextBans : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load security data");
     } finally {
@@ -61,7 +61,7 @@ export function SecurityAbusePageClient() {
     loadData();
   }, [loadData]);
 
-  const activeBanIds = useMemo(() => new Set(bans.filter(isActiveBan).map((ban) => ban.id)), [bans]);
+  const activeBanIds = useMemo(() => new Set((Array.isArray(bans) ? bans : []).filter(isActiveBan).map((ban) => ban.id)), [bans]);
 
   const toggleIP = (ip: string) => {
     setVisibleIPs((prev) => {
@@ -133,7 +133,7 @@ export function SecurityAbusePageClient() {
     }
   };
 
-  const banForIP = (ip: string) => bans.find((ban) => isActiveBan(ban) && ban.ip_address === ip);
+  const banForIP = (ip: string) => (Array.isArray(bans) ? bans : []).find((ban) => isActiveBan(ban) && ban.ip_address === ip);
 
   if (loading && !overview) {
     return (
@@ -285,7 +285,7 @@ export function SecurityAbusePageClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bans.map((ban) => {
+              {(Array.isArray(bans) ? bans : []).map((ban) => {
                 const active = activeBanIds.has(ban.id);
                 return (
                   <TableRow key={ban.id}>
@@ -337,6 +337,14 @@ function StatCard({ icon: Icon, label, value }: { icon: typeof Clock; label: str
       </CardContent>
     </Card>
   );
+}
+
+function normalizeOverview(value: AdminAbuseOverview): AdminAbuseOverview {
+  return {
+    ...value,
+    top_ips: Array.isArray(value.top_ips) ? value.top_ips : [],
+    top_tokens: Array.isArray(value.top_tokens) ? value.top_tokens : [],
+  };
 }
 
 function isActiveBan(ban: AdminIPBan) {
