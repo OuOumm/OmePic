@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Ban, ShieldCheck, Trash2 } from 'lucide-svelte';
+  import BanIPDialog from '@/components/studio/BanIPDialog.svelte';
   import IPDetailPanel from '@/components/studio/IPDetailPanel.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { adminCreateIPBan, adminDeleteIPBan, adminDeleteIPBanImages, adminGetAbuseOverview, adminGetIPBans } from '@/api';
@@ -11,9 +12,9 @@
 
   let overview = $state<AdminAbuseOverview | null>(null);
   let bans = $state<AdminIPBan[]>([]);
-  let reason = $state('manual review');
-  let durationHours = $state(24);
   let activeIp = $state<string | null>(null);
+  let banTarget = $state<{ ip: string; label?: string } | null>(null);
+  let banning = $state(false);
 
   const topIps = $derived(Array.isArray(overview?.top_ips) ? overview.top_ips : []);
   const safeBans = $derived(Array.isArray(bans) ? bans : []);
@@ -25,11 +26,19 @@
     bans = Array.isArray(nextBans) ? nextBans : [];
   }
 
-  async function banIp(ip: string) {
+  async function banIp(input: { ip: string; reason: string; durationHours: number | null }) {
     if (!preferences.adminToken) return;
-    await adminCreateIPBan(preferences.adminToken, { ip_address: ip, duration_hours: durationHours, reason });
-    toast.success(t(preferences.language, 'common.success'));
-    await load();
+    banning = true;
+    try {
+      await adminCreateIPBan(preferences.adminToken, { ip_address: input.ip, duration_hours: input.durationHours, reason: input.reason });
+      toast.success(t(preferences.language, 'common.success'));
+      banTarget = null;
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+    } finally {
+      banning = false;
+    }
   }
 
   async function unban(id: number) {
@@ -53,16 +62,6 @@
 
 <div class="space-y-8">
   <PageTitle eyebrow="Security sketch" title={t(preferences.language, 'admin.abuseTitle')} subtitle={t(preferences.language, 'admin.abuseDescription')} tone="pink" />
-  <section class="paper-strip grid gap-4 py-4 md:grid-cols-[1fr_140px]">
-    <label class="grid gap-2 text-sm font-black">
-      Ban reason
-      <input class="studio-input" bind:value={reason} />
-    </label>
-    <label class="grid gap-2 text-sm font-black">
-      Hours
-      <input class="studio-input" type="number" min="1" bind:value={durationHours} />
-    </label>
-  </section>
   {#if overview}
     <div class="grid gap-4 md:grid-cols-3">
       <div class="border-y-[3px] ink-line py-4"><p class="text-xs uppercase">Uploads</p><p class="text-3xl font-black">{overview.upload_count}</p></div>
@@ -80,7 +79,7 @@
             <button class="text-left font-black hover:marker-highlight" type="button" onclick={() => (activeIp = item.ip_address)}>{item.ip_address_masked}</button>
             <span>{item.upload_count}</span>
             <span>{formatBytes(item.total_size)}</span>
-            <button class="studio-button p-2 text-xs" data-tone={item.is_banned ? 'green' : 'danger'} type="button" disabled={item.is_banned} onclick={() => banIp(item.ip_address)}>
+            <button class="studio-button p-2 text-xs" data-tone={item.is_banned ? 'green' : 'danger'} type="button" disabled={item.is_banned} onclick={() => (banTarget = { ip: item.ip_address, label: item.ip_address_masked })}>
               {item.is_banned ? 'Banned' : 'Ban'}
             </button>
           </div>
@@ -106,5 +105,6 @@
       </section>
     </div>
   {/if}
-  <IPDetailPanel ip={activeIp} {reason} {durationHours} onClose={() => (activeIp = null)} onChanged={load} />
+  <IPDetailPanel ip={activeIp} onClose={() => (activeIp = null)} onChanged={load} onBan={(target) => (banTarget = target)} />
+  <BanIPDialog target={banTarget} busy={banning} onClose={() => (banTarget = null)} onConfirm={banIp} />
 </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Ban, ShieldCheck, Trash2, X } from 'lucide-svelte';
-  import { adminCreateIPBan, adminDeleteIPBan, adminDeleteIPBanImages, adminGetAbuseIPDetail } from '@/api';
+  import { adminDeleteIPBan, adminDeleteIPBanImages, adminGetAbuseIPDetail } from '@/api';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
@@ -9,13 +9,12 @@
 
   type Props = {
     ip: string | null;
-    reason: string;
-    durationHours: number;
     onClose: () => void;
     onChanged: () => void;
+    onBan: (target: { ip: string; label?: string }) => void;
   };
 
-  let { ip, reason, durationHours, onClose, onChanged }: Props = $props();
+  let { ip, onClose, onChanged, onBan }: Props = $props();
   let detail = $state<AdminAbuseIPDetail | null>(null);
   let error = $state('');
   let loading = $state(false);
@@ -38,19 +37,9 @@
     }
   }
 
-  async function banIp() {
-    if (!preferences.adminToken || !ip) return;
-    busy = true;
-    try {
-      await adminCreateIPBan(preferences.adminToken, { ip_address: ip, duration_hours: durationHours, reason });
-      toast.success(t(preferences.language, 'common.success'));
-      await load();
-      onChanged();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      busy = false;
-    }
+  function requestBan() {
+    if (!ip) return;
+    onBan({ ip, label: detail?.ip_address_masked ?? ip });
   }
 
   async function unban() {
@@ -105,7 +94,7 @@
           <h3 class="text-xl font-black">Unable to load IP detail</h3>
           <p class="mt-2 text-sm font-semibold text-[hsl(var(--ink-muted))]">{error}</p>
         </div>
-        <button class="studio-button" data-tone="danger" type="button" disabled={busy} onclick={banIp}><Ban class="size-4" />Ban IP anyway</button>
+        <button class="studio-button" data-tone="danger" type="button" disabled={busy} onclick={requestBan}><Ban class="size-4" />Ban IP anyway</button>
       </div>
     {:else if detail}
       <div class="grid gap-4">
@@ -125,7 +114,7 @@
             <button class="studio-button" type="button" disabled={busy} onclick={unban}><Ban class="size-4" />Unban</button>
             <button class="studio-button" data-tone="danger" type="button" disabled={busy} onclick={purgeImages}><Trash2 class="size-4" />Purge images</button>
           {:else}
-            <button class="studio-button" data-tone="danger" type="button" disabled={busy} onclick={banIp}><Ban class="size-4" />Ban IP</button>
+            <button class="studio-button" data-tone="danger" type="button" disabled={busy} onclick={requestBan}><Ban class="size-4" />Ban IP</button>
           {/if}
         </div>
       </div>

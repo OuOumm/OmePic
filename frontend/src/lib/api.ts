@@ -233,7 +233,7 @@ export async function adminDeleteImages(token: string, uids: string[]): Promise<
 
 export async function adminCreateIPBan(
   token: string,
-  input: { uid?: string; ip_address?: string; duration_hours: number; reason?: string }
+  input: { uid?: string; ip_address?: string; duration_hours: number | null; reason?: string }
 ): Promise<AdminIPBanCreateResult> {
   return apiFetch<AdminIPBanCreateResult>("/admin/ip-bans", {
     method: "POST",
