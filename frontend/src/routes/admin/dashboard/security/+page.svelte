@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Ban, ShieldCheck, Trash2 } from 'lucide-svelte';
+  import IPDetailPanel from '@/components/studio/IPDetailPanel.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { adminCreateIPBan, adminDeleteIPBan, adminDeleteIPBanImages, adminGetAbuseOverview, adminGetIPBans } from '@/api';
   import { t } from '@/i18n';
@@ -12,6 +13,7 @@
   let bans = $state<AdminIPBan[]>([]);
   let reason = $state('manual review');
   let durationHours = $state(24);
+  let activeIp = $state<string | null>(null);
 
   async function load() {
     if (!preferences.adminToken) return;
@@ -93,4 +95,5 @@
       </section>
     </div>
   {/if}
+  <IPDetailPanel ip={activeIp} {reason} {durationHours} onClose={() => (activeIp = null)} onChanged={load} />
 </div>

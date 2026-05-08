@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Search, Trash2 } from 'lucide-svelte';
+  import ImageDetailDrawer from '@/components/studio/ImageDetailDrawer.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { adminDeleteImages, adminGetImages } from '@/api';
   import { t } from '@/i18n';
@@ -13,6 +14,7 @@
   let page = $state(1);
   let search = $state('');
   let selected = $state<Set<string>>(new Set());
+  let activeImage = $state<AdminImage | null>(null);
   const pageSize = 30;
 
   async function load() {
@@ -51,15 +53,15 @@
   </div>
   <p class="font-black">{t(preferences.language, 'admin.imagesTotal', { total })}</p>
   <div class="overflow-x-auto">
-    <div class="min-w-[860px]">
+    <div class="min-w-[910px]">
       {#each images as image (image.uid)}
-        <div class="grid grid-cols-[36px_1fr_120px_110px_120px_120px] items-center gap-4 studio-table-row py-3 text-sm">
+        <div class="grid grid-cols-[36px_1fr_120px_110px_120px_170px] items-center gap-4 studio-table-row py-3 text-sm">
           <input type="checkbox" checked={selected.has(image.uid)} onchange={() => toggle(image.uid)} />
-          <div><p class="font-black">{image.uid}</p><p class="text-xs text-[hsl(var(--ink-muted))]">{image.md5_hash}</p></div>
+          <button class="min-w-0 text-left" type="button" onclick={() => (activeImage = image)}><p class="truncate font-black hover:marker-highlight">{image.uid}</p><p class="truncate text-xs text-[hsl(var(--ink-muted))]">{image.md5_hash}</p></button>
           <div>{formatBytes(image.size)}</div>
           <div>{image.storage_key}</div>
           <div>{image.ip_address_masked}</div>
-          <a class="studio-button p-2 text-xs" href={`/i/${image.uid}.avif`} target="_blank">Open</a>
+          <div class="flex gap-2"><button class="studio-button p-2 text-xs" type="button" onclick={() => (activeImage = image)}>Details</button><a class="studio-button p-2 text-xs" href={`/i/${image.uid}.avif`} target="_blank">Open</a></div>
         </div>
       {/each}
     </div>
@@ -69,5 +71,5 @@
     <span class="font-black">{t(preferences.language, 'admin.imagesPage', { page })}</span>
     <button class="studio-button" disabled={page * pageSize >= total} onclick={() => { page += 1; load(); }}>{t(preferences.language, 'admin.imagesNext')}</button>
   </div>
+  <ImageDetailDrawer image={activeImage} onClose={() => (activeImage = null)} onDeleted={() => { activeImage = null; load(); }} />
 </div>
-
