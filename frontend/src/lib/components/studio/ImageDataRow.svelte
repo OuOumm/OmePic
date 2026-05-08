@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Copy, ExternalLink, Image as ImageIcon, Trash2 } from 'lucide-svelte';
+  import { ExternalLink, Image as ImageIcon, Trash2 } from 'lucide-svelte';
   import type { Language, UploadHistoryRecord } from '@/types';
   import { t } from '@/i18n';
   import { formatBytes } from '@/utils';
@@ -11,7 +11,7 @@
   export let onDelete: (() => void) | undefined = undefined;
 </script>
 
-<div class="grid grid-cols-[minmax(0,1.5fr)_110px_130px_140px] items-center gap-4 studio-table-row py-3 text-sm">
+<div class="grid grid-cols-[minmax(0,1.5fr)_110px_130px_240px] items-center gap-4 studio-table-row py-3 text-sm">
   <div class="flex min-w-0 items-center gap-3">
     <div class="grid size-12 shrink-0 place-items-center border-2 ink-line bg-[hsl(var(--paper-deep))] overflow-hidden">
       {#if record.url}
@@ -28,7 +28,9 @@
   <div class="font-bold">{formatBytes(record.size)}</div>
   <div class="font-bold">{record.storage_key}</div>
   <div class="flex justify-end gap-2">
-    <button class="studio-button p-2" type="button" onclick={() => onCopy(record.url)} aria-label="copy"><Copy class="size-4" /></button>
+    <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.url)} aria-label={t(language, 'common.copyUrl')}>URL</button>
+    <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.markdown)} aria-label={t(language, 'common.copyMarkdown')}>MD</button>
+    <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.bbcode)} aria-label={t(language, 'common.copyBBCode')}>BB</button>
     <a class="studio-button p-2" href={record.url} target="_blank" rel="noreferrer" aria-label={t(language, 'common.openPreview', { title: record.uid })}><ExternalLink class="size-4" /></a>
     {#if canDelete && onDelete}
       <button class="studio-button p-2" data-tone="danger" type="button" onclick={onDelete} aria-label={t(language, 'history.delete')}><Trash2 class="size-4" /></button>

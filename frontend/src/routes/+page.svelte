@@ -250,7 +250,7 @@
       onRefresh={() => loadRuntime(false)}
     />
     <div class="studio-panel p-4 rotate-[-0.35deg]">
-      <h2 class="border-b-2 ink-line pb-2 text-xl font-black">{t(preferences.language, 'upload.recentTitle')}</h2>
+      <h2 class="border-b-2 ink-line pb-2 text-xl font-black">Upload queue</h2>
       {#if activeTasks.length}
         <div class="mt-3 grid gap-3">
           {#each activeTasks as task (task.id)}
@@ -261,16 +261,9 @@
             </div>
           {/each}
         </div>
+      {:else}
+        <p class="mt-3 text-sm text-[hsl(var(--ink-muted))]">No active uploads.</p>
       {/if}
-      {#if !activeTasks.length && !recentUploads.length}
-        <p class="mt-3 text-sm text-[hsl(var(--ink-muted))]">{t(preferences.language, 'upload.noRecent')}</p>
-      {/if}
-      {#each recentUploads.slice(0, 4) as record (record.uid)}
-        <div class="mt-3 border-b-2 border-dashed border-[hsl(var(--ink)/0.22)] pb-3 text-sm">
-          <button class="font-black hover:marker-highlight" type="button" onclick={() => copy(record.url)}>{record.original_filename || record.uid}</button>
-          <p class="truncate text-xs text-[hsl(var(--ink-muted))]">{record.url}</p>
-        </div>
-      {/each}
     </div>
   </aside>
 </div>
@@ -284,7 +277,7 @@
       </div>
     </div>
     <div class="overflow-x-auto">
-      <div class="min-w-[720px]">
+      <div class="min-w-[820px]">
         {#each recentUploads as record (record.uid)}
           <ImageDataRow language={preferences.language} {record} onCopy={copy} />
         {/each}
