@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/Card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { UploadHistoryLightbox } from "@/components/shared/UploadHistoryLightbox";
 import { ImgStyleImageCard } from "@/components/shared/ImgStyleImageCard";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
@@ -196,60 +198,63 @@ export function ImageTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-xl font-bold">{t(lang, "admin.imagesTitle")}</h1>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={viewMode === "grid" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("grid")}
-            className="cursor-pointer"
-          >
-            <LayoutGrid className="h-4 w-4" />
-            <span className="hidden sm:inline">{t(lang, "admin.imagesGridView")}</span>
-          </Button>
-          <Button
-            variant={viewMode === "list" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("list")}
-            className="cursor-pointer"
-          >
-            <List className="h-4 w-4" />
-            <span className="hidden sm:inline">{t(lang, "admin.imagesListView")}</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder={t(lang, "admin.imagesSearch")}
-            className="pl-8 h-8 text-sm"
-          />
-        </div>
-        <Button variant="outline" size="sm" onClick={handleSelectAll} className="cursor-pointer">
-          {selectedUids.size === images.length && images.length > 0 ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-          {selectedUids.size === images.length ? t(lang, "admin.imagesDeselectAll") : t(lang, "admin.imagesSelectAll")}
-        </Button>
-        {selectedUids.size > 0 && (
-          <Button variant="destructive" size="sm" onClick={handleBatchDelete} disabled={deleting} className="cursor-pointer">
-            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            {t(lang, "admin.imagesDelete")} ({selectedUids.size})
-          </Button>
+      <AdminPageHeader
+        eyebrow={t(lang, "admin.sidebarImages")}
+        title={t(lang, "admin.imagesTitle")}
+        description={t(lang, "admin.imagesDescription")}
+        actions={(
+          <>
+            <Button
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("grid")}
+              className="cursor-pointer"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline">{t(lang, "admin.imagesGridView")}</span>
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("list")}
+              className="cursor-pointer"
+            >
+              <List className="h-4 w-4" />
+              <span className="hidden sm:inline">{t(lang, "admin.imagesListView")}</span>
+            </Button>
+          </>
         )}
-      </div>
+      />
 
-      {/* Info */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span>{t(lang, "admin.imagesTotal", { total })}</span>
-        {selectedUids.size > 0 && (
-          <span>· {t(lang, "admin.imagesSelected", { count: selectedUids.size })}</span>
-        )}
-      </div>
+      <Card className="p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder={t(lang, "admin.imagesSearch")}
+              className="pl-8 h-8 text-sm"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={handleSelectAll} className="cursor-pointer">
+            {selectedUids.size === images.length && images.length > 0 ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+            {selectedUids.size === images.length ? t(lang, "admin.imagesDeselectAll") : t(lang, "admin.imagesSelectAll")}
+          </Button>
+          {selectedUids.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={handleBatchDelete} disabled={deleting} className="cursor-pointer">
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              {t(lang, "admin.imagesDelete")} ({selectedUids.size})
+            </Button>
+          )}
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <span>{t(lang, "admin.imagesTotal", { total })}</span>
+          {selectedUids.size > 0 && (
+            <span>· {t(lang, "admin.imagesSelected", { count: selectedUids.size })}</span>
+          )}
+        </div>
+      </Card>
 
       {/* Content */}
       {loading ? (
@@ -257,10 +262,10 @@ export function ImageTable() {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : error ? (
-        <div className="flex items-center gap-2 text-destructive" role="alert">
-          <AlertCircle className="h-5 w-5" />
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {images.map((img) => (

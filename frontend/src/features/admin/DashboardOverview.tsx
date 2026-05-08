@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { useAdminStatus } from "./admin-status-context";
 import { SystemStatusPanel } from "./SystemStatusPanel";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { adminGetStatus, adminGetSystemSettings } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { formatBytes } from "@/lib/utils";
@@ -50,10 +52,10 @@ export function DashboardOverview() {
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 text-destructive" role="alert">
-        <AlertCircle className="h-5 w-5" />
-        {error}
-      </div>
+      <Alert variant="destructive">
+        <AlertCircle />
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
     );
   }
 
@@ -68,7 +70,11 @@ export function DashboardOverview() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">{t(lang, "admin.statusTitle")}</h1>
+      <AdminPageHeader
+        eyebrow={t(lang, "admin.sidebarStatus")}
+        title={t(lang, "admin.statusTitle")}
+        description={t(lang, "admin.statusDescription")}
+      />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((s) => (
           <Card key={s.label}>

@@ -22,6 +22,7 @@ import {
 import { t } from "@/lib/i18n";
 import { formatBytes } from "@/lib/utils";
 import { DEFAULT_RUNTIME_SETTINGS, normalizeRuntimeSettings } from "./runtime-settings";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import type { AdminAbuseIPRankItem, AdminAbuseOverview, AdminIPBan, RuntimeSettings } from "@/types";
@@ -181,27 +182,27 @@ export function SecurityAbusePageClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(lang, "admin.sidebarSecurity")}</p>
-          <h1 className="text-2xl font-bold tracking-tight">{t(lang, "admin.abuseTitle")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t(lang, "admin.abuseDescription")}</p>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {t(lang, "admin.abuseFrom")}
-            <Input type="datetime-local" value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
-          </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {t(lang, "admin.abuseTo")}
-            <Input type="datetime-local" value={toInput} onChange={(event) => setToInput(event.target.value)} />
-          </label>
-          <Button onClick={loadData} disabled={loading} className="cursor-pointer">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {t(lang, "common.refresh")}
-          </Button>
-        </div>
-      </div>
+      <AdminPageHeader
+        eyebrow={t(lang, "admin.sidebarSecurity")}
+        title={t(lang, "admin.abuseTitle")}
+        description={t(lang, "admin.abuseDescription")}
+        actions={(
+          <>
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              {t(lang, "admin.abuseFrom")}
+              <Input type="datetime-local" value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
+            </label>
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              {t(lang, "admin.abuseTo")}
+              <Input type="datetime-local" value={toInput} onChange={(event) => setToInput(event.target.value)} />
+            </label>
+            <Button onClick={loadData} disabled={loading} className="cursor-pointer">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {t(lang, "common.refresh")}
+            </Button>
+          </>
+        )}
+      />
 
       {error && (
         <Alert variant="destructive">

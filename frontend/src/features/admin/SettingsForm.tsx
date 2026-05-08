@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
@@ -10,6 +11,7 @@ import { Separator } from "@/components/ui/Separator";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { AnnouncementManager } from "./AnnouncementManager";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { DEFAULT_RUNTIME_SETTINGS, normalizeRuntimeSettings } from "./runtime-settings";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
@@ -244,10 +246,10 @@ export function SettingsForm() {
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 text-destructive" role="alert">
-        <AlertCircle className="h-5 w-5" />
-        {error}
-      </div>
+      <Alert variant="destructive">
+        <AlertCircle />
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
     );
   }
 
@@ -257,9 +259,11 @@ export function SettingsForm() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-xl font-bold">{t(lang, "admin.settingsTitle")}</h1>
-      </div>
+      <AdminPageHeader
+        eyebrow={t(lang, "admin.sidebarSettings")}
+        title={t(lang, "admin.settingsTitle")}
+        description={t(lang, "admin.settingsDescription")}
+      />
 
       <Tabs defaultValue="storage" className="space-y-4">
         <TabsList>

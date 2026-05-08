@@ -120,6 +120,7 @@ const en: TranslationMap = {
 
   // Admin status
   "admin.statusTitle": "System Status",
+  "admin.statusDescription": "Monitor image volume, storage usage, upload activity, and runtime health.",
   "admin.totalImages": "Total Images",
   "admin.totalSize": "Total Size",
   "admin.todayUploads": "Today's Uploads",
@@ -127,6 +128,7 @@ const en: TranslationMap = {
 
   // Admin images
   "admin.imagesTitle": "Image Management",
+  "admin.imagesDescription": "Search, preview, delete, and moderate uploaded image records.",
   "admin.imagesSearch": "Search by UID, Token, IP, MD5, or Storage Key...",
   "admin.imagesTotal": "{total} images",
   "admin.imagesSelected": "{count} selected",
@@ -180,6 +182,7 @@ const en: TranslationMap = {
 
   // Admin settings
   "admin.settingsTitle": "Storage Settings",
+  "admin.settingsDescription": "Manage storage instances, runtime behavior, maintenance mode, and public announcements.",
   "admin.settingsNew": "New Instance",
   "admin.settingsName": "Name",
   "admin.settingsBackend": "Backend",
@@ -388,6 +391,7 @@ const zh: TranslationMap = {
 
   // Admin status
   "admin.statusTitle": "系统状态",
+  "admin.statusDescription": "监控图片规模、存储用量、上传活动和运行健康状态。",
   "admin.totalImages": "图片总数",
   "admin.totalSize": "总存储大小",
   "admin.todayUploads": "今日上传",
@@ -395,6 +399,7 @@ const zh: TranslationMap = {
 
   // Admin images
   "admin.imagesTitle": "图片管理",
+  "admin.imagesDescription": "搜索、预览、删除和治理已上传的图片记录。",
   "admin.imagesSearch": "按 UID、Token、IP、MD5 或存储标识搜索...",
   "admin.imagesTotal": "共 {total} 张",
   "admin.imagesSelected": "已选 {count} 张",
@@ -448,6 +453,7 @@ const zh: TranslationMap = {
 
   // Admin settings
   "admin.settingsTitle": "存储设置",
+  "admin.settingsDescription": "管理存储实例、运行行为、维护模式和前台公告。",
   "admin.settingsNew": "新建实例",
   "admin.settingsName": "名称",
   "admin.settingsBackend": "存储后端",
