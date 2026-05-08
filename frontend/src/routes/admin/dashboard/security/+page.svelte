@@ -15,9 +15,14 @@
   let durationHours = $state(24);
   let activeIp = $state<string | null>(null);
 
+  const topIps = $derived(Array.isArray(overview?.top_ips) ? overview.top_ips : []);
+  const safeBans = $derived(Array.isArray(bans) ? bans : []);
+
   async function load() {
     if (!preferences.adminToken) return;
-    [overview, bans] = await Promise.all([adminGetAbuseOverview(preferences.adminToken), adminGetIPBans(preferences.adminToken)]);
+    const [nextOverview, nextBans] = await Promise.all([adminGetAbuseOverview(preferences.adminToken), adminGetIPBans(preferences.adminToken)]);
+    overview = nextOverview ? { ...nextOverview, top_ips: Array.isArray(nextOverview.top_ips) ? nextOverview.top_ips : [] } : null;
+    bans = Array.isArray(nextBans) ? nextBans : [];
   }
 
   async function banIp(ip: string) {
@@ -70,7 +75,7 @@
           <h2 class="text-2xl font-black">Top IPs</h2>
           <span class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">Click IP for detail</span>
         </div>
-        {#each overview.top_ips as item (item.ip_address)}
+        {#each topIps as item (item.ip_address)}
           <div class="studio-table-row grid gap-3 py-3 text-sm md:grid-cols-[1fr_80px_110px_110px] md:items-center">
             <button class="text-left font-black hover:marker-highlight" type="button" onclick={() => (activeIp = item.ip_address)}>{item.ip_address_masked}</button>
             <span>{item.upload_count}</span>
@@ -86,10 +91,10 @@
           <h2 class="text-2xl font-black">Banned IPs</h2>
           <span class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">Click IP for detail</span>
         </div>
-        {#if bans.length === 0}
+        {#if safeBans.length === 0}
           <div class="grid min-h-32 place-items-center border-[3px] border-dashed ink-line"><p class="flex items-center gap-2 font-black"><ShieldCheck class="size-5" />No active bans</p></div>
         {/if}
-        {#each bans as ban (ban.id)}
+        {#each safeBans as ban (ban.id)}
           <div class="studio-table-row grid gap-3 py-3 text-sm md:grid-cols-[1fr_auto] md:items-start">
             <div><button class="font-black hover:marker-highlight" type="button" onclick={() => (activeIp = ban.ip_address)}>{ban.ip_address_masked}</button><p class="text-[hsl(var(--ink-muted))]">{ban.reason}</p><p class="text-xs text-[hsl(var(--ink-muted))]">{ban.expires_at ?? 'never expires'}</p></div>
             <div class="flex gap-2">
