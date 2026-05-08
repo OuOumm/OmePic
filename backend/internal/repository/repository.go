@@ -32,9 +32,11 @@ func New(databasePath string) (*Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
 	repository := &Repository{db: db}
-	if _, err := db.Exec(`PRAGMA foreign_keys = ON;`); err != nil {
+	if err := repository.configureSQLite(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -47,6 +49,23 @@ func (r *Repository) Close() error {
 
 func (r *Repository) Ping(ctx context.Context) error {
 	return r.db.PingContext(ctx)
+}
+
+func (r *Repository) configureSQLite() error {
+	pragmas := []string{
+		`PRAGMA journal_mode = WAL;`,
+		`PRAGMA synchronous = NORMAL;`,
+		`PRAGMA busy_timeout = 5000;`,
+		`PRAGMA foreign_keys = ON;`,
+		`PRAGMA temp_store = MEMORY;`,
+		`PRAGMA mmap_size = 268435456;`,
+	}
+	for _, pragma := range pragmas {
+		if _, err := r.db.Exec(pragma); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Repository) Migrate(ctx context.Context) error {
@@ -117,6 +136,9 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_images_file_path ON images(file_path);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_storage_key ON images(storage_key);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_ip_address ON images(ip_address);`,
+		`CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_images_created_ip ON images(created_at, ip_address);`,
+		`CREATE INDEX IF NOT EXISTS idx_images_created_token ON images(created_at, token);`,
 		`CREATE INDEX IF NOT EXISTS idx_storage_configs_default ON storage_configs(is_default);`,
 		`CREATE INDEX IF NOT EXISTS idx_announcements_public ON announcements(status, starts_at, ends_at, sort_order, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_hash ON ip_bans(ip_hash);`,
@@ -599,6 +621,26 @@ func (r *Repository) FindActiveIPBanByIP(ctx context.Context, ipAddress string) 
 	return r.FindActiveIPBanByHash(ctx, ipHashValue(ipAddress))
 }
 
+func (r *Repository) ActiveIPBansByHash(ctx context.Context) (map[string]model.IPBan, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, ip_hash, ip_address, ip_address_masked, reason, expires_at, created_at, updated_at FROM ip_bans WHERE expires_at IS NULL OR expires_at = '' OR expires_at > ? ORDER BY id DESC`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	bans, err := scanIPBans(rows)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]model.IPBan, len(bans))
+	for _, ban := range bans {
+		if _, exists := result[ban.IPHash]; !exists {
+			result[ban.IPHash] = ban
+		}
+	}
+	return result, nil
+}
+
 func (r *Repository) CountActiveIPBans(ctx context.Context) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.countByQuery(ctx, `SELECT COUNT(1) FROM ip_bans WHERE expires_at IS NULL OR expires_at = '' OR expires_at > ?`, now)
@@ -617,6 +659,10 @@ func (r *Repository) TopAbuseIPs(ctx context.Context, from time.Time, to time.Ti
 	}
 	if limit > 50 {
 		limit = 50
+	}
+	activeBans, err := r.ActiveIPBansByHash(ctx)
+	if err != nil {
+		return nil, err
 	}
 	rows, err := r.db.QueryContext(
 		ctx,
@@ -643,11 +689,9 @@ func (r *Repository) TopAbuseIPs(ctx context.Context, from time.Time, to time.Ti
 		}
 		item.IPAddressMasked = maskIPValue(item.IPAddress)
 		item.LatestUploadAt = parseTime(latest)
-		if ban, err := r.FindActiveIPBanByIP(ctx, item.IPAddress); err == nil {
+		if ban, exists := activeBans[ipHashValue(item.IPAddress)]; exists {
 			item.IsBanned = true
 			item.BanID = ban.ID
-		} else if !IsNotFound(err) {
-			return nil, err
 		}
 		items = append(items, item)
 	}
