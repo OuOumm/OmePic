@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { AlertCircle, Ban, Check, Clock, HardDrive, Loader2, RefreshCw, ShieldOff, Trash2, Upload } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -180,10 +181,11 @@ export function SecurityAbusePageClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-xl font-bold">{t(lang, "admin.abuseTitle")}</h1>
-          <p className="text-sm text-muted-foreground">{t(lang, "admin.abuseDescription")}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(lang, "admin.sidebarSecurity")}</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t(lang, "admin.abuseTitle")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t(lang, "admin.abuseDescription")}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="grid gap-1 text-xs text-muted-foreground">
@@ -202,76 +204,89 @@ export function SecurityAbusePageClient() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(lang, "admin.abuseRateLimitTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">{t(lang, "admin.settingsRateLimitDescription")}</p>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="security-rate-limit-window">{t(lang, "admin.settingsRateLimitWindow")}</Label>
-              <Input
-                id="security-rate-limit-window"
-                type="number"
-                min={0}
-                value={runtimeForm.rate_limit_window_minutes}
-                onChange={(event) => updateRuntimeField("rate_limit_window_minutes", Number(event.target.value))}
-                className="h-8"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="security-rate-limit-requests">{t(lang, "admin.settingsRateLimitRequests")}</Label>
-              <Input
-                id="security-rate-limit-requests"
-                type="number"
-                min={0}
-                value={runtimeForm.rate_limit_max_requests}
-                onChange={(event) => updateRuntimeField("rate_limit_max_requests", Number(event.target.value))}
-                className="h-8"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="security-upload-rate-limit-window">{t(lang, "admin.settingsUploadRateLimitWindow")}</Label>
-              <Input
-                id="security-upload-rate-limit-window"
-                type="number"
-                min={0}
-                value={runtimeForm.upload_rate_limit_window_minutes}
-                onChange={(event) => updateRuntimeField("upload_rate_limit_window_minutes", Number(event.target.value))}
-                className="h-8"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="security-upload-rate-limit-requests">{t(lang, "admin.settingsUploadRateLimitRequests")}</Label>
-              <Input
-                id="security-upload-rate-limit-requests"
-                type="number"
-                min={0}
-                value={runtimeForm.upload_rate_limit_max_requests}
-                onChange={(event) => updateRuntimeField("upload_rate_limit_max_requests", Number(event.target.value))}
-                className="h-8"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">{t(lang, "admin.settingsRateLimitHint")}</p>
-          <Button size="sm" onClick={handleSaveRateLimits} disabled={runtimeSaving} className="cursor-pointer gap-1">
-            {runtimeSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            {t(lang, "common.save")}
-          </Button>
-        </CardContent>
-      </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard icon={Upload} label={t(lang, "admin.abuseUploadCount")} value={(overview?.upload_count ?? 0).toLocaleString()} />
         <StatCard icon={HardDrive} label={t(lang, "admin.abuseUploadSize")} value={formatBytes(overview?.upload_size ?? 0)} />
         <StatCard icon={ShieldOff} label={t(lang, "admin.abuseActiveBans")} value={(overview?.active_ip_ban_count ?? 0).toLocaleString()} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t(lang, "admin.abuseRateLimitTitle")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t(lang, "admin.settingsRateLimitDescription")}</p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="security-rate-limit-window">{t(lang, "admin.settingsRateLimitWindow")}</Label>
+                <Input
+                  id="security-rate-limit-window"
+                  type="number"
+                  min={0}
+                  value={runtimeForm.rate_limit_window_minutes}
+                  onChange={(event) => updateRuntimeField("rate_limit_window_minutes", Number(event.target.value))}
+                  className="h-8"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="security-rate-limit-requests">{t(lang, "admin.settingsRateLimitRequests")}</Label>
+                <Input
+                  id="security-rate-limit-requests"
+                  type="number"
+                  min={0}
+                  value={runtimeForm.rate_limit_max_requests}
+                  onChange={(event) => updateRuntimeField("rate_limit_max_requests", Number(event.target.value))}
+                  className="h-8"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="security-upload-rate-limit-window">{t(lang, "admin.settingsUploadRateLimitWindow")}</Label>
+                <Input
+                  id="security-upload-rate-limit-window"
+                  type="number"
+                  min={0}
+                  value={runtimeForm.upload_rate_limit_window_minutes}
+                  onChange={(event) => updateRuntimeField("upload_rate_limit_window_minutes", Number(event.target.value))}
+                  className="h-8"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="security-upload-rate-limit-requests">{t(lang, "admin.settingsUploadRateLimitRequests")}</Label>
+                <Input
+                  id="security-upload-rate-limit-requests"
+                  type="number"
+                  min={0}
+                  value={runtimeForm.upload_rate_limit_max_requests}
+                  onChange={(event) => updateRuntimeField("upload_rate_limit_max_requests", Number(event.target.value))}
+                  className="h-8"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t(lang, "admin.settingsRateLimitHint")}</p>
+            <Button size="sm" onClick={handleSaveRateLimits} disabled={runtimeSaving} className="cursor-pointer gap-1">
+              {runtimeSaving ? <Loader2 /> : <Check />}
+              {t(lang, "common.save")}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <BansCard
+          activeBanIds={activeBanIds}
+          bans={bans}
+          busyKey={busyKey}
+          displayIP={displayIP}
+          language={lang}
+          onDeleteImages={handleDeleteBanImages}
+          onToggleIP={toggleIP}
+          onUnban={handleUnban}
+        />
       </div>
 
       <Card>
@@ -354,58 +369,77 @@ export function SecurityAbusePageClient() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(lang, "admin.abuseBansTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t(lang, "image.ip")}</TableHead>
-                <TableHead>{t(lang, "admin.abuseReason")}</TableHead>
-                <TableHead>{t(lang, "admin.abuseCreatedAt")}</TableHead>
-                <TableHead>{t(lang, "admin.abuseExpiresAt")}</TableHead>
-                <TableHead>{t(lang, "admin.abuseStatus")}</TableHead>
-                <TableHead>{t(lang, "admin.imagesActions")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(Array.isArray(bans) ? bans : []).map((ban) => {
-                const active = activeBanIds.has(ban.id);
-                return (
-                  <TableRow key={ban.id}>
-                    <TableCell className="font-mono text-xs">
-                      <button type="button" onClick={() => toggleIP(ban.ip_address)} className="rounded px-1 py-0.5 hover:bg-muted">
-                        {displayIP(ban.ip_address, ban.ip_address_masked)}
-                      </button>
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate text-xs">{ban.reason}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">{formatDate(ban.created_at)}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">{ban.expires_at ? formatDate(ban.expires_at) : t(lang, "admin.abusePermanent")}</TableCell>
-                    <TableCell>
-                      <Badge variant={active ? "destructive" : "secondary"}>{active ? t(lang, "admin.abuseActive") : t(lang, "admin.abuseExpired")}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleUnban(ban)} disabled={busyKey === `unban:${ban.id}`} className="h-7 cursor-pointer text-xs">
-                          {busyKey === `unban:${ban.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldOff className="h-3 w-3" />}
-                          {t(lang, "admin.abuseUnban")}
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleDeleteBanImages(ban)} disabled={busyKey === `delete:${ban.id}`} className="h-7 cursor-pointer text-xs">
-                          {busyKey === `delete:${ban.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-                          {t(lang, "admin.abuseDeleteIPImages")}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
+  );
+}
+
+function BansCard({
+  activeBanIds,
+  bans,
+  busyKey,
+  displayIP,
+  language,
+  onDeleteImages,
+  onToggleIP,
+  onUnban,
+}: {
+  activeBanIds: Set<number>;
+  bans: AdminIPBan[];
+  busyKey: string | null;
+  displayIP: (ip: string, masked: string) => string;
+  language: "en" | "zh";
+  onDeleteImages: (ban: AdminIPBan) => void;
+  onToggleIP: (ip: string) => void;
+  onUnban: (ban: AdminIPBan) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(language, "admin.abuseBansTitle")}</CardTitle>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t(language, "image.ip")}</TableHead>
+              <TableHead>{t(language, "admin.abuseReason")}</TableHead>
+              <TableHead>{t(language, "admin.abuseStatus")}</TableHead>
+              <TableHead>{t(language, "admin.imagesActions")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(Array.isArray(bans) ? bans : []).map((ban) => {
+              const active = activeBanIds.has(ban.id);
+              return (
+                <TableRow key={ban.id}>
+                  <TableCell className="font-mono text-xs">
+                    <button type="button" onClick={() => onToggleIP(ban.ip_address)} className="rounded px-1 py-0.5 hover:bg-muted">
+                      {displayIP(ban.ip_address, ban.ip_address_masked)}
+                    </button>
+                  </TableCell>
+                  <TableCell className="max-w-40 truncate text-xs">{ban.reason}</TableCell>
+                  <TableCell>
+                    <Badge variant={active ? "destructive" : "secondary"}>{active ? t(language, "admin.abuseActive") : t(language, "admin.abuseExpired")}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => onUnban(ban)} disabled={busyKey === `unban:${ban.id}`} className="h-7 cursor-pointer text-xs">
+                        {busyKey === `unban:${ban.id}` ? <Loader2 /> : <ShieldOff />}
+                        {t(language, "admin.abuseUnban")}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => onDeleteImages(ban)} disabled={busyKey === `delete:${ban.id}`} className="h-7 cursor-pointer text-xs">
+                        {busyKey === `delete:${ban.id}` ? <Loader2 /> : <Trash2 />}
+                        {t(language, "admin.abuseDeleteIPImages")}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 

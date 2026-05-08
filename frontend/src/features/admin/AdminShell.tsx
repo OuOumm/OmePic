@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Separator } from "@/components/ui/Separator";
 import { LoginForm } from "./LoginForm";
@@ -10,13 +10,17 @@ import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { adminGetStatus } from "@/lib/api";
 import { t } from "@/lib/i18n";
+import { cn, formatBytes } from "@/lib/utils";
 import {
-  LayoutDashboard,
+  Activity,
+  ArrowLeft,
   Image,
-  ShieldAlert,
-  Settings,
-  LogOut,
+  LayoutDashboard,
   Loader2,
+  LogOut,
+  Menu,
+  Settings,
+  ShieldAlert,
 } from "lucide-react";
 import type { AdminStatus } from "@/types";
 
@@ -27,9 +31,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const clearToken = useAdminSessionStore((state) => state.clearToken);
   const hasHydrated = useAdminSessionStore((state) => state.hasHydrated);
   const language = useUiPreferencesStore((state) => state.language);
-
   const [validating, setValidating] = useState(!!token);
   const [verifiedStatus, setVerifiedStatus] = useState<AdminStatus | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (hasHydrated && token) {
@@ -46,97 +50,217 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     }
   }, [hasHydrated, token, clearToken]);
 
+  const lang = language;
+  const sidebarItems = useMemo(
+    () => [
+      {
+        href: "/admin/dashboard",
+        label: t(lang, "admin.sidebarStatus"),
+        icon: LayoutDashboard,
+      },
+      {
+        href: "/admin/dashboard/images",
+        label: t(lang, "admin.sidebarImages"),
+        icon: Image,
+      },
+      {
+        href: "/admin/dashboard/security",
+        label: t(lang, "admin.sidebarSecurity"),
+        icon: ShieldAlert,
+      },
+      {
+        href: "/admin/dashboard/settings",
+        label: t(lang, "admin.sidebarSettings"),
+        icon: Settings,
+      },
+    ],
+    [lang]
+  );
+
+  const currentItem = sidebarItems.find((item) => pathname === item.href) ??
+    sidebarItems.find((item) => item.href !== "/admin/dashboard" && pathname.startsWith(item.href)) ??
+    sidebarItems[0];
+
   const handleLogout = () => {
     clearToken();
     router.push("/admin/dashboard");
   };
 
-  const lang = language;
+  const handleNavigate = (href: string) => {
+    router.push(href);
+    setMobileNavOpen(false);
+  };
 
-  // Not hydrated yet
   if (!hasHydrated) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  // No token, show login
   if (!token) {
-    return <LoginForm />;
+    return (
+      <div className="min-h-screen bg-background px-4 py-10">
+        <LoginForm />
+      </div>
+    );
   }
 
-  // Validating token
   if (validating) {
     return (
-      <div className="flex items-center justify-center py-20 gap-2">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      <div className="flex min-h-screen items-center justify-center gap-2 bg-background">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
         <span className="text-sm text-muted-foreground">{t(lang, "common.loading")}</span>
       </div>
     );
   }
 
-  const sidebarItems = [
-    {
-      href: "/admin/dashboard",
-      label: t(lang, "admin.sidebarStatus"),
-      icon: LayoutDashboard,
-    },
-    {
-      href: "/admin/dashboard/images",
-      label: t(lang, "admin.sidebarImages"),
-      icon: Image,
-    },
-    {
-      href: "/admin/dashboard/security",
-      label: t(lang, "admin.sidebarSecurity"),
-      icon: ShieldAlert,
-    },
-    {
-      href: "/admin/dashboard/settings",
-      label: t(lang, "admin.sidebarSettings"),
-      icon: Settings,
-    },
-  ];
-
   return (
     <AdminStatusProvider verifiedStatus={verifiedStatus}>
-      <div className="flex gap-6" id="main-content">
-        {/* Sidebar */}
-        <aside className="w-48 shrink-0 hidden md:block">
-          <nav className="sticky top-20 space-y-1">
-            {sidebarItems.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Button
-                  key={item.href}
-                  variant={isActive ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => router.push(item.href)}
-                  className="w-full justify-start cursor-pointer"
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Button>
-              );
-            })}
-            <Separator className="my-2" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="w-full justify-start cursor-pointer text-muted-foreground hover:text-destructive"
-            >
-              <LogOut className="h-4 w-4" />
-              {t(lang, "admin.logout")}
-            </Button>
-          </nav>
-        </aside>
+      <div className="min-h-screen bg-muted/20" id="main-content">
+        <div className="flex min-h-screen">
+          <aside className="hidden w-64 shrink-0 border-r bg-background/95 lg:block">
+            <AdminSidebar
+              currentPath={pathname}
+              items={sidebarItems}
+              language={lang}
+              status={verifiedStatus}
+              onLogout={handleLogout}
+              onNavigate={handleNavigate}
+            />
+          </aside>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0">{children}</div>
+          {mobileNavOpen && (
+            <div className="fixed inset-0 z-50 lg:hidden">
+              <button
+                type="button"
+                aria-label={t(lang, "admin.closeNavigation")}
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                onClick={() => setMobileNavOpen(false)}
+              />
+              <aside className="relative h-full w-72 border-r bg-background shadow-lg">
+                <AdminSidebar
+                  currentPath={pathname}
+                  items={sidebarItems}
+                  language={lang}
+                  status={verifiedStatus}
+                  onLogout={handleLogout}
+                  onNavigate={handleNavigate}
+                />
+              </aside>
+            </div>
+          )}
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+              <div className="flex h-14 items-center justify-between gap-3 px-4 lg:px-6">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setMobileNavOpen(true)}
+                    className="cursor-pointer lg:hidden"
+                    aria-label={t(lang, "admin.openNavigation")}
+                  >
+                    <Menu />
+                  </Button>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{currentItem.label}</p>
+                    <p className="hidden text-xs text-muted-foreground sm:block">{t(lang, "admin.consoleSubtitle")}</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => router.push("/")} className="cursor-pointer">
+                  <ArrowLeft />
+                  <span className="hidden sm:inline">{t(lang, "admin.backToSite")}</span>
+                </Button>
+              </div>
+            </header>
+
+            <main className="min-w-0 flex-1 px-4 py-5 lg:px-6 lg:py-6">
+              <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">{children}</div>
+            </main>
+          </div>
+        </div>
       </div>
     </AdminStatusProvider>
+  );
+}
+
+type AdminSidebarProps = {
+  currentPath: string;
+  items: Array<{ href: string; label: string; icon: typeof LayoutDashboard }>;
+  language: "en" | "zh";
+  status: AdminStatus | null;
+  onLogout: () => void;
+  onNavigate: (href: string) => void;
+};
+
+function AdminSidebar({ currentPath, items, language, status, onLogout, onNavigate }: AdminSidebarProps) {
+  return (
+    <div className="flex h-full min-h-screen flex-col gap-4 p-4">
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <ShieldAlert className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-semibold">OmePic Admin</p>
+            <p className="truncate text-xs text-muted-foreground">{t(language, "admin.consoleSubtitle")}</p>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex flex-col gap-1" aria-label={t(language, "admin.navigation")}> 
+        {items.map((item) => {
+          const isActive = currentPath === item.href || (item.href !== "/admin/dashboard" && currentPath.startsWith(item.href));
+          return (
+            <Button
+              key={item.href}
+              variant={isActive ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => onNavigate(item.href)}
+              className={cn("h-9 justify-start cursor-pointer", isActive && "font-semibold")}
+            >
+              <item.icon />
+              {item.label}
+            </Button>
+          );
+        })}
+      </nav>
+
+      <div className="mt-auto flex flex-col gap-4">
+        <div className="rounded-xl border bg-card p-3">
+          <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Activity className="size-3.5" />
+            {t(language, "admin.systemSnapshot")}
+          </div>
+          <div className="grid gap-2 text-xs">
+            <SnapshotRow label={t(language, "admin.totalImages")} value={(status?.total_images ?? 0).toLocaleString()} />
+            <SnapshotRow label={t(language, "admin.totalSize")} value={formatBytes(status?.total_storage_size ?? 0)} />
+            <SnapshotRow label={t(language, "admin.todayUploads")} value={(status?.today_uploads ?? 0).toLocaleString()} />
+          </div>
+        </div>
+        <Separator />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onLogout}
+          className="w-full justify-start cursor-pointer text-muted-foreground hover:text-destructive"
+        >
+          <LogOut />
+          {t(language, "admin.logout")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SnapshotRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="truncate text-muted-foreground">{label}</span>
+      <span className="shrink-0 font-mono font-medium">{value}</span>
+    </div>
   );
 }

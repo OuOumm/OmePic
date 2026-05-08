@@ -111,6 +111,12 @@ const en: TranslationMap = {
   "admin.sidebarImages": "Images",
   "admin.sidebarSecurity": "Security",
   "admin.sidebarSettings": "Settings",
+  "admin.consoleSubtitle": "Image Hosting Console",
+  "admin.navigation": "Admin navigation",
+  "admin.openNavigation": "Open navigation",
+  "admin.closeNavigation": "Close navigation",
+  "admin.backToSite": "Back to site",
+  "admin.systemSnapshot": "System Snapshot",
 
   // Admin status
   "admin.statusTitle": "System Status",
@@ -373,6 +379,12 @@ const zh: TranslationMap = {
   "admin.sidebarImages": "图片",
   "admin.sidebarSecurity": "安全",
   "admin.sidebarSettings": "设置",
+  "admin.consoleSubtitle": "图床管理控制台",
+  "admin.navigation": "后台导航",
+  "admin.openNavigation": "打开导航",
+  "admin.closeNavigation": "关闭导航",
+  "admin.backToSite": "返回前台",
+  "admin.systemSnapshot": "系统快照",
 
   // Admin status
   "admin.statusTitle": "系统状态",
