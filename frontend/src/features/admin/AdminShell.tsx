@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/DropdownMenu";
 import { Separator } from "@/components/ui/Separator";
 import { LoginForm } from "./LoginForm";
 import { AdminStatusProvider } from "./admin-status-context";
@@ -16,13 +22,14 @@ import {
   ArrowLeft,
   Image,
   LayoutDashboard,
+  Languages,
   Loader2,
   LogOut,
   Menu,
   Settings,
   ShieldAlert,
 } from "lucide-react";
-import type { AdminStatus } from "@/types";
+import type { AdminStatus, Language } from "@/types";
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -31,6 +38,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const clearToken = useAdminSessionStore((state) => state.clearToken);
   const hasHydrated = useAdminSessionStore((state) => state.hasHydrated);
   const language = useUiPreferencesStore((state) => state.language);
+  const setLanguage = useUiPreferencesStore((state) => state.setLanguage);
   const [validating, setValidating] = useState(!!token);
   const [verifiedStatus, setVerifiedStatus] = useState<AdminStatus | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -170,10 +178,24 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     <p className="hidden text-xs text-muted-foreground sm:block">{t(lang, "admin.consoleSubtitle")}</p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => router.push("/")} className="cursor-pointer">
-                  <ArrowLeft />
-                  <span className="hidden sm:inline">{t(lang, "admin.backToSite")}</span>
-                </Button>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="cursor-pointer">
+                        <Languages />
+                        <span className="hidden sm:inline">{lang === "zh" ? "中文" : "EN"}</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setLanguage("zh" as Language)}>中文</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setLanguage("en" as Language)}>English</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button variant="outline" size="sm" onClick={() => router.push("/")} className="cursor-pointer">
+                    <ArrowLeft />
+                    <span className="hidden sm:inline">{t(lang, "admin.backToSite")}</span>
+                  </Button>
+                </div>
               </div>
             </header>
 
