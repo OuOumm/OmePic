@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { AlertCircle, Ban, Clock, HardDrive, Loader2, RefreshCw, ShieldOff, Trash2, Upload } from "lucide-react";
+import { AlertCircle, Ban, Check, Clock, HardDrive, Loader2, RefreshCw, ShieldOff, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import {
   adminCreateIPBan,
@@ -14,12 +15,15 @@ import {
   adminDeleteIPBanImages,
   adminGetAbuseOverview,
   adminGetIPBans,
+  adminGetSystemSettings,
+  adminUpdateSystemSettings,
 } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { formatBytes } from "@/lib/utils";
+import { DEFAULT_RUNTIME_SETTINGS, normalizeRuntimeSettings } from "./runtime-settings";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
-import type { AdminAbuseIPRankItem, AdminAbuseOverview, AdminIPBan } from "@/types";
+import type { AdminAbuseIPRankItem, AdminAbuseOverview, AdminIPBan, RuntimeSettings } from "@/types";
 
 const defaultRangeHours = 24;
 
@@ -34,6 +38,8 @@ export function SecurityAbusePageClient() {
   const [toInput, setToInput] = useState(() => toDateTimeLocal(new Date()));
   const [visibleIPs, setVisibleIPs] = useState<Set<string>>(new Set());
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [runtimeForm, setRuntimeForm] = useState<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
+  const [runtimeSaving, setRuntimeSaving] = useState(false);
 
   const lang = language;
 
@@ -44,12 +50,14 @@ export function SecurityAbusePageClient() {
     try {
       const from = fromInput ? new Date(fromInput).toISOString() : undefined;
       const to = toInput ? new Date(toInput).toISOString() : undefined;
-      const [nextOverview, nextBans] = await Promise.all([
+      const [nextOverview, nextBans, settings] = await Promise.all([
         adminGetAbuseOverview(token, from, to),
         adminGetIPBans(token),
+        adminGetSystemSettings(token),
       ]);
       setOverview(normalizeOverview(nextOverview));
       setBans(Array.isArray(nextBans) ? nextBans : []);
+      setRuntimeForm(normalizeRuntimeSettings(settings.runtime));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load security data");
     } finally {
@@ -62,6 +70,24 @@ export function SecurityAbusePageClient() {
   }, [loadData]);
 
   const activeBanIds = useMemo(() => new Set((Array.isArray(bans) ? bans : []).filter(isActiveBan).map((ban) => ban.id)), [bans]);
+
+  const updateRuntimeField = <K extends keyof RuntimeSettings>(field: K, value: RuntimeSettings[K]) => {
+    setRuntimeForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveRateLimits = async () => {
+    if (!token) return;
+    setRuntimeSaving(true);
+    try {
+      const saved = await adminUpdateSystemSettings(token, runtimeForm);
+      setRuntimeForm(normalizeRuntimeSettings(saved.runtime));
+      toast.success(t(lang, "admin.settingsSaved"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(lang, "common.error"));
+    } finally {
+      setRuntimeSaving(false);
+    }
+  };
 
   const toggleIP = (ip: string) => {
     setVisibleIPs((prev) => {
@@ -181,6 +207,66 @@ export function SecurityAbusePageClient() {
           {error}
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t(lang, "admin.abuseRateLimitTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t(lang, "admin.settingsRateLimitDescription")}</p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="security-rate-limit-window">{t(lang, "admin.settingsRateLimitWindow")}</Label>
+              <Input
+                id="security-rate-limit-window"
+                type="number"
+                min={0}
+                value={runtimeForm.rate_limit_window_minutes}
+                onChange={(event) => updateRuntimeField("rate_limit_window_minutes", Number(event.target.value))}
+                className="h-8"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="security-rate-limit-requests">{t(lang, "admin.settingsRateLimitRequests")}</Label>
+              <Input
+                id="security-rate-limit-requests"
+                type="number"
+                min={0}
+                value={runtimeForm.rate_limit_max_requests}
+                onChange={(event) => updateRuntimeField("rate_limit_max_requests", Number(event.target.value))}
+                className="h-8"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="security-upload-rate-limit-window">{t(lang, "admin.settingsUploadRateLimitWindow")}</Label>
+              <Input
+                id="security-upload-rate-limit-window"
+                type="number"
+                min={0}
+                value={runtimeForm.upload_rate_limit_window_minutes}
+                onChange={(event) => updateRuntimeField("upload_rate_limit_window_minutes", Number(event.target.value))}
+                className="h-8"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="security-upload-rate-limit-requests">{t(lang, "admin.settingsUploadRateLimitRequests")}</Label>
+              <Input
+                id="security-upload-rate-limit-requests"
+                type="number"
+                min={0}
+                value={runtimeForm.upload_rate_limit_max_requests}
+                onChange={(event) => updateRuntimeField("upload_rate_limit_max_requests", Number(event.target.value))}
+                className="h-8"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">{t(lang, "admin.settingsRateLimitHint")}</p>
+          <Button size="sm" onClick={handleSaveRateLimits} disabled={runtimeSaving} className="cursor-pointer gap-1">
+            {runtimeSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {t(lang, "common.save")}
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard icon={Upload} label={t(lang, "admin.abuseUploadCount")} value={(overview?.upload_count ?? 0).toLocaleString()} />

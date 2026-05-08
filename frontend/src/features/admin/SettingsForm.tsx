@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/Separator";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { AnnouncementManager } from "./AnnouncementManager";
+import { DEFAULT_RUNTIME_SETTINGS, normalizeRuntimeSettings } from "./runtime-settings";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import {
@@ -37,34 +38,6 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import type { StorageInstance, AdminConfig, RuntimeSettings } from "@/types";
-
-const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
-  public_base_url: "",
-  max_upload_size_mb: 0,
-  allowed_mime_types: [],
-  allow_storage_selection: true,
-  maintenance_mode: false,
-  maintenance_message: "",
-  rate_limit_window_minutes: 1,
-  rate_limit_max_requests: 120,
-  upload_rate_limit_window_minutes: 10,
-  upload_rate_limit_max_requests: 20,
-};
-
-function normalizeRuntimeSettings(settings?: Partial<RuntimeSettings> | null): RuntimeSettings {
-  return {
-    public_base_url: settings?.public_base_url ?? "",
-    max_upload_size_mb: settings?.max_upload_size_mb ?? 0,
-    allowed_mime_types: Array.isArray(settings?.allowed_mime_types) ? settings.allowed_mime_types : [],
-    allow_storage_selection: settings?.allow_storage_selection ?? true,
-    maintenance_mode: settings?.maintenance_mode ?? false,
-    maintenance_message: settings?.maintenance_message ?? "",
-    rate_limit_window_minutes: settings?.rate_limit_window_minutes ?? 1,
-    rate_limit_max_requests: settings?.rate_limit_max_requests ?? 120,
-    upload_rate_limit_window_minutes: settings?.upload_rate_limit_window_minutes ?? 10,
-    upload_rate_limit_max_requests: settings?.upload_rate_limit_max_requests ?? 20,
-  };
-}
 
 function maskSecret(val: string | undefined): string {
   if (!val) return "";
@@ -590,59 +563,6 @@ export function SettingsForm() {
                       placeholder={t(lang, "admin.settingsRuntimeMaintenancePlaceholder")}
                       className="h-8"
                     />
-                  </div>
-                  <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
-                    <div>
-                      <h2 className="font-semibold">{t(lang, "admin.settingsRateLimitTitle")}</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">{t(lang, "admin.settingsRateLimitDescription")}</p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="runtime-rate-limit-window">{t(lang, "admin.settingsRateLimitWindow")}</Label>
-                        <Input
-                          id="runtime-rate-limit-window"
-                          type="number"
-                          min={0}
-                          value={runtimeForm.rate_limit_window_minutes}
-                          onChange={(e) => updateRuntimeField("rate_limit_window_minutes", Number(e.target.value))}
-                          className="h-8"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="runtime-rate-limit-requests">{t(lang, "admin.settingsRateLimitRequests")}</Label>
-                        <Input
-                          id="runtime-rate-limit-requests"
-                          type="number"
-                          min={0}
-                          value={runtimeForm.rate_limit_max_requests}
-                          onChange={(e) => updateRuntimeField("rate_limit_max_requests", Number(e.target.value))}
-                          className="h-8"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="runtime-upload-rate-limit-window">{t(lang, "admin.settingsUploadRateLimitWindow")}</Label>
-                        <Input
-                          id="runtime-upload-rate-limit-window"
-                          type="number"
-                          min={0}
-                          value={runtimeForm.upload_rate_limit_window_minutes}
-                          onChange={(e) => updateRuntimeField("upload_rate_limit_window_minutes", Number(e.target.value))}
-                          className="h-8"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="runtime-upload-rate-limit-requests">{t(lang, "admin.settingsUploadRateLimitRequests")}</Label>
-                        <Input
-                          id="runtime-upload-rate-limit-requests"
-                          type="number"
-                          min={0}
-                          value={runtimeForm.upload_rate_limit_max_requests}
-                          onChange={(e) => updateRuntimeField("upload_rate_limit_max_requests", Number(e.target.value))}
-                          className="h-8"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{t(lang, "admin.settingsRateLimitHint")}</p>
                   </div>
                   <Button size="sm" onClick={handleSaveRuntimeSettings} disabled={systemSaving} className="cursor-pointer gap-1">
                     {systemSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
