@@ -550,7 +550,7 @@ func TestDeleteRetainsPhysicalFileAfterLastReferenceDeletion(t *testing.T) {
 	}
 	storedPath := filepath.Join(rootDir, filepath.FromSlash(firstRecord.FilePath))
 
-	if err := service.Delete(ctx, "uid-a"+publicImageExtension, "token-a", false); err != nil {
+	if err := service.Delete(ctx, "uid-a"+publicImageExtension, "token-a", false, ""); err != nil {
 		t.Fatalf("Delete first returned error: %v", err)
 	}
 	if _, err := os.Stat(storedPath); err != nil {
@@ -560,7 +560,7 @@ func TestDeleteRetainsPhysicalFileAfterLastReferenceDeletion(t *testing.T) {
 		t.Fatalf("expected md5 cache to remain while references exist")
 	}
 
-	if err := service.Delete(ctx, "uid-b"+publicImageExtension, "token-b", false); err != nil {
+	if err := service.Delete(ctx, "uid-b"+publicImageExtension, "token-b", false, ""); err != nil {
 		t.Fatalf("Delete second returned error: %v", err)
 	}
 	if _, err := os.Stat(storedPath); err != nil {
@@ -604,7 +604,7 @@ func TestDeleteRepointsMD5CacheToRemainingReference(t *testing.T) {
 		t.Fatalf("expected initial md5 cache to point at first uid")
 	}
 
-	if err := service.Delete(ctx, "uid-a"+publicImageExtension, "token-a", false); err != nil {
+	if err := service.Delete(ctx, "uid-a"+publicImageExtension, "token-a", false, ""); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
 
@@ -649,7 +649,7 @@ func TestDeleteRetainsPhysicalFileWhenOnlyCrossBackendReferenceTextMatches(t *te
 	cacheStore.md5ToUID[scopedMD5CacheKey(localRecord.StorageKey, localRecord.MD5Hash)] = "uid-local"
 
 	storedPath := filepath.Join(rootDir, filepath.FromSlash(localRecord.FilePath))
-	if err := service.Delete(ctx, "uid-local"+publicImageExtension, "token-local", false); err != nil {
+	if err := service.Delete(ctx, "uid-local"+publicImageExtension, "token-local", false, ""); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
 	if _, err := os.Stat(storedPath); err != nil {
@@ -675,7 +675,7 @@ func TestDeleteRejectsTokenMismatch(t *testing.T) {
 		t.Fatalf("upload returned error: %v", err)
 	}
 
-	if err := service.Delete(ctx, "uid-1"+publicImageExtension, "other-token", false); err != ErrForbidden {
+	if err := service.Delete(ctx, "uid-1"+publicImageExtension, "other-token", false, ""); err != ErrForbidden {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
 }
@@ -757,7 +757,7 @@ func TestDeleteRejectsNonCanonicalAVIFSuffix(t *testing.T) {
 		t.Fatalf("upload returned error: %v", err)
 	}
 
-	if err := service.Delete(ctx, "uid-1.AVIF", "owner-token", false); err != ErrNotFound {
+	if err := service.Delete(ctx, "uid-1.AVIF", "owner-token", false, ""); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound for mixed-case suffix, got %v", err)
 	}
 }
@@ -857,7 +857,7 @@ func TestPreheatRepairsStaleMD5MappingFromSQLite(t *testing.T) {
 	}
 }
 
-func TestPublicStorageOptionsExposeOnlySafeFields(t *testing.T) {
+func TestPublicRuntimeSettingsExposeOnlySafeStorageFields(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, _, _ := newImageServiceTestHarness(t)
 
@@ -885,10 +885,11 @@ func TestPublicStorageOptionsExposeOnlySafeFields(t *testing.T) {
 		t.Fatalf("CreateStorageConfig webdav returned error: %v", err)
 	}
 
-	options, err := service.PublicStorageOptions(ctx)
+	settings, err := service.PublicRuntimeSettings(ctx)
 	if err != nil {
-		t.Fatalf("PublicStorageOptions returned error: %v", err)
+		t.Fatalf("PublicRuntimeSettings returned error: %v", err)
 	}
+	options := settings.Storage.Options
 	if len(options) != 4 {
 		t.Fatalf("expected four public storage options, got %d", len(options))
 	}
@@ -985,7 +986,8 @@ func newImageServiceTestHarness(t *testing.T) (*ImageService, *repository.Reposi
 	cacheStore := newFakeCache()
 	uidCodec := newFakeUIDCodec()
 	logger := slog.New(slog.NewTextHandler(ioDiscard{}, nil))
-	return NewImageService(repo, cacheStore, manager, uidCodec.Generate, uidCodec.Validate, logger), repo, cacheStore, rootDir, uidCodec
+	settingsManager := NewRuntimeSettingsManager("")
+	return NewImageService(repo, cacheStore, manager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger), repo, cacheStore, rootDir, uidCodec
 }
 
 type ioDiscard struct{}

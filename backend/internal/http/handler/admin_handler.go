@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -81,6 +82,76 @@ func (h *AdminHandler) DeleteImages(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{})
 }
 
+func (h *AdminHandler) CreateIPBan(c *gin.Context) {
+	var payload service.AdminIPBanCreateInput
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid ip ban payload")
+		return
+	}
+	result, err := h.service.CreateIPBan(c.Request.Context(), payload)
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *AdminHandler) IPBans(c *gin.Context) {
+	bans, err := h.service.IPBans(c.Request.Context())
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, bans)
+}
+
+func (h *AdminHandler) AbuseOverview(c *gin.Context) {
+	from, err := parseOptionalTime(c.Query("from"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid from time")
+		return
+	}
+	to, err := parseOptionalTime(c.Query("to"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid to time")
+		return
+	}
+	overview, err := h.service.AbuseOverview(c.Request.Context(), service.AdminAbuseOverviewInput{From: from, To: to})
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, overview)
+}
+
+func (h *AdminHandler) AbuseIPDetail(c *gin.Context) {
+	detail, err := h.service.AbuseIPDetail(c.Request.Context(), c.Query("ip"))
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, detail)
+}
+
+func (h *AdminHandler) DeleteIPBan(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err := h.service.DeleteIPBan(c.Request.Context(), id); err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{})
+}
+
+func (h *AdminHandler) DeleteIPBanImages(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	result, err := h.service.DeleteImagesByIPBan(c.Request.Context(), id)
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, result)
+}
+
 func (h *AdminHandler) GetConfig(c *gin.Context) {
 	view, err := h.service.GetConfig(c.Request.Context())
 	if err != nil {
@@ -155,6 +226,29 @@ func (h *AdminHandler) SetDefaultStorageConfig(c *gin.Context) {
 	response.Success(c, http.StatusOK, view)
 }
 
+func (h *AdminHandler) GetSystemSettings(c *gin.Context) {
+	settings, err := h.service.GetSystemSettings(c.Request.Context())
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, settings)
+}
+
+func (h *AdminHandler) UpdateSystemSettings(c *gin.Context) {
+	var payload service.RuntimeSettingsUpdateInput
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid config payload")
+		return
+	}
+	settings, err := h.service.UpdateSystemSettings(c.Request.Context(), payload)
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, settings)
+}
+
 func (h *AdminHandler) mapError(c *gin.Context, err error) {
 	switch {
 	case err == service.ErrInvalidInput || strings.Contains(err.Error(), service.ErrInvalidInput.Error()):
@@ -184,4 +278,16 @@ func sanitizeAdminMessage(err error) string {
 		return "invalid request"
 	}
 	return message
+}
+
+func parseOptionalTime(value string) (time.Time, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed, nil
 }

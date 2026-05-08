@@ -124,15 +124,15 @@ func TestDetectContentTypeRecognizesAVIF(t *testing.T) {
 	}
 }
 
-func TestStorageOptionsReturnsSafePublicCatalog(t *testing.T) {
+func TestRuntimeSettingsReturnsSafePublicCatalog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	imageHandler, _ := newImageHandlerTestHarness(t)
 	engine := gin.New()
-	engine.GET("/v1/storage-options", imageHandler.StorageOptions)
+	engine.GET("/v1/runtime-settings", imageHandler.RuntimeSettings)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/v1/storage-options", nil)
+	req := httptest.NewRequest("GET", "/v1/runtime-settings", nil)
 	engine.ServeHTTP(recorder, req)
 
 	if recorder.Code != 200 {
@@ -147,7 +147,11 @@ func TestStorageOptionsReturnsSafePublicCatalog(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected data object, got %#v", payload["data"])
 	}
-	items, ok := data["items"].([]any)
+	storageView, ok := data["storage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected storage object, got %#v", data["storage"])
+	}
+	items, ok := storageView["options"].([]any)
 	if !ok || len(items) != 2 {
 		t.Fatalf("expected two storage options, got %#v", data["items"])
 	}
@@ -210,10 +214,12 @@ func newImageHandlerTestHarness(t *testing.T) (*ImageHandler, service.UploadOutp
 
 	cacheStore := newHandlerFakeCache()
 	validUID := "uid-handler"
+	settingsManager := service.NewRuntimeSettingsManager("")
 	imageService := service.NewImageService(
 		repo,
 		cacheStore,
 		manager,
+		settingsManager,
 		func() (string, error) { return validUID, nil },
 		func(uid string) error {
 			if uid != validUID {
@@ -239,7 +245,7 @@ func newImageHandlerTestHarness(t *testing.T) (*ImageHandler, service.UploadOutp
 		imageService,
 		manager,
 		slog.New(slog.NewTextHandler(discardWriter{}, nil)),
-		"http://localhost:8080",
+		nil,
 	), uploadResult
 }
 

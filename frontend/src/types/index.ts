@@ -1,6 +1,6 @@
 export type ApiResponse<T> =
   | { success: true; data: T }
-  | { success: false; error: { message: string } };
+  | { success: false; error: { code?: string; message: string } };
 
 export interface UploadResult {
   uid: string;
@@ -39,7 +39,66 @@ export interface AdminImage {
   size: number;
   md5_hash: string;
   ip_address: string;
+  ip_address_masked: string;
   created_at: string;
+}
+
+export interface AdminIPBan {
+  id: number;
+  ip_hash: string;
+  ip_address: string;
+  ip_address_masked: string;
+  reason: string;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminIPBanCreateResult {
+  ban: AdminIPBan;
+  affected_image_count: number;
+  affected_total_size: number;
+}
+
+export interface AdminIPBanDeleteImagesResult {
+  deleted_count: number;
+}
+
+export interface AdminAbuseOverview {
+  from: string;
+  to: string;
+  upload_count: number;
+  upload_size: number;
+  active_ip_ban_count: number;
+  top_ips: AdminAbuseIPRankItem[];
+  top_tokens: AdminAbuseTokenRankItem[];
+}
+
+export interface AdminAbuseIPRankItem {
+  ip_address: string;
+  ip_address_masked: string;
+  upload_count: number;
+  total_size: number;
+  latest_upload_at: string;
+  is_banned: boolean;
+  ban_id?: number;
+}
+
+export interface AdminAbuseTokenRankItem {
+  token: string;
+  token_preview: string;
+  upload_count: number;
+  total_size: number;
+  latest_upload_at: string;
+}
+
+export interface AdminAbuseIPDetail {
+  ip_address: string;
+  ip_address_masked: string;
+  upload_count: number;
+  total_size: number;
+  is_banned: boolean;
+  ban: AdminIPBan | null;
 }
 
 export interface AdminImagesResponse {
@@ -70,6 +129,99 @@ export interface StorageInstance {
 export interface AdminConfig {
   default_storage_key: string;
   storage_configs: StorageInstance[];
+}
+
+export interface RuntimeSettings {
+  public_base_url: string;
+  max_upload_size_mb: number;
+  allowed_mime_types: string[];
+  allow_storage_selection: boolean;
+  maintenance_mode: boolean;
+  maintenance_message: string;
+  rate_limit_window_minutes: number;
+  rate_limit_max_requests: number;
+  upload_rate_limit_window_minutes: number;
+  upload_rate_limit_max_requests: number;
+}
+
+export interface PublicRuntimeSettings {
+  upload: {
+    max_upload_size_mb: number;
+    allowed_mime_types: string[];
+    effective_allowed_mime_types: string[];
+  };
+  features: {
+    allow_storage_selection: boolean;
+    maintenance_mode: boolean;
+    maintenance_message: string;
+  };
+  storage: {
+    default_storage_key: string;
+    options: StorageOption[];
+  };
+}
+
+export interface AdminSystemSettings {
+  runtime: RuntimeSettings;
+  readonly: {
+    environment: {
+      http_addr: string;
+      database_path: string;
+      redis_configured: boolean;
+      public_base_url_source: string;
+      env_public_base_url_set: boolean;
+      runtime_public_base_url_set: boolean;
+    };
+    security: {
+      jwt_secret: SecretStatus;
+      admin_password: SecretStatus;
+      uid_encryption_key: SecretStatus;
+    };
+    storage: {
+      default_storage_key: string;
+      storage_config_count: number;
+      allow_storage_selection: boolean;
+    };
+    service: {
+      health: string;
+      maintenance_mode: boolean;
+    };
+  };
+}
+
+export interface SecretStatus {
+  configured: boolean;
+  using_default: boolean;
+}
+
+export type AnnouncementStatus = "draft" | "published" | "archived";
+export type AnnouncementPriority = "normal" | "important" | "urgent";
+
+export interface Announcement {
+  id: number;
+  title: string;
+  content: string;
+  status?: AnnouncementStatus;
+  priority: AnnouncementPriority;
+  starts_at: string | null;
+  ends_at: string | null;
+  sort_order?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnnouncementListResponse {
+  items: Announcement[];
+}
+
+export interface AnnouncementInput {
+  title: string;
+  content: string;
+  status: AnnouncementStatus;
+  priority: AnnouncementPriority;
+  starts_at: string | null;
+  ends_at: string | null;
+  sort_order: number;
 }
 
 export interface UploadHistoryRecord {

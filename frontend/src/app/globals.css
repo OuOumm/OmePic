@@ -68,3 +68,42 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+@layer components {
+  .announcement-markdown h1 {
+    @apply mb-3 text-xl font-semibold tracking-tight;
+  }
+  .announcement-markdown h2 {
+    @apply mb-2 mt-4 text-lg font-semibold tracking-tight;
+  }
+  .announcement-markdown h3 {
+    @apply mb-2 mt-3 text-base font-semibold;
+  }
+  .announcement-markdown p {
+    @apply my-2;
+  }
+  .announcement-markdown a {
+    @apply text-primary underline underline-offset-4;
+  }
+  .announcement-markdown ul {
+    @apply my-2 ml-5 list-disc space-y-1;
+  }
+  .announcement-markdown ol {
+    @apply my-2 ml-5 list-decimal space-y-1;
+  }
+  .announcement-markdown blockquote {
+    @apply my-3 border-l-2 border-primary/50 pl-3 text-muted-foreground;
+  }
+  .announcement-markdown code {
+    @apply rounded bg-muted px-1.5 py-0.5 text-xs;
+  }
+  .announcement-markdown pre {
+    @apply my-3 overflow-x-auto rounded-lg bg-muted p-3;
+  }
+  .announcement-markdown pre code {
+    @apply bg-transparent p-0;
+  }
+  .announcement-markdown hr {
+    @apply my-4 border-border;
+  }
+}

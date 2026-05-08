@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 interface ImageLightboxAction {
   label: string;
   onClick: () => void;
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
 }
 
 interface ImageLightboxImage {
@@ -198,7 +199,7 @@ export function ImageLightbox({
             {actions.length > 0 && (
               <div className="flex gap-2 flex-wrap">
                 {actions.map((a) => (
-                  <Button key={a.label} variant="outline" size="sm" onClick={a.onClick} className="cursor-pointer">
+                  <Button key={a.label} variant={a.variant ?? "outline"} size="sm" onClick={a.onClick} className="cursor-pointer">
                     {a.label}
                   </Button>
                 ))}

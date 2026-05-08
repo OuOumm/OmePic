@@ -13,6 +13,7 @@ import { t } from "@/lib/i18n";
 import {
   LayoutDashboard,
   Image,
+  ShieldAlert,
   Settings,
   LogOut,
   Loader2,
@@ -86,6 +87,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       href: "/admin/dashboard/images",
       label: t(lang, "admin.sidebarImages"),
       icon: Image,
+    },
+    {
+      href: "/admin/dashboard/security",
+      label: t(lang, "admin.sidebarSecurity"),
+      icon: ShieldAlert,
     },
     {
       href: "/admin/dashboard/settings",

@@ -346,7 +346,10 @@ func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Reposi
 	}
 
 	logger := slog.New(slog.NewTextHandler(ioDiscard{}, nil))
-	return NewAdminService(repo, manager, NewImageService(repo, newFakeCache(), manager, nil, nil, logger), "admin123", "secret"), repo
+	settingsManager := NewRuntimeSettingsManager("")
+	imageService := NewImageService(repo, newFakeCache(), manager, settingsManager, nil, nil, logger)
+	appConfig := config.AppConfig{AdminPassword: "admin123", JWTSecret: "secret", UIDEncryptionKey: "uid-secret"}
+	return NewAdminService(repo, manager, settingsManager, imageService, appConfig), repo
 }
 
 func modelImageRecord(uid string, storageKey string, backend string) model.ImageRecord {

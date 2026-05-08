@@ -8,8 +8,10 @@ import (
 
 	"omepic/backend/internal/cache"
 	"omepic/backend/internal/config"
+	"omepic/backend/internal/http/clientip"
 	"omepic/backend/internal/http/handler"
 	"omepic/backend/internal/http/router"
+	"omepic/backend/internal/ratelimit"
 	"omepic/backend/internal/repository"
 	"omepic/backend/internal/service"
 	"omepic/backend/internal/storage"
@@ -58,12 +60,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	imageCache, err := cache.New(cfg.RedisURL)
+	redisClient, err := cache.NewClient(cfg.RedisURL)
 	if err != nil {
 		logger.Error("failed to create redis client", "error", err.Error())
 		os.Exit(1)
 	}
-	defer imageCache.Close()
+	defer redisClient.Close()
+	imageCache := cache.NewWithClient(redisClient)
+	rateLimiter := ratelimit.NewRedisLimiter(redisClient)
 
 	if err := repo.Ping(ctx); err != nil {
 		logger.Error("sqlite ping failed", "error", err.Error())
@@ -74,8 +78,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	imageService := service.NewImageService(repo, imageCache, storageManager, uidCodec.Generate, uidCodec.Validate, logger)
-	adminService := service.NewAdminService(repo, storageManager, imageService, cfg.AdminPassword, cfg.JWTSecret)
+	settingsManager := service.NewRuntimeSettingsManager(cfg.PublicBaseURL)
+	if err := settingsManager.Load(ctx, repo); err != nil {
+		logger.Error("failed to load runtime settings", "error", err.Error())
+		os.Exit(1)
+	}
+
+	imageService := service.NewImageService(repo, imageCache, storageManager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger)
+	adminService := service.NewAdminService(repo, storageManager, settingsManager, imageService, cfg)
+	announcementService := service.NewAnnouncementService(repo)
+	ipResolver := clientip.NewResolver(cfg.TrustedProxyCIDRs, cfg.RealIPHeader)
 
 	if _, err := imageService.Preheat(ctx); err != nil {
 		logger.Error("redis preheat failed", "error", err.Error())
@@ -83,12 +95,16 @@ func main() {
 	}
 
 	engine := router.New(router.Dependencies{
-		Logger:        logger,
-		ImageHandler:  handler.NewImageHandler(imageService, storageManager, logger, cfg.PublicBaseURL),
-		AdminHandler:  handler.NewAdminHandler(adminService, logger),
-		HealthHandler: handler.NewHealthHandler(repo, imageCache),
-		JWTSecret:     cfg.JWTSecret,
-		FrontendDir:   "web",
+		Logger:              logger,
+		ImageHandler:        handler.NewImageHandler(imageService, storageManager, logger, ipResolver),
+		AdminHandler:        handler.NewAdminHandler(adminService, logger),
+		AnnouncementHandler: handler.NewAnnouncementHandler(announcementService, logger),
+		HealthHandler:       handler.NewHealthHandler(repo, imageCache),
+		Settings:            settingsManager,
+		RateLimiter:         rateLimiter,
+		IPResolver:          ipResolver,
+		JWTSecret:           cfg.JWTSecret,
+		FrontendDir:         "web",
 	})
 
 	logger.Info("server starting", "addr", cfg.HTTPAddr, "default_storage_key", storageManager.CurrentKey(), "storage_backend", storageManager.CurrentBackend())

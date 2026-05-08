@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { ImageLightbox } from "@/components/shared/ImageLightbox";
+import { UploadHistoryLightbox } from "@/components/shared/UploadHistoryLightbox";
 import { ImgStyleImageCard } from "@/components/shared/ImgStyleImageCard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
-import { adminGetImages, adminDeleteImages } from "@/lib/api";
+import { adminGetImages, adminDeleteImages, adminCreateIPBan, adminDeleteIPBanImages } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { formatBytes, formatDate, getImageUrl } from "@/lib/utils";
 import {
@@ -23,6 +23,9 @@ import {
   AlertCircle,
   CheckSquare,
   Square,
+  Ban,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import type { AdminImage, ViewMode } from "@/types";
@@ -41,6 +44,8 @@ export function ImageTable() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [banningUid, setBanningUid] = useState<string | null>(null);
+  const [showFullIPs, setShowFullIPs] = useState<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<AdminImage | null>(null);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -108,6 +113,81 @@ export function ImageTable() {
       toast.error(t(language, "admin.imagesDeleteError"));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteImage = async (image: AdminImage) => {
+    if (!token) return;
+    if (!window.confirm(t(language, "admin.imagesDeleteConfirm", { count: 1 }))) return;
+    setDeleting(true);
+    try {
+      await adminDeleteImages(token, [image.uid]);
+      setPreviewImage(null);
+      setSelectedUids((prev) => {
+        const next = new Set(prev);
+        next.delete(image.uid);
+        return next;
+      });
+      toast.success(t(language, "admin.imagesDeleted", { count: 1 }));
+      loadImages();
+    } catch (err) {
+      toast.error(t(language, "admin.imagesDeleteError"));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleToggleIPVisibility = (uid: string) => {
+    setShowFullIPs((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) {
+        next.delete(uid);
+      } else {
+        next.add(uid);
+      }
+      return next;
+    });
+  };
+
+  const displayIP = (image: AdminImage) => {
+    if (showFullIPs.has(image.uid)) {
+      return image.ip_address || "-";
+    }
+    return image.ip_address_masked || image.ip_address || "-";
+  };
+
+  const handleBanIP = async (image: AdminImage) => {
+    if (!token || !image.ip_address) return;
+    const durationInput = window.prompt(t(language, "admin.ipBanDurationPrompt"), "24");
+    if (durationInput === null) return;
+    const durationHours = Number(durationInput.trim());
+    if (!Number.isFinite(durationHours) || durationHours < 0) {
+      toast.error(t(language, "admin.ipBanInvalidDuration"));
+      return;
+    }
+    if (!window.confirm(t(language, "admin.ipBanConfirm", { ip: image.ip_address_masked || image.ip_address }))) return;
+    setBanningUid(image.uid);
+    try {
+      const result = await adminCreateIPBan(token, {
+        uid: image.uid,
+        duration_hours: durationHours,
+        reason: `Abusive upload from image ${image.uid}`,
+      });
+      toast.success(t(language, "admin.ipBanCreated"));
+      const shouldDelete = result.affected_image_count > 0 && window.confirm(t(language, "admin.ipBanDeleteImagesConfirm", {
+        count: result.affected_image_count,
+        size: formatBytes(result.affected_total_size),
+      }));
+      if (shouldDelete) {
+        const deleted = await adminDeleteIPBanImages(token, result.ban.id);
+        toast.success(t(language, "admin.ipBanImagesDeleted", { count: deleted.deleted_count }));
+        setSelectedUids(new Set());
+        loadImages();
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(language, "admin.ipBanCreateError"));
+    } finally {
+      setBanningUid(null);
     }
   };
 
@@ -212,6 +292,7 @@ export function ImageTable() {
                     className="cursor-pointer"
                   />
                 </TableHead>
+                <TableHead className="w-16">{t(lang, "image.preview")}</TableHead>
                 <TableHead>{t(lang, "image.uid")}</TableHead>
                 <TableHead>{t(lang, "image.type")}</TableHead>
                 <TableHead>{t(lang, "image.size")}</TableHead>
@@ -221,6 +302,7 @@ export function ImageTable() {
                 <TableHead>{t(lang, "image.storageKey")}</TableHead>
                 <TableHead>{t(lang, "image.storageBackend")}</TableHead>
                 <TableHead>{t(lang, "image.created")}</TableHead>
+                <TableHead>{t(lang, "admin.imagesActions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -238,15 +320,54 @@ export function ImageTable() {
                       className="cursor-pointer"
                     />
                   </TableCell>
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewImage(img);
+                      }}
+                      className="block h-11 w-11 overflow-hidden rounded-md border bg-muted transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-label={t(lang, "admin.imagesViewPreview")}
+                    >
+                      <img
+                        src={getImageUrl(img.uid)}
+                        alt={img.uid}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                  </TableCell>
                   <TableCell className="font-mono text-xs">{img.uid.slice(0, 12)}...</TableCell>
                   <TableCell className="text-xs">{img.mime_type}</TableCell>
                   <TableCell className="text-xs">{formatBytes(img.size)}</TableCell>
                   <TableCell className="font-mono text-xs">{img.token.slice(0, 8)}...</TableCell>
-                  <TableCell className="font-mono text-xs whitespace-nowrap">{img.ip_address}</TableCell>
+                  <TableCell className="font-mono text-xs whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleIPVisibility(img.uid)}
+                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span>{displayIP(img)}</span>
+                      {showFullIPs.has(img.uid) ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    </button>
+                  </TableCell>
                   <TableCell className="font-mono text-xs">{img.md5_hash.slice(0, 8)}...</TableCell>
                   <TableCell className="text-xs">{img.storage_key}</TableCell>
                   <TableCell className="text-xs">{img.storage_backend}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{formatDate(img.created_at)}</TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleBanIP(img)}
+                      disabled={banningUid === img.uid || !img.ip_address}
+                      className="h-7 cursor-pointer text-xs"
+                    >
+                      {banningUid === img.uid ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+                      {t(lang, "admin.ipBanAction")}
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -284,31 +405,14 @@ export function ImageTable() {
       )}
 
       {/* Preview */}
-      <ImageLightbox
+      <UploadHistoryLightbox
         open={!!previewImage}
         onClose={() => setPreviewImage(null)}
-        initialIndex={previewImage ? images.findIndex((img) => img.uid === previewImage.uid) : 0}
-        images={images.map((img) => ({
-          url: getImageUrl(img.uid),
-          alt: img.uid,
-          metadata: [
-            { label: t(lang, "image.uid"), value: img.uid },
-            { label: t(lang, "image.type"), value: img.mime_type },
-            { label: t(lang, "image.size"), value: formatBytes(img.size) },
-            { label: t(lang, "image.token"), value: img.token },
-            { label: t(lang, "image.md5"), value: img.md5_hash },
-            { label: t(lang, "image.storageKey"), value: img.storage_key },
-            { label: t(lang, "image.storageBackend"), value: img.storage_backend },
-            { label: t(lang, "image.created"), value: formatDate(img.created_at) },
-          ],
-        }))}
-        getActions={(img) => [
-          {
-            label: t(lang, "common.copyUrl"),
-            onClick: () => { navigator.clipboard.writeText(img.url); toast.success(t(lang, "common.copied")); },
-          },
-        ]}
-        closeLabel={t(lang, "common.close")}
+        selectedUid={previewImage?.uid ?? null}
+        items={images.map((image) => ({ type: "admin", image }))}
+        language={lang}
+        metadataLabel={t(lang, "admin.imagesViewPreview")}
+        onDeleteAdminImage={handleDeleteImage}
       />
     </div>
   );

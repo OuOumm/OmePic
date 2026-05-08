@@ -26,7 +26,18 @@ export function getApiBaseUrl(): string {
   return "";
 }
 
+export function getAbsoluteUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (typeof window !== "undefined") return new URL(url, window.location.origin).toString();
+  const base = getApiBaseUrl();
+  return `${base}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
 export function getImageUrl(uid: string): string {
   const base = getApiBaseUrl();
   return `${base}/i/${uid}.avif`;
+}
+
+export function getAbsoluteImageUrl(uid: string): string {
+  return getAbsoluteUrl(getImageUrl(uid));
 }

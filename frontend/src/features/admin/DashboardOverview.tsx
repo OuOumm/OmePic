@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { useAdminStatus } from "./admin-status-context";
-import { adminGetStatus } from "@/lib/api";
+import { SystemStatusPanel } from "./SystemStatusPanel";
+import { adminGetStatus, adminGetSystemSettings } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { formatBytes } from "@/lib/utils";
 import { Image, HardDrive, TrendingUp, Users, Loader2, AlertCircle } from "lucide-react";
-import type { AdminStatus } from "@/types";
+import type { AdminStatus, AdminSystemSettings } from "@/types";
 
 export function DashboardOverview() {
   const token = useAdminSessionStore((state) => state.token);
@@ -17,20 +18,23 @@ export function DashboardOverview() {
   const verifiedStatus = useAdminStatus();
 
   const [status, setStatus] = useState<AdminStatus | null>(verifiedStatus);
+  const [systemSettings, setSystemSettings] = useState<AdminSystemSettings | null>(null);
   const [loading, setLoading] = useState(!verifiedStatus);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (verifiedStatus) {
-      setStatus(verifiedStatus);
-      setLoading(false);
-      return;
-    }
     if (!token) return;
-    setLoading(true);
+    setLoading(!verifiedStatus);
     setError("");
-    adminGetStatus(token)
-      .then((s) => { setStatus(s); setLoading(false); })
+    Promise.all([
+      verifiedStatus ? Promise.resolve(verifiedStatus) : adminGetStatus(token),
+      adminGetSystemSettings(token),
+    ])
+      .then(([s, settings]) => {
+        setStatus(s);
+        setSystemSettings(settings);
+        setLoading(false);
+      })
       .catch((err) => { setError(err instanceof Error ? err.message : "Failed"); setLoading(false); });
   }, [token, verifiedStatus]);
 
@@ -80,6 +84,7 @@ export function DashboardOverview() {
           </Card>
         ))}
       </div>
+      <SystemStatusPanel systemSettings={systemSettings} />
     </div>
   );
 }

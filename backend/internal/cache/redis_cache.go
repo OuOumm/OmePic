@@ -25,11 +25,23 @@ type RedisCache struct {
 }
 
 func New(redisURL string) (*RedisCache, error) {
+	client, err := NewClient(redisURL)
+	if err != nil {
+		return nil, err
+	}
+	return NewWithClient(client), nil
+}
+
+func NewClient(redisURL string) (*redis.Client, error) {
 	options, err := redis.ParseURL(redisURL)
 	if err != nil {
 		return nil, err
 	}
-	return &RedisCache{client: redis.NewClient(options)}, nil
+	return redis.NewClient(options), nil
+}
+
+func NewWithClient(client *redis.Client) *RedisCache {
+	return &RedisCache{client: client}
 }
 
 func (c *RedisCache) Close() error {

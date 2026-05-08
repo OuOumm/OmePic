@@ -50,3 +50,5 @@ frontend/tsconfig.tsbuildinfo
 AGENTS.md
 img.html
 start.md
+.trae/
+CODE_WIKI.md

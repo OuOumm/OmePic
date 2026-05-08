@@ -1,51 +1,29 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { useUploadStore } from "@/stores/upload-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
-import { getStorageOptions } from "@/lib/api";
 import { t } from "@/lib/i18n";
-import { RefreshCw, HardDrive } from "lucide-react";
+import { HardDrive, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { StorageOption } from "@/types";
 
-export function StorageSelector() {
+type Props = {
+  refreshing?: boolean;
+  onRefresh?: () => void;
+};
+
+export function StorageSelector({ refreshing = false, onRefresh }: Props) {
   const language = useUiPreferencesStore((state) => state.language);
   const selectedStorageKey = useUploadStore((state) => state.selectedStorageKey);
+  const runtimeSettings = useUploadStore((state) => state.runtimeSettings);
   const setSelectedStorageKey = useUploadStore((state) => state.setSelectedStorageKey);
 
-  const [options, setOptions] = useState<StorageOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const options = runtimeSettings?.storage.options ?? [];
+  const allowStorageSelection = runtimeSettings?.features.allow_storage_selection ?? true;
 
-  const fetchOptions = useCallback(async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const opts = await getStorageOptions();
-      setOptions(opts);
-      if (selectedStorageKey && !opts.find((o) => o.storage_key === selectedStorageKey)) {
-        setSelectedStorageKey("");
-      }
-    } catch (e) {
-      console.error("Failed to load storage options:", e);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStorageKey, setSelectedStorageKey]);
+  if (!allowStorageSelection || options.length === 0) return null;
 
-  useEffect(() => {
-    fetchOptions();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Filter out default storage from the list — it's already represented by the "默认" chip
   const nonDefaultOptions = options.filter((o) => !o.is_default);
-
-  // If no options fetched at all, hide the component
-  if (options.length === 0 && !loading && !error) return null;
-
   const lang = language;
 
   return (
@@ -86,20 +64,16 @@ export function StorageSelector() {
             {opt.name}
           </button>
         ))}
-        {error && (
-          <span className="text-xs text-muted-foreground italic">
-            {t(lang, "common.error")}
-          </span>
-        )}
         <Button
           variant="ghost"
           size="icon"
           className="h-6 w-6 cursor-pointer shrink-0"
-          onClick={fetchOptions}
-          disabled={loading}
+          onClick={onRefresh}
+          disabled={refreshing || !onRefresh}
+          title={t(lang, "common.refresh")}
           aria-label={t(lang, "common.refresh")}
         >
-          <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+          <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
         </Button>
       </div>
     </div>

@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/Label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
 import { Separator } from "@/components/ui/Separator";
 import { Badge } from "@/components/ui/Badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
+import { AnnouncementManager } from "./AnnouncementManager";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import {
@@ -16,8 +18,11 @@ import {
   adminUpdateStorageInstance,
   adminDeleteStorageInstance,
   adminSetDefaultStorage,
+  adminGetSystemSettings,
+  adminUpdateSystemSettings,
 } from "@/lib/api";
 import { t } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import {
   Plus,
   Trash2,
@@ -31,7 +36,35 @@ import {
   Check,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import type { StorageInstance, AdminConfig } from "@/types";
+import type { StorageInstance, AdminConfig, RuntimeSettings } from "@/types";
+
+const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
+  public_base_url: "",
+  max_upload_size_mb: 0,
+  allowed_mime_types: [],
+  allow_storage_selection: true,
+  maintenance_mode: false,
+  maintenance_message: "",
+  rate_limit_window_minutes: 1,
+  rate_limit_max_requests: 120,
+  upload_rate_limit_window_minutes: 10,
+  upload_rate_limit_max_requests: 20,
+};
+
+function normalizeRuntimeSettings(settings?: Partial<RuntimeSettings> | null): RuntimeSettings {
+  return {
+    public_base_url: settings?.public_base_url ?? "",
+    max_upload_size_mb: settings?.max_upload_size_mb ?? 0,
+    allowed_mime_types: Array.isArray(settings?.allowed_mime_types) ? settings.allowed_mime_types : [],
+    allow_storage_selection: settings?.allow_storage_selection ?? true,
+    maintenance_mode: settings?.maintenance_mode ?? false,
+    maintenance_message: settings?.maintenance_message ?? "",
+    rate_limit_window_minutes: settings?.rate_limit_window_minutes ?? 1,
+    rate_limit_max_requests: settings?.rate_limit_max_requests ?? 120,
+    upload_rate_limit_window_minutes: settings?.upload_rate_limit_window_minutes ?? 10,
+    upload_rate_limit_max_requests: settings?.upload_rate_limit_max_requests ?? 20,
+  };
+}
 
 function maskSecret(val: string | undefined): string {
   if (!val) return "";
@@ -73,16 +106,28 @@ export function SettingsForm() {
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [runtimeForm, setRuntimeForm] = useState<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
+  const [systemSaving, setSystemSaving] = useState(false);
 
   // Form state
   const [form, setForm] = useState<Partial<StorageInstance>>({});
+
+  const loadSystemSettings = useCallback(async () => {
+    if (!token) return;
+    const settings = await adminGetSystemSettings(token);
+    const runtime = normalizeRuntimeSettings(settings.runtime);
+    setRuntimeForm(runtime);
+  }, [token]);
 
   const loadConfig = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
-      const c = await adminGetConfig(token);
+      const [c] = await Promise.all([
+        adminGetConfig(token),
+        loadSystemSettings(),
+      ]);
       setConfig(c);
       // Auto-select default or first
       if (!selectedKey || !c.storage_configs.find((i) => i.storage_key === selectedKey)) {
@@ -94,7 +139,7 @@ export function SettingsForm() {
     } finally {
       setLoading(false);
     }
-  }, [token, selectedKey]);
+  }, [token, selectedKey, loadSystemSettings]);
 
   useEffect(() => {
     loadConfig();
@@ -127,6 +172,25 @@ export function SettingsForm() {
 
   const updateField = (field: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateRuntimeField = <K extends keyof RuntimeSettings>(field: K, value: RuntimeSettings[K]) => {
+    setRuntimeForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveRuntimeSettings = async () => {
+    if (!token) return;
+    setSystemSaving(true);
+    try {
+      const saved = await adminUpdateSystemSettings(token, runtimeForm);
+      const runtime = normalizeRuntimeSettings(saved.runtime);
+      setRuntimeForm(runtime);
+      toast.success(t(language, "admin.settingsSaved"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(language, "common.error"));
+    } finally {
+      setSystemSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -222,189 +286,387 @@ export function SettingsForm() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-bold">{t(lang, "admin.settingsTitle")}</h1>
-        <Button size="sm" onClick={handleNew} className="cursor-pointer gap-1" variant="outline">
-          <Plus className="h-3.5 w-3.5" />
-          {t(lang, "admin.settingsNew")}
-        </Button>
       </div>
 
-      <div className="flex gap-6">
-        {/* Instance list */}
-        <div className="w-56 shrink-0 space-y-1">
-          {config?.storage_configs.map((inst) => (
-            <Button
-              key={inst.storage_key}
-              variant={selectedKey === inst.storage_key && !isNew ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => handleSelect(inst.storage_key)}
-              className="w-full justify-start cursor-pointer gap-2"
-            >
-              {inst.is_default ? <Star className="h-3.5 w-3.5 text-amber-500" /> : <Settings className="h-3.5 w-3.5" />}
-              <span className="truncate">{inst.name}</span>
-              <Badge variant="outline" className="ml-auto text-[10px] text-xs">
-                {inst.storage_backend}
-              </Badge>
-            </Button>
-          ))}
-          {isNew && (
-            <Button variant="secondary" size="sm" className="w-full justify-start cursor-pointer gap-2">
-              <Plus className="h-3.5 w-3.5" />
-              <span className="truncate">{form.name || "New Instance"}</span>
-            </Button>
-          )}
-        </div>
-
-        {/* Form */}
-        <Card className="flex-1">
-          <CardContent className="pt-6 space-y-4">
-            {/* Name */}
-            <div className="space-y-2">
-              <Label htmlFor="inst-name">{t(lang, "admin.settingsName")}</Label>
-              <Input
-                id="inst-name"
-                value={form.name || ""}
-                onChange={(e) => updateField("name", e.target.value)}
-                className="h-8"
-              />
-            </div>
-
-            {/* Backend (locked on edit) */}
-            <div className="space-y-2">
-              <Label htmlFor="inst-backend">{t(lang, "admin.settingsBackend")}</Label>
-              {isNew ? (
-                <Select value={String(form.storage_backend)} onValueChange={(v) => updateField("storage_backend", v as StorageInstance["storage_backend"])}>
-                  <SelectTrigger id="inst-backend" className="h-8 cursor-pointer">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BACKENDS.map((b) => (
-                      <SelectItem key={b.key} value={b.key}>{b.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input value={backendType} disabled className="h-8" />
-              )}
-            </div>
-
-            {/* Storage Key (read-only display) */}
-            {!isNew && (
-              <div className="space-y-2">
-                <Label>{t(lang, "admin.settingsKey")}</Label>
-                <Input value={selectedKey} disabled className="h-8 font-mono text-xs" />
-              </div>
-            )}
-
-            <Separator />
-
-            {/* Local fields */}
-            {backendType === "local" && (
-              <div className="space-y-2">
-                <Label htmlFor="local-path">{t(lang, "admin.settingsLocalPath")}</Label>
-                <Input
-                  id="local-path"
-                  value={form.local_storage_path || ""}
-                  onChange={(e) => updateField("local_storage_path", e.target.value)}
-                  className="h-8"
-                  placeholder="/data/images"
-                />
-              </div>
-            )}
-
-            {/* S3 fields */}
-            {backendType === "s3" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="s3-endpoint">{t(lang, "admin.settingsS3Endpoint")}</Label>
-                    <Input id="s3-endpoint" value={form.s3_endpoint || ""} onChange={(e) => updateField("s3_endpoint", e.target.value)} className="h-8" />
+      <Tabs defaultValue="storage" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="storage">{t(lang, "admin.settingsTabStorage")}</TabsTrigger>
+          <TabsTrigger value="runtime">{t(lang, "admin.settingsTabRuntime")}</TabsTrigger>
+          <TabsTrigger value="announcements">{t(lang, "admin.settingsTabAnnouncements")}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="storage" className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
+            <Card>
+              <CardContent className="space-y-3 pt-6">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h2 className="font-semibold">{t(lang, "admin.settingsStorageListTitle")}</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">{t(lang, "admin.settingsStorageListDescription")}</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="s3-region">{t(lang, "admin.settingsS3Region")}</Label>
-                    <Input id="s3-region" value={form.s3_region || ""} onChange={(e) => updateField("s3_region", e.target.value)} className="h-8" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="s3-bucket">{t(lang, "admin.settingsS3Bucket")}</Label>
-                  <Input id="s3-bucket" value={form.s3_bucket || ""} onChange={(e) => updateField("s3_bucket", e.target.value)} className="h-8" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="s3-access">{t(lang, "admin.settingsS3AccessKey")}</Label>
-                    <Input id="s3-access" value={form.s3_access_key || ""} onChange={(e) => updateField("s3_access_key", e.target.value)} className="h-8" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="s3-secret">{t(lang, "admin.settingsS3SecretKey")}</Label>
-                    <Input id="s3-secret" type="password" value={form.s3_secret_key || ""} onChange={(e) => updateField("s3_secret_key", e.target.value)} className="h-8" />
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!form.s3_use_ssl}
-                      onChange={(e) => updateField("s3_use_ssl", e.target.checked)}
-                      className="cursor-pointer"
-                    />
-                    {t(lang, "admin.settingsS3SSL")}
-                  </label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!form.s3_force_path_style}
-                      onChange={(e) => updateField("s3_force_path_style", e.target.checked)}
-                      className="cursor-pointer"
-                    />
-                    {t(lang, "admin.settingsS3PathStyle")}
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* WebDAV fields */}
-            {backendType === "webdav" && (
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="webdav-url">{t(lang, "admin.settingsWebdavUrl")}</Label>
-                  <Input id="webdav-url" value={form.webdav_url || ""} onChange={(e) => updateField("webdav_url", e.target.value)} className="h-8" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="webdav-user">{t(lang, "admin.settingsWebdavUser")}</Label>
-                    <Input id="webdav-user" value={form.webdav_user || ""} onChange={(e) => updateField("webdav_user", e.target.value)} className="h-8" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="webdav-pass">{t(lang, "admin.settingsWebdavPassword")}</Label>
-                    <Input id="webdav-pass" type="password" value={form.webdav_pass || ""} onChange={(e) => updateField("webdav_pass", e.target.value)} className="h-8" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <Separator />
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={handleSave} disabled={saving || !form.name} className="cursor-pointer gap-1">
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                {t(lang, "common.save")}
-              </Button>
-              {!isNew && !isDefault && (
-                <>
-                  <Button size="sm" variant="outline" onClick={handleSetDefault} disabled={saving} className="cursor-pointer">
-                    <Star className="h-3.5 w-3.5" />
-                    {t(lang, "admin.settingsSetDefault")}
+                  <Button size="sm" onClick={handleNew} className="cursor-pointer gap-1" variant="outline">
+                    <Plus className="h-3.5 w-3.5" />
+                    {t(lang, "admin.settingsNew")}
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting} className="cursor-pointer">
-                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    {t(lang, "admin.settingsDelete")}
+                </div>
+
+                <div className="space-y-2">
+                  {config?.storage_configs.map((inst) => {
+                    const backend = BACKENDS.find((item) => item.key === inst.storage_backend);
+                    const Icon = backend?.icon ?? Settings;
+                    const active = selectedKey === inst.storage_key && !isNew;
+                    return (
+                      <button
+                        key={inst.storage_key}
+                        type="button"
+                        onClick={() => handleSelect(inst.storage_key)}
+                        className={cn(
+                          "w-full rounded-lg border px-3 py-2 text-left transition-colors cursor-pointer",
+                          active ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                        )}
+                      >
+                        <div className="mb-1 flex items-center gap-2">
+                          <Badge variant="outline" className={backendClassName(inst.storage_backend)}>
+                            <Icon className="mr-1 h-3 w-3" />
+                            {backend?.label ?? inst.storage_backend}
+                          </Badge>
+                          {inst.is_default && (
+                            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                              <Star className="mr-1 h-3 w-3" />
+                              {t(lang, "admin.settingsDefault")}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="line-clamp-1 text-sm font-medium">{inst.name}</div>
+                        <div className="mt-1 line-clamp-1 font-mono text-xs text-muted-foreground">{inst.storage_key}</div>
+                      </button>
+                    );
+                  })}
+                  {isNew && (
+                    <button
+                      type="button"
+                      className="w-full rounded-lg border border-primary bg-primary/5 px-3 py-2 text-left cursor-pointer"
+                    >
+                      <div className="mb-1 flex items-center gap-2">
+                        <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300">
+                          <Plus className="mr-1 h-3 w-3" />
+                          {t(lang, "admin.settingsNewBadge")}
+                        </Badge>
+                      </div>
+                      <div className="line-clamp-1 text-sm font-medium">{form.name || "New Instance"}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{t(lang, "admin.settingsNewHint")}</div>
+                    </button>
+                  )}
+                  {!isNew && (config?.storage_configs.length ?? 0) === 0 && (
+                    <div className="py-8 text-center text-sm text-muted-foreground">{t(lang, "admin.settingsNoInstances")}</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h2 className="font-semibold">{isNew ? t(lang, "admin.settingsCreateStorage") : t(lang, "admin.settingsEditStorage")}</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {isNew ? t(lang, "admin.settingsCreateStorageDescription") : selectedInst?.is_default ? t(lang, "admin.settingsDefaultStorageDescription") : t(lang, "admin.settingsEditStorageDescription")}
+                    </p>
+                  </div>
+                  {!isNew && selectedInst && (
+                    <Badge variant="outline" className={selectedInst.is_default ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" : "border-border bg-muted text-muted-foreground"}>
+                      {selectedInst.is_default ? t(lang, "admin.settingsDefaultInstance") : t(lang, "admin.settingsNormalInstance")}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="inst-name">{t(lang, "admin.settingsName")}</Label>
+                    <Input
+                      id="inst-name"
+                      value={form.name || ""}
+                      onChange={(e) => updateField("name", e.target.value)}
+                      className="h-8"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="inst-backend">{t(lang, "admin.settingsBackend")}</Label>
+                    {isNew ? (
+                      <Select value={String(form.storage_backend)} onValueChange={(v) => updateField("storage_backend", v as StorageInstance["storage_backend"])}>
+                        <SelectTrigger id="inst-backend" className="h-8 cursor-pointer">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BACKENDS.map((b) => (
+                            <SelectItem key={b.key} value={b.key}>{b.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={backendType} disabled className="h-8" />
+                    )}
+                  </div>
+
+                  {!isNew && (
+                    <div className="space-y-2">
+                      <Label>{t(lang, "admin.settingsKey")}</Label>
+                      <Input value={selectedKey} disabled className="h-8 font-mono text-xs" />
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {backendType === "local" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="local-path">{t(lang, "admin.settingsLocalPath")}</Label>
+                    <Input
+                      id="local-path"
+                      value={form.local_storage_path || ""}
+                      onChange={(e) => updateField("local_storage_path", e.target.value)}
+                      className="h-8"
+                      placeholder="/data/images"
+                    />
+                  </div>
+                )}
+
+                {backendType === "s3" && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="s3-endpoint">{t(lang, "admin.settingsS3Endpoint")}</Label>
+                        <Input id="s3-endpoint" value={form.s3_endpoint || ""} onChange={(e) => updateField("s3_endpoint", e.target.value)} className="h-8" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="s3-region">{t(lang, "admin.settingsS3Region")}</Label>
+                        <Input id="s3-region" value={form.s3_region || ""} onChange={(e) => updateField("s3_region", e.target.value)} className="h-8" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="s3-bucket">{t(lang, "admin.settingsS3Bucket")}</Label>
+                      <Input id="s3-bucket" value={form.s3_bucket || ""} onChange={(e) => updateField("s3_bucket", e.target.value)} className="h-8" />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="s3-access">{t(lang, "admin.settingsS3AccessKey")}</Label>
+                        <Input id="s3-access" value={form.s3_access_key || ""} onChange={(e) => updateField("s3_access_key", e.target.value)} className="h-8" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="s3-secret">{t(lang, "admin.settingsS3SecretKey")}</Label>
+                        <Input id="s3-secret" type="password" value={form.s3_secret_key || ""} onChange={(e) => updateField("s3_secret_key", e.target.value)} className="h-8" />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-muted/20 px-3 py-2">
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!form.s3_use_ssl}
+                          onChange={(e) => updateField("s3_use_ssl", e.target.checked)}
+                          className="cursor-pointer"
+                        />
+                        {t(lang, "admin.settingsS3SSL")}
+                      </label>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!form.s3_force_path_style}
+                          onChange={(e) => updateField("s3_force_path_style", e.target.checked)}
+                          className="cursor-pointer"
+                        />
+                        {t(lang, "admin.settingsS3PathStyle")}
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {backendType === "webdav" && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="webdav-url">{t(lang, "admin.settingsWebdavUrl")}</Label>
+                      <Input id="webdav-url" value={form.webdav_url || ""} onChange={(e) => updateField("webdav_url", e.target.value)} className="h-8" />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="webdav-user">{t(lang, "admin.settingsWebdavUser")}</Label>
+                        <Input id="webdav-user" value={form.webdav_user || ""} onChange={(e) => updateField("webdav_user", e.target.value)} className="h-8" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="webdav-pass">{t(lang, "admin.settingsWebdavPassword")}</Label>
+                        <Input id="webdav-pass" type="password" value={form.webdav_pass || ""} onChange={(e) => updateField("webdav_pass", e.target.value)} className="h-8" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <Separator />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" onClick={handleSave} disabled={saving || !form.name} className="cursor-pointer gap-1">
+                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    {t(lang, "common.save")}
+                  </Button>
+                  {!isNew && !isDefault && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={handleSetDefault} disabled={saving} className="cursor-pointer gap-1">
+                        <Star className="h-3.5 w-3.5" />
+                        {t(lang, "admin.settingsSetDefault")}
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting} className="cursor-pointer gap-1">
+                        {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        {t(lang, "admin.settingsDelete")}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+        <TabsContent value="runtime">
+          <Card>
+            <CardContent className="pt-6 space-y-5">
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="runtime-public-url">{t(lang, "admin.settingsRuntimePublicUrl")}</Label>
+                      <Input
+                        id="runtime-public-url"
+                        value={runtimeForm.public_base_url}
+                        onChange={(e) => updateRuntimeField("public_base_url", e.target.value)}
+                        placeholder="https://example.com"
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="runtime-max-size">{t(lang, "admin.settingsRuntimeMaxSize")}</Label>
+                      <Input
+                        id="runtime-max-size"
+                        type="number"
+                        min={0}
+                        value={runtimeForm.max_upload_size_mb}
+                        onChange={(e) => updateRuntimeField("max_upload_size_mb", Number(e.target.value))}
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="runtime-mime-types">{t(lang, "admin.settingsRuntimeMimeTypes")}</Label>
+                    <Input
+                      id="runtime-mime-types"
+                      value={runtimeForm.allowed_mime_types.join(",")}
+                      onChange={(e) => updateRuntimeField("allowed_mime_types", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))}
+                      placeholder="image/jpeg,image/png,image/gif,image/webp,image/avif"
+                      className="h-8"
+                    />
+                    <p className="text-xs text-muted-foreground">{t(lang, "admin.settingsRuntimeMimeHint")}</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={runtimeForm.allow_storage_selection}
+                        onChange={(e) => updateRuntimeField("allow_storage_selection", e.target.checked)}
+                        className="cursor-pointer"
+                      />
+                      {t(lang, "admin.settingsRuntimeAllowStorageSelection")}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={runtimeForm.maintenance_mode}
+                        onChange={(e) => updateRuntimeField("maintenance_mode", e.target.checked)}
+                        className="cursor-pointer"
+                      />
+                      {t(lang, "admin.settingsRuntimeMaintenanceMode")}
+                    </label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="runtime-maintenance-message">{t(lang, "admin.settingsRuntimeMaintenanceMessage")}</Label>
+                    <Input
+                      id="runtime-maintenance-message"
+                      value={runtimeForm.maintenance_message}
+                      onChange={(e) => updateRuntimeField("maintenance_message", e.target.value)}
+                      placeholder={t(lang, "admin.settingsRuntimeMaintenancePlaceholder")}
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
+                    <div>
+                      <h2 className="font-semibold">{t(lang, "admin.settingsRateLimitTitle")}</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">{t(lang, "admin.settingsRateLimitDescription")}</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="runtime-rate-limit-window">{t(lang, "admin.settingsRateLimitWindow")}</Label>
+                        <Input
+                          id="runtime-rate-limit-window"
+                          type="number"
+                          min={0}
+                          value={runtimeForm.rate_limit_window_minutes}
+                          onChange={(e) => updateRuntimeField("rate_limit_window_minutes", Number(e.target.value))}
+                          className="h-8"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="runtime-rate-limit-requests">{t(lang, "admin.settingsRateLimitRequests")}</Label>
+                        <Input
+                          id="runtime-rate-limit-requests"
+                          type="number"
+                          min={0}
+                          value={runtimeForm.rate_limit_max_requests}
+                          onChange={(e) => updateRuntimeField("rate_limit_max_requests", Number(e.target.value))}
+                          className="h-8"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="runtime-upload-rate-limit-window">{t(lang, "admin.settingsUploadRateLimitWindow")}</Label>
+                        <Input
+                          id="runtime-upload-rate-limit-window"
+                          type="number"
+                          min={0}
+                          value={runtimeForm.upload_rate_limit_window_minutes}
+                          onChange={(e) => updateRuntimeField("upload_rate_limit_window_minutes", Number(e.target.value))}
+                          className="h-8"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="runtime-upload-rate-limit-requests">{t(lang, "admin.settingsUploadRateLimitRequests")}</Label>
+                        <Input
+                          id="runtime-upload-rate-limit-requests"
+                          type="number"
+                          min={0}
+                          value={runtimeForm.upload_rate_limit_max_requests}
+                          onChange={(e) => updateRuntimeField("upload_rate_limit_max_requests", Number(e.target.value))}
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t(lang, "admin.settingsRateLimitHint")}</p>
+                  </div>
+                  <Button size="sm" onClick={handleSaveRuntimeSettings} disabled={systemSaving} className="cursor-pointer gap-1">
+                    {systemSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    {t(lang, "common.save")}
                   </Button>
                 </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="announcements">
+          <AnnouncementManager token={token} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
+}
+
+function backendClassName(backend: StorageInstance["storage_backend"]): string {
+  switch (backend) {
+    case "s3":
+      return "border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300";
+    case "webdav":
+      return "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300";
+    default:
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  }
 }

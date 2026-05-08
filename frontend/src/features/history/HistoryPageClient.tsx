@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { ImageLightbox } from "@/components/shared/ImageLightbox";
+import { UploadHistoryLightbox } from "@/components/shared/UploadHistoryLightbox";
 import { ImgStyleImageCard } from "@/components/shared/ImgStyleImageCard";
-import { Separator } from "@/components/ui/Separator";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import {
   getAllUploads,
@@ -16,8 +15,8 @@ import {
 import { deleteImageByUid } from "@/lib/api";
 import { getClientToken } from "@/lib/preferences";
 import { t } from "@/lib/i18n";
-import { formatBytes, formatDate } from "@/lib/utils";
-import { Trash2, AlertTriangle, Loader2, Inbox } from "lucide-react";
+import { formatBytes } from "@/lib/utils";
+import { Trash2, Loader2, Inbox } from "lucide-react";
 import toast from "react-hot-toast";
 import type { UploadHistoryRecord } from "@/types";
 
@@ -177,45 +176,14 @@ export function HistoryPageClient() {
       )}
 
       {/* Preview lightbox */}
-      <ImageLightbox
+      <UploadHistoryLightbox
         open={!!previewRecord}
         onClose={() => setPreviewRecord(null)}
-        initialIndex={previewRecord ? records.findIndex((r) => r.uid === previewRecord.uid) : 0}
-        images={records.map((r) => ({
-          url: r.url,
-          alt: r.original_filename,
-          metadata: [
-            { label: t(lang, "image.uid"), value: r.uid },
-            { label: t(lang, "image.storageKey"), value: r.storage_key },
-            { label: t(lang, "image.storageBackend"), value: r.storage_backend },
-            { label: t(lang, "image.type"), value: r.mime_type },
-            { label: t(lang, "image.size"), value: formatBytes(r.size) },
-            { label: t(lang, "image.created"), value: formatDate(r.created_at) },
-          ],
-        }))}
-        getActions={(_, idx) => {
-          const r = records[idx];
-          if (!r) return [];
-          const token = getClientToken();
-          return [
-            ...(r.client_token === token
-              ? [{ label: t(lang, "history.delete"), onClick: () => handleDelete(r) }]
-              : []),
-            {
-              label: t(lang, "common.copyUrl"),
-              onClick: () => { navigator.clipboard.writeText(r.url); toast.success(t(lang, "common.copied")); },
-            },
-            {
-              label: "MD",
-              onClick: () => { navigator.clipboard.writeText(r.markdown || `![](${r.url})`); toast.success(t(lang, "common.copied")); },
-            },
-            {
-              label: "BB",
-              onClick: () => { navigator.clipboard.writeText(r.bbcode || `[img]${r.url}[/img]`); toast.success(t(lang, "common.copied")); },
-            },
-          ];
-        }}
-        closeLabel={t(lang, "common.close")}
+        selectedUid={previewRecord?.uid ?? null}
+        items={records.map((record) => ({ type: "upload", record }))}
+        language={lang}
+        canDelete={(record) => record.client_token === getClientToken()}
+        onDelete={handleDelete}
         metadataLabel={t(lang, "history.viewPreview")}
       />
     </div>

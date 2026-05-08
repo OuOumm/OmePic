@@ -7,6 +7,7 @@ var (
 	ErrMissingToken          = errors.New("missing token")
 	ErrInvalidAdminToken     = errors.New("invalid admin token")
 	ErrForbidden             = errors.New("forbidden")
+	ErrIPBanned              = errors.New("ip banned")
 	ErrNotFound              = errors.New("not found")
 	ErrConflict              = errors.New("conflict")
 	ErrDependencyUnavailable = errors.New("dependency unavailable")

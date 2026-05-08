@@ -110,6 +110,10 @@ func shouldKeepAsAPI404(method string, requestPath string) bool {
 		return true
 	case (isReadMethod(method) || method == http.MethodPost) && requestPath == "/admin/config":
 		return true
+	case (isReadMethod(method) || method == http.MethodPut) && requestPath == "/admin/system-settings":
+		return true
+	case isAdminAnnouncementRoute(method, requestPath):
+		return true
 	case isAdminConfigMutation(method, requestPath):
 		return true
 	default:
@@ -132,4 +136,14 @@ func isAdminConfigMutation(method string, requestPath string) bool {
 	default:
 		return false
 	}
+}
+
+func isAdminAnnouncementRoute(method string, requestPath string) bool {
+	if requestPath == "/admin/announcements" {
+		return isReadMethod(method) || method == http.MethodPost
+	}
+	if !strings.HasPrefix(requestPath, "/admin/announcements/") {
+		return false
+	}
+	return method == http.MethodPut || method == http.MethodDelete || method == http.MethodPost
 }

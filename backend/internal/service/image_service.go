@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"omepic/backend/internal/cache"
+	"omepic/backend/internal/config"
 	"omepic/backend/internal/model"
 	"omepic/backend/internal/repository"
 	"omepic/backend/internal/storage"
@@ -72,6 +73,7 @@ type ImageService struct {
 	repo         *repository.Repository
 	cache        cache.ImageCache
 	storage      *storage.Manager
+	settings     *RuntimeSettingsManager
 	logger       *slog.Logger
 	generateUID  UIDGenerator
 	validateUID  UIDValidator
@@ -83,6 +85,7 @@ func NewImageService(
 	repo *repository.Repository,
 	imageCache cache.ImageCache,
 	storageManager *storage.Manager,
+	settingsManager *RuntimeSettingsManager,
 	generateUID UIDGenerator,
 	validateUID UIDValidator,
 	logger *slog.Logger,
@@ -102,6 +105,7 @@ func NewImageService(
 		repo:        repo,
 		cache:       imageCache,
 		storage:     storageManager,
+		settings:    settingsManager,
 		logger:      logger,
 		generateUID: generateUID,
 		validateUID: validateUID,
@@ -125,19 +129,33 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 	if strings.TrimSpace(input.Token) == "" {
 		return UploadOutput{}, ErrMissingToken
 	}
-	if len(input.Bytes) == 0 || len(input.Bytes) > maxUploadSizeBytes {
-		return UploadOutput{}, fmt.Errorf("%w: file size must be between 1 byte and 20 MB", ErrInvalidInput)
+	if err := s.ensureIPAllowed(ctx, input.IPAddress); err != nil {
+		return UploadOutput{}, err
+	}
+	runtimeSettings := s.currentRuntimeSettings()
+	if runtimeSettings.MaintenanceMode {
+		return UploadOutput{}, fmt.Errorf("%w: %s", ErrInvalidInput, runtimeSettings.EffectiveMaintenanceMessage())
+	}
+	maxBytes := runtimeSettings.MaxUploadSizeBytes()
+	if len(input.Bytes) == 0 || (maxBytes > 0 && int64(len(input.Bytes)) > maxBytes) {
+		if maxBytes > 0 {
+			return UploadOutput{}, fmt.Errorf("%w: file size must be between 1 byte and %d MB", ErrInvalidInput, runtimeSettings.MaxUploadSizeMB)
+		}
+		return UploadOutput{}, fmt.Errorf("%w: file size must be greater than 0 bytes", ErrInvalidInput)
 	}
 
 	extension := strings.ToLower(filepath.Ext(input.OriginalFilename))
 	if _, ok := allowedExtensions[extension]; !ok {
 		return UploadOutput{}, fmt.Errorf("%w: file type is not allowed", ErrInvalidInput)
 	}
+	if !runtimeSettingsAllowsMIME(runtimeSettings, input.MIMEType) {
+		return UploadOutput{}, fmt.Errorf("%w: file MIME type is not allowed", ErrInvalidInput)
+	}
 
 	s.operationMux.Lock()
 	defer s.operationMux.Unlock()
 
-	resolved, err := s.resolveUploadStorage(input.StorageKey)
+	resolved, err := s.resolveUploadStorage(input.StorageKey, runtimeSettings.AllowStorageSelect)
 	if err != nil {
 		return UploadOutput{}, err
 	}
@@ -215,9 +233,15 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 	return buildUploadOutput(record, input.BaseURL, input.OriginalFilename, false), nil
 }
 
-func (s *ImageService) Delete(ctx context.Context, uid string, token string, isAdmin bool) error {
+func (s *ImageService) Delete(ctx context.Context, uid string, token string, isAdmin bool, ipAddress string) error {
 	s.operationMux.Lock()
 	defer s.operationMux.Unlock()
+
+	if !isAdmin {
+		if err := s.ensureIPAllowed(ctx, ipAddress); err != nil {
+			return err
+		}
+	}
 
 	normalizedUID, err := s.normalizeDeleteUID(uid, isAdmin)
 	if err != nil {
@@ -341,22 +365,40 @@ func (s *ImageService) Preheat(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (s *ImageService) PublicStorageOptions(ctx context.Context) ([]PublicStorageOption, error) {
+func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntimeSettingsView, error) {
+	settings := s.currentRuntimeSettings()
 	configs, err := s.repo.ListStorageConfigs(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
+		return PublicRuntimeSettingsView{}, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
 	}
 
-	options := make([]PublicStorageOption, 0, len(configs))
+	options := publicStorageOptionsFromConfigs(configs, settings.AllowStorageSelect)
+	defaultKey := ""
 	for _, cfg := range configs {
-		options = append(options, PublicStorageOption{
-			StorageKey:     cfg.StorageKey,
-			Name:           cfg.Name,
-			StorageBackend: cfg.Backend,
-			IsDefault:      cfg.IsDefault,
-		})
+		if cfg.IsDefault {
+			defaultKey = cfg.StorageKey
+			break
+		}
 	}
-	return options, nil
+	if defaultKey == "" && len(configs) > 0 {
+		defaultKey = configs[0].StorageKey
+	}
+	return PublicRuntimeSettingsView{
+		Upload: PublicUploadSettingsView{
+			MaxUploadSizeMB:           settings.MaxUploadSizeMB,
+			AllowedMIMETypes:          append([]string(nil), settings.AllowedMIMETypes...),
+			EffectiveAllowedMIMETypes: settings.EffectiveAllowedMIMETypes(),
+		},
+		Features: PublicFeatureSettingsView{
+			AllowStorageSelection: settings.AllowStorageSelect,
+			MaintenanceMode:       settings.MaintenanceMode,
+			MaintenanceMessage:    settings.EffectiveMaintenanceMessage(),
+		},
+		Storage: PublicStorageSettingsView{
+			DefaultStorageKey: defaultKey,
+			Options:           options,
+		},
+	}, nil
 }
 
 func (s *ImageService) findExistingByMD5(ctx context.Context, storageKey string, md5Hash string) (*model.ImageRecord, error) {
@@ -428,9 +470,9 @@ func (s *ImageService) repairMD5Mapping(ctx context.Context, storageKey string, 
 	return nil
 }
 
-func (s *ImageService) resolveUploadStorage(storageKey string) (storage.ResolvedProvider, error) {
+func (s *ImageService) resolveUploadStorage(storageKey string, allowStorageSelection bool) (storage.ResolvedProvider, error) {
 	key := strings.TrimSpace(storageKey)
-	if key == "" {
+	if key == "" || !allowStorageSelection {
 		resolved, err := s.storage.Current()
 		if err != nil {
 			return storage.ResolvedProvider{}, fmt.Errorf("%w: active storage backend is invalid", ErrDependencyUnavailable)
@@ -479,12 +521,78 @@ func MaxUploadSizeBytes() int64 {
 	return maxUploadSizeBytes
 }
 
+func (s *ImageService) MaxUploadSizeBytes() int64 {
+	settings := s.currentRuntimeSettings()
+	if value := settings.MaxUploadSizeBytes(); value > 0 {
+		return value
+	}
+	return maxUploadSizeBytes
+}
+
+func (s *ImageService) EffectivePublicBaseURL(requestBase string) string {
+	if s.settings == nil {
+		return strings.TrimRight(requestBase, "/")
+	}
+	return s.settings.EffectivePublicBaseURL(requestBase)
+}
+
 func AllowedExtensions() []string {
 	values := make([]string, 0, len(allowedExtensions))
 	for ext := range allowedExtensions {
 		values = append(values, ext)
 	}
 	return values
+}
+
+func (s *ImageService) currentRuntimeSettings() RuntimeSettings {
+	if s.settings == nil {
+		return defaultRuntimeSettings()
+	}
+	return s.settings.Current()
+}
+
+func (s *ImageService) ensureIPAllowed(ctx context.Context, ipAddress string) error {
+	trimmed := strings.TrimSpace(ipAddress)
+	if trimmed == "" {
+		return nil
+	}
+	_, err := s.repo.FindActiveIPBanByHash(ctx, ipHash(trimmed))
+	if err == nil {
+		return ErrIPBanned
+	}
+	if repository.IsNotFound(err) {
+		return nil
+	}
+	return fmt.Errorf("%w: ip ban lookup failed", ErrDependencyUnavailable)
+}
+
+func runtimeSettingsAllowsMIME(settings RuntimeSettings, mimeType string) bool {
+	candidate := strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0]))
+	if candidate == "" {
+		return false
+	}
+	for _, allowed := range settings.EffectiveAllowedMIMETypes() {
+		if candidate == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func publicStorageOptionsFromConfigs(configs []config.RuntimeStorageConfig, allowStorageSelection bool) []PublicStorageOption {
+	options := make([]PublicStorageOption, 0, len(configs))
+	for _, cfg := range configs {
+		if !allowStorageSelection && !cfg.IsDefault {
+			continue
+		}
+		options = append(options, PublicStorageOption{
+			StorageKey:     cfg.StorageKey,
+			Name:           cfg.Name,
+			StorageBackend: cfg.Backend,
+			IsDefault:      cfg.IsDefault,
+		})
+	}
+	return options
 }
 
 func md5Hex(payload []byte) string {

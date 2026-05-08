@@ -3,25 +3,25 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { UploadDropzone } from "./UploadDropzone";
 import { StorageSelector } from "./StorageSelector";
-import { ImageLightbox } from "@/components/shared/ImageLightbox";
 import { ImgStyleImageCard } from "@/components/shared/ImgStyleImageCard";
+import { UploadHistoryLightbox } from "@/components/shared/UploadHistoryLightbox";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { useUploadStore } from "@/stores/upload-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
-import { uploadImageWithProgress } from "@/lib/api";
+import { uploadImageWithProgress, getRuntimeSettings, ApiError } from "@/lib/api";
 import { getClientToken } from "@/lib/preferences";
 import {
   saveUploadToHistory,
   getRecentUploads,
 } from "@/lib/indexeddb/upload-history";
 import { t } from "@/lib/i18n";
-import { formatBytes, formatDate } from "@/lib/utils";
+import { formatBytes } from "@/lib/utils";
 import { Loader2, Link } from "lucide-react";
 import toast from "react-hot-toast";
-import type { UploadResult, UploadHistoryRecord } from "@/types";
+import type { UploadResult, UploadHistoryRecord, Language } from "@/types";
 
 interface UploadTask {
   id: string;
@@ -32,17 +32,34 @@ interface UploadTask {
   error?: string;
 }
 
+function uploadErrorMessage(lang: Language, err: unknown): string {
+  if (err instanceof ApiError && err.code === "rate_limited") {
+    return typeof err.retryAfter === "number"
+      ? t(lang, "upload.rateLimitedWithRetry", { seconds: err.retryAfter })
+      : t(lang, "upload.rateLimited");
+  }
+  if (err instanceof ApiError && err.code === "network_error") {
+    return t(lang, "upload.networkError");
+  }
+  return err instanceof Error ? err.message : t(lang, "upload.error");
+}
+
 let taskIdCounter = 0;
 
 export function UploadPageClient() {
   const language = useUiPreferencesStore((state) => state.language);
   const selectedStorageKey = useUploadStore((state) => state.selectedStorageKey);
+  const runtimeSettings = useUploadStore((state) => state.runtimeSettings);
+  const setRuntimeSettings = useUploadStore((state) => state.setRuntimeSettings);
+  const setSelectedStorageKey = useUploadStore((state) => state.setSelectedStorageKey);
   const hasHydrated = useUiPreferencesStore((state) => state.hasHydrated);
 
   const [tasks, setTasks] = useState<UploadTask[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [recentUploads, setRecentUploads] = useState<UploadHistoryRecord[]>([]);
   const [previewRecord, setPreviewRecord] = useState<UploadHistoryRecord | null>(null);
+  const [runtimeLoading, setRuntimeLoading] = useState(true);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
 
   // URL upload state
   const [urlInput, setUrlInput] = useState("");
@@ -52,8 +69,31 @@ export function UploadPageClient() {
   const processingRef = useRef(false);
   const languageRef = useRef(language);
   const storageKeyRef = useRef(selectedStorageKey);
+  const runtimeSettingsRef = useRef(runtimeSettings);
   languageRef.current = language;
   storageKeyRef.current = selectedStorageKey;
+  runtimeSettingsRef.current = runtimeSettings;
+
+  const loadRuntimeSettings = useCallback(async (showLoading = true) => {
+    if (showLoading) setRuntimeLoading(true);
+    setRuntimeError(null);
+    try {
+      const settings = await getRuntimeSettings();
+      setRuntimeSettings(settings);
+      if (
+        selectedStorageKey &&
+        !settings.storage.options.some((option) => option.storage_key === selectedStorageKey)
+      ) {
+        setSelectedStorageKey("");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t(language, "common.error");
+      setRuntimeError(message);
+      setRuntimeSettings(null);
+    } finally {
+      setRuntimeLoading(false);
+    }
+  }, [language, selectedStorageKey, setRuntimeSettings, setSelectedStorageKey]);
 
   const loadRecentUploads = useCallback(async () => {
     try {
@@ -61,6 +101,10 @@ export function UploadPageClient() {
       setRecentUploads(records);
     } catch { /* ignore */ }
   }, []);
+
+  useEffect(() => {
+    loadRuntimeSettings();
+  }, [loadRuntimeSettings]);
 
   useEffect(() => {
     loadRecentUploads();
@@ -109,7 +153,8 @@ export function UploadPageClient() {
                 return { task, result: result as UploadResult };
               })
               .catch((err) => {
-                const msg = err instanceof Error ? err.message : t(lang, "upload.error");
+                const msg = uploadErrorMessage(lang, err);
+                toast.error(`${task.file.name}: ${msg}`);
                 setTasks((prev) =>
                   prev.map((t) =>
                     t.id === task.id
@@ -181,9 +226,37 @@ export function UploadPageClient() {
     });
   }, []);
 
+  const validateFiles = useCallback(
+    (files: File[]) => {
+      const settings = runtimeSettingsRef.current;
+      if (!settings) return files;
+      const maxBytes = settings.upload.max_upload_size_mb > 0 ? settings.upload.max_upload_size_mb * 1024 * 1024 : 0;
+      const allowedTypes = settings.upload.effective_allowed_mime_types;
+      return files.filter((file) => {
+        if (maxBytes > 0 && file.size > maxBytes) {
+          toast.error(`${file.name}: ${t(languageRef.current, "upload.error")}`);
+          return false;
+        }
+        if (allowedTypes.length > 0 && !allowedTypes.includes(file.type.toLowerCase())) {
+          toast.error(`${file.name}: ${t(languageRef.current, "upload.error")}`);
+          return false;
+        }
+        return true;
+      });
+    },
+    []
+  );
+
   const handleUploads = useCallback(
     (files: File[]) => {
-      const newTasks: UploadTask[] = files.map((file) => ({
+      const settings = runtimeSettingsRef.current;
+      if (settings?.features.maintenance_mode) {
+        toast.error(settings.features.maintenance_message);
+        return;
+      }
+      const acceptedFiles = validateFiles(files);
+      if (acceptedFiles.length === 0) return;
+      const newTasks: UploadTask[] = acceptedFiles.map((file) => ({
         id: `task-${++taskIdCounter}`,
         file,
         progress: 0,
@@ -191,10 +264,9 @@ export function UploadPageClient() {
       }));
 
       setTasks((prev) => [...prev, ...newTasks]);
-      // Schedule processing after state is committed
       setTimeout(() => processQueue(), 0);
     },
-    [processQueue]
+    [processQueue, validateFiles]
   );
 
   const handleUrlUpload = useCallback(async () => {
@@ -279,6 +351,8 @@ export function UploadPageClient() {
   const isUploading = tasks.some(
     (t) => t.status === "pending" || t.status === "uploading"
   );
+  const maintenanceMode = runtimeSettings?.features.maintenance_mode ?? false;
+  const uploadDisabled = isUploading || runtimeLoading || maintenanceMode;
 
   // Unified grid: uploading/pending tasks first, error tasks next, then recent history.
   // Within each group, newest first (task id descending, saved_at descending).
@@ -336,16 +410,26 @@ export function UploadPageClient() {
       {/* Upload area */}
       <Card>
         <CardContent className="pt-6">
-          <StorageSelector />
+          {runtimeError && (
+            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {runtimeError}
+            </div>
+          )}
+          {maintenanceMode && (
+            <div className="mb-4 rounded-lg border border-amber-300/60 bg-amber-100/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+              {runtimeSettings?.features.maintenance_message}
+            </div>
+          )}
+          <StorageSelector refreshing={runtimeLoading} onRefresh={() => loadRuntimeSettings(false)} />
           <div className="mt-4">
             <UploadDropzone
-            disabled={isUploading}
-            isDragging={isDragOver}
-            onDragStateChange={setIsDragOver}
-            onSelectFiles={handleUploads}
-            fileInputRef={fileInputRef}
-            language={lang}
-          />
+              disabled={uploadDisabled}
+              isDragging={isDragOver}
+              onDragStateChange={setIsDragOver}
+              onSelectFiles={handleUploads}
+              fileInputRef={fileInputRef}
+              language={lang}
+            />
           </div>
         </CardContent>
       </Card>
@@ -371,7 +455,7 @@ export function UploadPageClient() {
               variant="outline"
               size="sm"
               onClick={handleUrlUpload}
-              disabled={urlUploading || isUploading || !urlInput.trim()}
+              disabled={urlUploading || uploadDisabled || !urlInput.trim()}
               className="cursor-pointer h-8"
             >
               {urlUploading ? (
@@ -459,50 +543,12 @@ export function UploadPageClient() {
       </div>
 
       {/* Preview lightbox */}
-      <ImageLightbox
+      <UploadHistoryLightbox
         open={!!previewRecord}
         onClose={() => setPreviewRecord(null)}
-        initialIndex={previewRecord ? recentUploads.findIndex((r) => r.uid === previewRecord.uid) : 0}
-        images={recentUploads.map((r) => ({
-          url: r.url,
-          alt: r.original_filename,
-          metadata: [
-            { label: t(lang, "image.uid"), value: r.uid },
-            { label: t(lang, "image.storageKey"), value: r.storage_key },
-            { label: t(lang, "image.storageBackend"), value: r.storage_backend },
-            { label: t(lang, "image.type"), value: r.mime_type },
-            { label: t(lang, "image.size"), value: formatBytes(r.size) },
-            { label: t(lang, "image.created"), value: formatDate(r.created_at) },
-          ],
-        }))}
-        getActions={(_, idx) => {
-          const r = recentUploads[idx];
-          if (!r) return [];
-          return [
-            {
-              label: t(lang, "common.copyUrl"),
-              onClick: () => {
-                navigator.clipboard.writeText(r.url);
-                toast.success(t(lang, "common.copied"));
-              },
-            },
-            {
-              label: t(lang, "common.copyMarkdown"),
-              onClick: () => {
-                navigator.clipboard.writeText(r.markdown || `![](${r.url})`);
-                toast.success(t(lang, "common.copied"));
-              },
-            },
-            {
-              label: t(lang, "common.copyBBCode"),
-              onClick: () => {
-                navigator.clipboard.writeText(r.bbcode || `[img]${r.url}[/img]`);
-                toast.success(t(lang, "common.copied"));
-              },
-            },
-          ];
-        }}
-        closeLabel={t(lang, "common.close")}
+        selectedUid={previewRecord?.uid ?? null}
+        items={recentUploads.map((record) => ({ type: "upload", record }))}
+        language={lang}
         metadataLabel={t(lang, "history.viewPreview")}
       />
     </div>

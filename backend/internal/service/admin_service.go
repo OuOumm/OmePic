@@ -98,33 +98,60 @@ type AdminImageList struct {
 }
 
 type AdminImageItem struct {
-	ID             int64     `json:"id"`
-	UID            string    `json:"uid"`
-	Token          string    `json:"token"`
-	StorageKey     string    `json:"storage_key"`
-	StorageBackend string    `json:"storage_backend"`
-	MIMEType       string    `json:"mime_type"`
-	Size           int64     `json:"size"`
-	MD5Hash        string    `json:"md5_hash"`
-	IPAddress      string    `json:"ip_address"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID              int64     `json:"id"`
+	UID             string    `json:"uid"`
+	Token           string    `json:"token"`
+	StorageKey      string    `json:"storage_key"`
+	StorageBackend  string    `json:"storage_backend"`
+	MIMEType        string    `json:"mime_type"`
+	Size            int64     `json:"size"`
+	MD5Hash         string    `json:"md5_hash"`
+	IPAddress       string    `json:"ip_address"`
+	IPAddressMasked string    `json:"ip_address_masked"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type AdminIPBanCreateInput struct {
+	UID           string `json:"uid"`
+	IPAddress     string `json:"ip_address"`
+	DurationHours int    `json:"duration_hours"`
+	Reason        string `json:"reason"`
+}
+
+type AdminAbuseOverviewInput struct {
+	From time.Time
+	To   time.Time
+}
+
+type AdminIPBanCreateResult struct {
+	Ban                model.IPBan `json:"ban"`
+	AffectedImageCount int64       `json:"affected_image_count"`
+	AffectedTotalSize  int64       `json:"affected_total_size"`
+}
+
+type AdminIPBanDeleteImagesResult struct {
+	DeletedCount int `json:"deleted_count"`
 }
 
 type AdminService struct {
 	repo         *repository.Repository
 	storage      *storage.Manager
+	settings     *RuntimeSettingsManager
 	imageService *ImageService
+	appConfig    config.AppConfig
 	adminPass    string
 	jwtSecret    string
 }
 
-func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, imageService *ImageService, adminPassword string, jwtSecret string) *AdminService {
+func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, settingsManager *RuntimeSettingsManager, imageService *ImageService, appConfig config.AppConfig) *AdminService {
 	return &AdminService{
 		repo:         repo,
 		storage:      storageManager,
+		settings:     settingsManager,
 		imageService: imageService,
-		adminPass:    adminPassword,
-		jwtSecret:    jwtSecret,
+		appConfig:    appConfig,
+		adminPass:    appConfig.AdminPassword,
+		jwtSecret:    appConfig.JWTSecret,
 	}
 }
 
@@ -159,16 +186,17 @@ func (s *AdminService) Images(ctx context.Context, page int, pageSize int, searc
 	viewItems := make([]AdminImageItem, 0, len(items))
 	for _, item := range items {
 		viewItems = append(viewItems, AdminImageItem{
-			ID:             item.ID,
-			UID:            item.UID,
-			Token:          item.Token,
-			StorageKey:     item.StorageKey,
-			StorageBackend: item.StorageBackend,
-			MIMEType:       item.MIMEType,
-			Size:           item.Size,
-			MD5Hash:        item.MD5Hash,
-			IPAddress:      item.IPAddress,
-			CreatedAt:      item.CreatedAt,
+			ID:              item.ID,
+			UID:             item.UID,
+			Token:           item.Token,
+			StorageKey:      item.StorageKey,
+			StorageBackend:  item.StorageBackend,
+			MIMEType:        item.MIMEType,
+			Size:            item.Size,
+			MD5Hash:         item.MD5Hash,
+			IPAddress:       item.IPAddress,
+			IPAddressMasked: maskIPAddress(item.IPAddress),
+			CreatedAt:       item.CreatedAt,
 		})
 	}
 
@@ -185,11 +213,147 @@ func (s *AdminService) DeleteImages(ctx context.Context, uids []string) error {
 		return ErrInvalidInput
 	}
 	for _, uid := range uids {
-		if err := s.imageService.Delete(ctx, uid, "", true); err != nil {
+		if err := s.imageService.Delete(ctx, uid, "", true, ""); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *AdminService) CreateIPBan(ctx context.Context, input AdminIPBanCreateInput) (AdminIPBanCreateResult, error) {
+	uid := strings.TrimSpace(input.UID)
+	ipAddress := strings.TrimSpace(input.IPAddress)
+	if uid != "" {
+		record, err := s.repo.FindByUID(ctx, uid)
+		if err != nil {
+			if repository.IsNotFound(err) {
+				return AdminIPBanCreateResult{}, ErrNotFound
+			}
+			return AdminIPBanCreateResult{}, fmt.Errorf("%w: image lookup failed", ErrDependencyUnavailable)
+		}
+		ipAddress = strings.TrimSpace(record.IPAddress)
+	}
+	if ipAddress == "" {
+		return AdminIPBanCreateResult{}, fmt.Errorf("%w: uid or ip_address is required", ErrInvalidInput)
+	}
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		if uid != "" {
+			reason = "Abusive upload from image " + uid
+		} else {
+			reason = "Abusive upload from IP " + maskIPAddress(ipAddress)
+		}
+	}
+	var expiresAt *time.Time
+	if input.DurationHours > 0 {
+		expires := time.Now().UTC().Add(time.Duration(input.DurationHours) * time.Hour)
+		expiresAt = &expires
+	}
+	ban, err := s.repo.CreateIPBan(ctx, model.IPBan{
+		IPHash:          ipHash(ipAddress),
+		IPAddress:       ipAddress,
+		IPAddressMasked: maskIPAddress(ipAddress),
+		Reason:          reason,
+		ExpiresAt:       expiresAt,
+	})
+	if err != nil {
+		return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip ban create failed", ErrDependencyUnavailable)
+	}
+	summary, err := s.repo.ImageSummaryByIP(ctx, ipAddress)
+	if err != nil {
+		return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip image summary failed", ErrDependencyUnavailable)
+	}
+	return AdminIPBanCreateResult{Ban: ban, AffectedImageCount: summary.Count, AffectedTotalSize: summary.TotalSize}, nil
+}
+
+func (s *AdminService) IPBans(ctx context.Context) ([]model.IPBan, error) {
+	bans, err := s.repo.ListIPBans(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: ip bans query failed", ErrDependencyUnavailable)
+	}
+	return bans, nil
+}
+
+func (s *AdminService) AbuseOverview(ctx context.Context, input AdminAbuseOverviewInput) (model.AbuseOverview, error) {
+	from, to, err := normalizeAbuseRange(input.From, input.To)
+	if err != nil {
+		return model.AbuseOverview{}, err
+	}
+	uploadCount, uploadSize, err := s.repo.AbuseOverviewTotals(ctx, from, to)
+	if err != nil {
+		return model.AbuseOverview{}, fmt.Errorf("%w: abuse totals query failed", ErrDependencyUnavailable)
+	}
+	activeBanCount, err := s.repo.CountActiveIPBans(ctx)
+	if err != nil {
+		return model.AbuseOverview{}, fmt.Errorf("%w: active ip bans query failed", ErrDependencyUnavailable)
+	}
+	topIPs, err := s.repo.TopAbuseIPs(ctx, from, to, 10)
+	if err != nil {
+		return model.AbuseOverview{}, fmt.Errorf("%w: abuse ip rank query failed", ErrDependencyUnavailable)
+	}
+	topTokens, err := s.repo.TopAbuseTokens(ctx, from, to, 10)
+	if err != nil {
+		return model.AbuseOverview{}, fmt.Errorf("%w: abuse token rank query failed", ErrDependencyUnavailable)
+	}
+	return model.AbuseOverview{
+		From:             from,
+		To:               to,
+		UploadCount:      uploadCount,
+		UploadSize:       uploadSize,
+		ActiveIPBanCount: activeBanCount,
+		TopIPs:           topIPs,
+		TopTokens:        topTokens,
+	}, nil
+}
+
+func (s *AdminService) AbuseIPDetail(ctx context.Context, ipAddress string) (model.AbuseIPDetail, error) {
+	trimmed := strings.TrimSpace(ipAddress)
+	if trimmed == "" {
+		return model.AbuseIPDetail{}, ErrInvalidInput
+	}
+	detail, err := s.repo.IPDetail(ctx, trimmed)
+	if err != nil {
+		return model.AbuseIPDetail{}, fmt.Errorf("%w: abuse ip detail query failed", ErrDependencyUnavailable)
+	}
+	return detail, nil
+}
+
+func (s *AdminService) DeleteIPBan(ctx context.Context, id int64) error {
+	if id < 1 {
+		return ErrInvalidInput
+	}
+	if err := s.repo.DeleteIPBan(ctx, id); err != nil {
+		if repository.IsNotFound(err) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("%w: ip ban delete failed", ErrDependencyUnavailable)
+	}
+	return nil
+}
+
+func (s *AdminService) DeleteImagesByIPBan(ctx context.Context, id int64) (AdminIPBanDeleteImagesResult, error) {
+	if id < 1 {
+		return AdminIPBanDeleteImagesResult{}, ErrInvalidInput
+	}
+	ban, err := s.repo.GetIPBan(ctx, id)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return AdminIPBanDeleteImagesResult{}, ErrNotFound
+		}
+		return AdminIPBanDeleteImagesResult{}, fmt.Errorf("%w: ip ban lookup failed", ErrDependencyUnavailable)
+	}
+	images, err := s.repo.ListImagesByIP(ctx, ban.IPAddress)
+	if err != nil {
+		return AdminIPBanDeleteImagesResult{}, fmt.Errorf("%w: ip image list failed", ErrDependencyUnavailable)
+	}
+	deleted := 0
+	for _, image := range images {
+		if err := s.imageService.Delete(ctx, image.UID, "", true, ""); err != nil {
+			return AdminIPBanDeleteImagesResult{}, err
+		}
+		deleted++
+	}
+	return AdminIPBanDeleteImagesResult{DeletedCount: deleted}, nil
 }
 
 func (s *AdminService) GetConfig(ctx context.Context) (AdminConfigView, error) {
@@ -342,6 +506,24 @@ func (s *AdminService) SetDefaultStorageConfig(ctx context.Context, storageKey s
 	return s.loadConfigView(ctx)
 }
 
+func (s *AdminService) GetSystemSettings(ctx context.Context) (AdminSystemSettingsView, error) {
+	return s.loadSystemSettingsView(ctx)
+}
+
+func (s *AdminService) UpdateSystemSettings(ctx context.Context, input RuntimeSettingsUpdateInput) (AdminSystemSettingsView, error) {
+	settings, err := ValidateRuntimeSettingsInput(input)
+	if err != nil {
+		return AdminSystemSettingsView{}, err
+	}
+	if err := s.repo.UpsertConfigValues(ctx, RuntimeSettingsToConfigValues(settings)); err != nil {
+		return AdminSystemSettingsView{}, fmt.Errorf("%w: settings save failed", ErrDependencyUnavailable)
+	}
+	if s.settings != nil {
+		s.settings.Reconfigure(settings)
+	}
+	return s.loadSystemSettingsView(ctx)
+}
+
 func (s *AdminService) loadConfigView(ctx context.Context) (AdminConfigView, error) {
 	configs, err := s.repo.ListStorageConfigs(ctx)
 	if err != nil {
@@ -372,6 +554,70 @@ func (s *AdminService) reloadStorageManager(ctx context.Context) error {
 		return fmt.Errorf("%w: storage reload failed", ErrDependencyUnavailable)
 	}
 	return nil
+}
+
+func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemSettingsView, error) {
+	settings := defaultRuntimeSettings()
+	if s.settings != nil {
+		settings = s.settings.Current()
+	}
+	configs, err := s.repo.ListStorageConfigs(ctx)
+	if err != nil {
+		return AdminSystemSettingsView{}, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
+	}
+	defaultKey := ""
+	for _, cfg := range configs {
+		if cfg.IsDefault {
+			defaultKey = cfg.StorageKey
+			break
+		}
+	}
+	return AdminSystemSettingsView{
+		Runtime: settings,
+		Readonly: AdminReadonlySettings{
+			Environment: AdminEnvironmentStatus{
+				HTTPAddr:                s.appConfig.HTTPAddr,
+				DatabasePath:            s.appConfig.DatabasePath,
+				RedisConfigured:         strings.TrimSpace(s.appConfig.RedisURL) != "",
+				PublicBaseURLSource:     s.publicBaseURLSource(),
+				EnvPublicBaseURLSet:     s.settings != nil && s.settings.EnvPublicBaseURLSet(),
+				RuntimePublicBaseURLSet: settings.PublicBaseURL != "",
+			},
+			Security: AdminSecurityStatus{
+				JWTSecret: SecretStatus{
+					Configured:   strings.TrimSpace(s.appConfig.JWTSecret) != "",
+					UsingDefault: s.appConfig.JWTSecret == "change-me",
+				},
+				AdminPassword: SecretStatus{
+					Configured:   strings.TrimSpace(s.appConfig.AdminPassword) != "",
+					UsingDefault: s.appConfig.AdminPassword == "admin123",
+				},
+				UIDEncryptionKey: SecretStatus{
+					Configured:   strings.TrimSpace(s.appConfig.UIDEncryptionKey) != "",
+					UsingDefault: s.appConfig.UIDEncryptionKey == "change-me" || s.appConfig.UIDEncryptionKey == s.appConfig.JWTSecret,
+				},
+			},
+			Storage: AdminStorageStatus{
+				DefaultStorageKey:     defaultKey,
+				StorageConfigCount:    len(configs),
+				AllowStorageSelection: settings.AllowStorageSelect,
+			},
+			Service: AdminServiceStatus{
+				Health:          "ok",
+				MaintenanceMode: settings.MaintenanceMode,
+			},
+		},
+	}, nil
+}
+
+func (s *AdminService) publicBaseURLSource() string {
+	if s.settings == nil {
+		if strings.TrimSpace(s.appConfig.PublicBaseURL) != "" {
+			return "environment"
+		}
+		return "request_host"
+	}
+	return s.settings.PublicBaseURLSource()
 }
 
 func (s *AdminService) ensureStorageConfigExists(ctx context.Context, storageKey string) error {

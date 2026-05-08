@@ -23,11 +23,11 @@ export function ApiPageContent() {
     },
     {
       method: "GET",
-      path: "/v1/storage-options",
+      path: "/v1/runtime-settings",
       desc: lang === "zh"
-        ? "获取可公开显示的存储选项列表，包含 storage_key、name、storage_backend、is_default。不暴露路径、凭据或密钥。"
-        : "Get publicly visible storage options: storage_key, name, storage_backend, is_default. Credentials/keys are not exposed.",
-      curl: `curl -X GET "<BASE>/v1/storage-options"`,
+        ? "获取公开运行时设置：上传限制、维护模式、多存储选项和可见存储实例。不会暴露密钥。"
+        : "Get public runtime settings: upload limits, maintenance mode, storage selection, and visible storage options. Secrets are not exposed.",
+      curl: `curl -X GET "<BASE>/v1/runtime-settings"`,
     },
     {
       method: "DELETE",

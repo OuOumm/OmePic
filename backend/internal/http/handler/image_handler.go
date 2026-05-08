@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"omepic/backend/internal/http/clientip"
 	"omepic/backend/internal/response"
 	"omepic/backend/internal/service"
 	"omepic/backend/internal/storage"
@@ -18,26 +19,27 @@ type ImageHandler struct {
 	service    *service.ImageService
 	storage    *storage.Manager
 	logger     *slog.Logger
-	publicBase string
+	ipResolver *clientip.Resolver
 }
 
-func NewImageHandler(imageService *service.ImageService, storageManager *storage.Manager, logger *slog.Logger, publicBase string) *ImageHandler {
+func NewImageHandler(imageService *service.ImageService, storageManager *storage.Manager, logger *slog.Logger, ipResolver *clientip.Resolver) *ImageHandler {
 	return &ImageHandler{
 		service:    imageService,
 		storage:    storageManager,
 		logger:     logger,
-		publicBase: publicBase,
+		ipResolver: ipResolver,
 	}
 }
 
 func (h *ImageHandler) Upload(c *gin.Context) {
+	limit := h.service.MaxUploadSizeBytes()
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "file is required")
 		return
 	}
-	if fileHeader.Size > service.MaxUploadSizeBytes() {
-		response.Error(c, http.StatusBadRequest, "invalid_input", "file must be 20 MB or smaller")
+	if limit > 0 && fileHeader.Size > limit {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "file exceeds the configured upload size limit")
 		return
 	}
 
@@ -48,13 +50,17 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 	}
 	defer file.Close()
 
-	payload, err := io.ReadAll(io.LimitReader(file, service.MaxUploadSizeBytes()+1))
+	readLimit := service.MaxUploadSizeBytes() + 1
+	if limit > 0 {
+		readLimit = limit + 1
+	}
+	payload, err := io.ReadAll(io.LimitReader(file, readLimit))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "failed to read uploaded file")
 		return
 	}
-	if int64(len(payload)) > service.MaxUploadSizeBytes() {
-		response.Error(c, http.StatusBadRequest, "invalid_input", "file must be 20 MB or smaller")
+	if limit > 0 && int64(len(payload)) > limit {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "file exceeds the configured upload size limit")
 		return
 	}
 
@@ -67,9 +73,9 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 		Token:            c.GetHeader("X-Token"),
 		OriginalFilename: fileHeader.Filename,
 		MIMEType:         contentType,
-		IPAddress:        c.ClientIP(),
+		IPAddress:        h.clientIP(c),
 		Bytes:            payload,
-		BaseURL:          h.publicURL(c),
+		BaseURL:          h.service.EffectivePublicBaseURL(h.requestBaseURL(c)),
 		StorageKey:       c.PostForm("storage_key"),
 	})
 	if err != nil {
@@ -81,17 +87,17 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 	response.Success(c, http.StatusOK, result)
 }
 
-func (h *ImageHandler) StorageOptions(c *gin.Context) {
-	options, err := h.service.PublicStorageOptions(c.Request.Context())
+func (h *ImageHandler) RuntimeSettings(c *gin.Context) {
+	settings, err := h.service.PublicRuntimeSettings(c.Request.Context())
 	if err != nil {
 		h.mapJSONError(c, err)
 		return
 	}
-	response.Success(c, http.StatusOK, gin.H{"items": options})
+	response.Success(c, http.StatusOK, settings)
 }
 
 func (h *ImageHandler) Delete(c *gin.Context) {
-	err := h.service.Delete(c.Request.Context(), c.Param("uid"), c.GetHeader("X-Token"), false)
+	err := h.service.Delete(c.Request.Context(), c.Param("uid"), c.GetHeader("X-Token"), false, h.clientIP(c))
 	if err != nil {
 		h.mapJSONError(c, err)
 		return
@@ -137,6 +143,8 @@ func (h *ImageHandler) mapJSONError(c *gin.Context, err error) {
 	switch {
 	case err == service.ErrMissingToken:
 		response.Error(c, http.StatusUnauthorized, "missing_token", "X-Token is required")
+	case err == service.ErrIPBanned:
+		response.Error(c, http.StatusForbidden, "ip_banned", "current network is not allowed to upload or delete images")
 	case strings.Contains(err.Error(), service.ErrInvalidInput.Error()):
 		response.Error(c, http.StatusBadRequest, "invalid_input", sanitizeMessage(err))
 	case err == service.ErrForbidden:
@@ -154,15 +162,19 @@ func (h *ImageHandler) mapJSONError(c *gin.Context, err error) {
 	}
 }
 
-func (h *ImageHandler) publicURL(c *gin.Context) string {
-	if h.publicBase != "" {
-		return strings.TrimRight(h.publicBase, "/")
-	}
+func (h *ImageHandler) requestBaseURL(c *gin.Context) string {
 	scheme := "http"
 	if c.Request.TLS != nil {
 		scheme = "https"
 	}
 	return scheme + "://" + c.Request.Host
+}
+
+func (h *ImageHandler) clientIP(c *gin.Context) string {
+	if h.ipResolver == nil {
+		return c.ClientIP()
+	}
+	return h.ipResolver.Resolve(c.Request)
 }
 
 func detectContentType(filename string) string {

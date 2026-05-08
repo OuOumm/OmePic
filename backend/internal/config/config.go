@@ -12,18 +12,20 @@ const (
 )
 
 type AppConfig struct {
-	HTTPAddr         string
-	DatabasePath     string
-	RedisURL         string
-	PublicBaseURL    string
-	UIDPrefix        string
-	UIDEncryptionKey string
-	StorageBackend   string
-	LocalStoragePath string
-	AdminPassword    string
-	JWTSecret        string
-	S3               S3Config
-	WebDAV           WebDAVConfig
+	HTTPAddr          string
+	DatabasePath      string
+	RedisURL          string
+	PublicBaseURL     string
+	UIDPrefix         string
+	UIDEncryptionKey  string
+	StorageBackend    string
+	LocalStoragePath  string
+	AdminPassword     string
+	JWTSecret         string
+	TrustedProxyCIDRs []string
+	RealIPHeader      string
+	S3                S3Config
+	WebDAV            WebDAVConfig
 }
 
 type S3Config struct {
@@ -88,16 +90,18 @@ func Load() AppConfig {
 	}
 
 	return AppConfig{
-		HTTPAddr:         envOrDefault("HTTP_ADDR", ":8080"),
-		DatabasePath:     envOrDefault("DATABASE_PATH", "data/omepic.db"),
-		RedisURL:         envOrDefault("REDIS_URL", "redis://localhost:6379/0"),
-		PublicBaseURL:    os.Getenv("PUBLIC_BASE_URL"),
-		UIDPrefix:        envOrDefault("UID_PREFIX", "omeo_"),
-		UIDEncryptionKey: uidEncryptionKey,
-		StorageBackend:   envOrDefault("STORAGE_BACKEND", StorageBackendLocal),
-		LocalStoragePath: envOrDefault("LOCAL_STORAGE_PATH", "data/images"),
-		AdminPassword:    envOrDefault("ADMIN_PASSWORD", "admin123"),
-		JWTSecret:        envOrDefault("JWT_SECRET", "change-me"),
+		HTTPAddr:          envOrDefault("HTTP_ADDR", ":8080"),
+		DatabasePath:      envOrDefault("DATABASE_PATH", "data/omepic.db"),
+		RedisURL:          envOrDefault("REDIS_URL", "redis://localhost:6379/0"),
+		PublicBaseURL:     os.Getenv("PUBLIC_BASE_URL"),
+		UIDPrefix:         envOrDefault("UID_PREFIX", "omeo_"),
+		UIDEncryptionKey:  uidEncryptionKey,
+		StorageBackend:    envOrDefault("STORAGE_BACKEND", StorageBackendLocal),
+		LocalStoragePath:  envOrDefault("LOCAL_STORAGE_PATH", "data/images"),
+		AdminPassword:     envOrDefault("ADMIN_PASSWORD", "admin123"),
+		JWTSecret:         envOrDefault("JWT_SECRET", "change-me"),
+		TrustedProxyCIDRs: splitCSV(os.Getenv("TRUSTED_PROXY_CIDRS")),
+		RealIPHeader:      envOrDefault("REAL_IP_HEADER", "X-Forwarded-For"),
 		S3: S3Config{
 			Endpoint:       os.Getenv("S3_ENDPOINT"),
 			Region:         envOrDefault("S3_REGION", "auto"),
@@ -171,6 +175,18 @@ func envOrDefault(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func envBool(key string, fallback bool) bool {
