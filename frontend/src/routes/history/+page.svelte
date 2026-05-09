@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Trash2 } from 'lucide-svelte';
   import ImageDataRow from '@/components/studio/ImageDataRow.svelte';
+  import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { deleteImageByUid } from '@/api';
   import { clearUploadHistory, deleteUploadFromHistory, getAllUploads, getUploadCount } from '@/indexeddb/upload-history';
@@ -13,6 +14,7 @@
   let records = $state<UploadHistoryRecord[]>([]);
   let count = $state(0);
   let loading = $state(true);
+  let previewRecord = $state<UploadHistoryRecord | null>(null);
 
   async function loadData() {
     loading = true;
@@ -37,6 +39,7 @@
       await deleteImageByUid(record.uid, getClientToken());
       await deleteUploadFromHistory(record.uid);
       records = records.filter((item) => item.uid !== record.uid);
+      if (previewRecord?.uid === record.uid) previewRecord = null;
       count -= 1;
       toast.success(t(preferences.language, 'history.deleted'));
     } catch {
@@ -78,10 +81,12 @@
     <div class="overflow-x-auto">
       <div class="min-w-[760px]">
         {#each records as record (record.uid)}
-          <ImageDataRow language={preferences.language} {record} canDelete={record.client_token === getClientToken()} onCopy={copy} onDelete={() => remove(record)} />
+          <ImageDataRow language={preferences.language} {record} canDelete={record.client_token === getClientToken()} onCopy={copy} onPreview={() => (previewRecord = record)} onDelete={() => remove(record)} />
         {/each}
       </div>
     </div>
   {/if}
+
+  <ImagePreviewDialog language={preferences.language} record={previewRecord} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && remove(previewRecord)} onClose={() => (previewRecord = null)} />
 </div>
 

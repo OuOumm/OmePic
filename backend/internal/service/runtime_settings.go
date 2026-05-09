@@ -61,8 +61,7 @@ type PublicFeatureSettingsView struct {
 }
 
 type PublicStorageSettingsView struct {
-	DefaultStorageKey string                `json:"default_storage_key"`
-	Options           []PublicStorageOption `json:"options"`
+	Options []PublicStorageOption `json:"options"`
 }
 
 type AdminSystemSettingsView struct {

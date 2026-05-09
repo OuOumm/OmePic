@@ -2,11 +2,11 @@
   import { Link, Loader2 } from 'lucide-svelte';
   import CanvasDropzone from '@/components/studio/CanvasDropzone.svelte';
   import ImageDataRow from '@/components/studio/ImageDataRow.svelte';
+  import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
-  import BlueprintFlow from '@/components/studio/BlueprintFlow.svelte';
-  import { ApiError, getAnnouncements, getRuntimeSettings, uploadImageWithProgress } from '@/api';
+  import { ApiError, deleteImageByUid, getAnnouncements, getRuntimeSettings, uploadImageWithProgress } from '@/api';
   import { getClientToken } from '@/preferences';
-  import { saveUploadToHistory, getRecentUploads } from '@/indexeddb/upload-history';
+  import { saveUploadToHistory, deleteUploadFromHistory, getRecentUploads } from '@/indexeddb/upload-history';
   import { t } from '@/i18n';
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
@@ -29,6 +29,7 @@
   let urlInput = $state('');
   let urlUploading = $state(false);
   let announcements = $state<Announcement[]>([]);
+  let previewRecord = $state<UploadHistoryRecord | null>(null);
   let counter = 0;
 
   const activeTasks = $derived(tasks.filter((task) => task.status === 'pending' || task.status === 'uploading' || task.status === 'error'));
@@ -177,6 +178,19 @@
     toast.success(t(preferences.language, 'common.copied'));
   }
 
+  async function removeRecent(record: UploadHistoryRecord) {
+    if (!confirm(t(preferences.language, 'history.deleteConfirm'))) return;
+    try {
+      await deleteImageByUid(record.uid, getClientToken());
+      await deleteUploadFromHistory(record.uid);
+      recentUploads = recentUploads.filter((item) => item.uid !== record.uid);
+      if (previewRecord?.uid === record.uid) previewRecord = null;
+      toast.success(t(preferences.language, 'history.deleted'));
+    } catch {
+      toast.error(t(preferences.language, 'history.deleteError'));
+    }
+  }
+
   $effect(() => {
     loadRuntime();
     loadRecent();
@@ -187,14 +201,14 @@
       const files = Array.from(event.clipboardData?.items ?? [])
         .filter((item) => item.type.startsWith('image/'))
         .map((item) => item.getAsFile())
-        .filter((file): file is File => !!file);
+        .filter((file): file is File => Boolean(file));
       if (files.length) {
         event.preventDefault();
         handleFiles(files);
       }
     };
-    document.addEventListener('paste', pasteHandler);
-    return () => document.removeEventListener('paste', pasteHandler);
+    window.addEventListener('paste', pasteHandler);
+    return () => window.removeEventListener('paste', pasteHandler);
   });
 </script>
 
@@ -226,8 +240,6 @@
       <CanvasDropzone language={preferences.language} disabled={uploadDisabled} {dragging} onFiles={handleFiles} />
     </div>
 
-    <BlueprintFlow label="Upload pipeline" steps={['select', 'validate', 'host', 'copy']} activeIndex={activeTasks.length ? 1 : recentUploads.length ? 3 : 0} />
-
     <div class="grid gap-3 border-y-[3px] ink-line py-5 md:grid-cols-[1fr_auto] md:items-end">
       <label class="grid gap-2 text-sm font-black">
         {t(preferences.language, 'upload.urlLabel')}
@@ -254,8 +266,8 @@
       {#if activeTasks.length}
         <div class="mt-3 grid gap-3">
           {#each activeTasks as task (task.id)}
-            <div class="border-b-2 border-dashed border-[hsl(var(--ink)/0.32)] pb-3 text-sm">
-              <div class="flex justify-between gap-3 font-black"><span class="truncate">{task.file.name}</span><span>{task.progress}%</span></div>
+            <div class="min-w-0 overflow-hidden border-b-2 border-dashed border-[hsl(var(--ink)/0.32)] pb-3 text-sm">
+              <div class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 font-black overflow-hidden"><span class="block min-w-0 truncate" title={task.file.name}>{task.file.name}</span><span class="text-right whitespace-nowrap">{task.progress}%</span></div>
               <div class="mt-2 h-2 border-2 ink-line"><div class="h-full bg-[hsl(var(--marker-green))]" style={`width:${task.progress}%`}></div></div>
               {#if task.error}<p class="mt-1 text-xs text-[hsl(var(--danger))]">{task.error}</p>{/if}
             </div>
@@ -277,12 +289,13 @@
       </div>
     </div>
     <div class="overflow-x-auto">
-      <div class="min-w-[820px]">
+      <div class="min-w-[760px]">
         {#each recentUploads as record (record.uid)}
-          <ImageDataRow language={preferences.language} {record} onCopy={copy} />
+          <ImageDataRow language={preferences.language} {record} canDelete={record.client_token === getClientToken()} onCopy={copy} onPreview={() => (previewRecord = record)} onDelete={() => removeRecent(record)} />
         {/each}
       </div>
     </div>
   </section>
 {/if}
 
+<ImagePreviewDialog language={preferences.language} record={previewRecord} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && removeRecent(previewRecord)} onClose={() => (previewRecord = null)} />

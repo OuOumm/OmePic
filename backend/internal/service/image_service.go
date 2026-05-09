@@ -373,16 +373,6 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 	}
 
 	options := publicStorageOptionsFromConfigs(configs, settings.AllowStorageSelect)
-	defaultKey := ""
-	for _, cfg := range configs {
-		if cfg.IsDefault {
-			defaultKey = cfg.StorageKey
-			break
-		}
-	}
-	if defaultKey == "" && len(configs) > 0 {
-		defaultKey = configs[0].StorageKey
-	}
 	return PublicRuntimeSettingsView{
 		Upload: PublicUploadSettingsView{
 			MaxUploadSizeMB:           settings.MaxUploadSizeMB,
@@ -395,8 +385,7 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 			MaintenanceMessage:    settings.EffectiveMaintenanceMessage(),
 		},
 		Storage: PublicStorageSettingsView{
-			DefaultStorageKey: defaultKey,
-			Options:           options,
+			Options: options,
 		},
 	}, nil
 }

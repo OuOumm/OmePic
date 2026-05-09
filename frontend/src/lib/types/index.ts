@@ -156,7 +156,6 @@ export interface PublicRuntimeSettings {
     maintenance_message: string;
   };
   storage: {
-    default_storage_key: string;
     options: StorageOption[];
   };
 }
