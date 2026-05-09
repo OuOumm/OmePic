@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/index.md","reason":"Load the backend spec structure before filling backend guideline files."}
+{"file":".trellis/spec/frontend/index.md","reason":"Load the frontend spec structure before filling frontend guideline files."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Bootstrap guidelines should discourage duplication while the project structure is being created."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The requested product spans backend, storage, API, and frontend, so cross-layer thinking is required."}
+{"file":".trellis/tasks/00-bootstrap-guidelines/research/bootstrap-discovery.md","reason":"Use the recorded repository state and start.md architecture baseline while writing the first spec pass."}

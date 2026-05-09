@@ -1,0 +1,1 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Verify generated prompt reflects the current frontend implementation without changing behavior."}

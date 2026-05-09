@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend feature change; provides the required guideline index and pre-development checklist."}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Keep upload feature code in the established route/feature/shared layout."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "New upload UI controls must follow existing client component boundaries and shared component patterns."}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Clipboard and URL source handling may use React callbacks/effects and should follow hook conventions."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Upload state must continue using the existing Zustand store pattern without page-local duplication."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "URL-to-File and clipboard handling require explicit browser API and runtime validation."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Upload UI must remain accessible, localized, and verifiable with lint/typecheck/build."}

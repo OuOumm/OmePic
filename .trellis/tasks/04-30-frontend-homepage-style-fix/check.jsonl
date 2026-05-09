@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend verification should follow the current package spec and checklist."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Check homepage changes against shared component, visual consistency, and accessibility rules."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run the required lint, typecheck, and build verification for frontend changes."}
+{"file":".trellis/tasks/04-30-frontend-homepage-style-fix/research/homepage-audit.md","reason":"Review findings should validate that homepage hierarchy and invalid shared utilities were actually addressed."}

@@ -1,0 +1,10 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Review frontend refactor against the current frontend contract."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Verify files remain in appropriate app/feature/shared locations."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Check visual hierarchy, accessibility, focus, hover, disabled, and responsive behavior."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Check for effect churn, unstable callbacks/selectors, and avoidable client-side work."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Verify state boundaries and persistence behavior remain correct."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check upload/history/admin/storage option type contracts remain intact."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run frontend lint/type/build and review duplicated request logic."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review reuse of UI primitives and design tokens."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review frontend/backend contract consistency after UI changes."}
+{"file":".trellis/tasks/04-29-frontend-ui-performance-modernization/prd.md","reason":"Check implementation against task-specific acceptance criteria."}

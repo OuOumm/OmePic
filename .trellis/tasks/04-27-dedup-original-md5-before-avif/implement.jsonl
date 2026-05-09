@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/index.md","reason":"Load backend conventions before changing deduplication behavior."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"This task changes the meaning and timing of md5-based deduplication and must stay consistent with SQLite and Redis contracts."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"The change must preserve backend test coverage and layer boundaries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Avoid duplicating hash or conversion logic while adjusting the upload pipeline."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The upload, cache, storage, and delete flow remain cross-layer even for this smaller fix."}

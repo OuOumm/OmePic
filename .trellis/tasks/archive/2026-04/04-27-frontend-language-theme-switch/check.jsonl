@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review that header controls and page updates preserve clean component boundaries."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Review browser preference logic and shared hooks for hydration and client-only behavior risks."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Check the persisted global preference implementation against repo state-management expectations."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review translation keys and preference types for compile-time coverage."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check accessibility, consistency, and full-surface text/theme coverage."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review for duplicated translation or theme-selection logic."}

@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端开发总规范索引，列出所有子规范文件"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件边界和客户端/服务端组件拆分规范"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "路由、功能和共享文件布局规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码审查、测试和可访问性规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand 状态管理规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript 类型安全规范"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "自定义 Hook 规范"}
+{"file": ".trellis/tasks/05-06-shadcn-ui-ux-ui/prd.md", "reason": "本任务 PRD：设计方向、需求、验收标准"}
+{"file": ".trellis/tasks/05-06-shadcn-ui-ux-ui/research/design-trends.md", "reason": "设计趋势研究：Glassmorphism 2.0 实现细节、CSS 参考"}
+{"file": ".trellis/tasks/05-06-shadcn-ui-ux-ui/research/shadcn-ecosystem.md", "reason": "shadcn/ui 生态系统研究：可用组件、依赖、主题最佳实践"}

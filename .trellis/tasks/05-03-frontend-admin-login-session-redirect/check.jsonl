@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend checklist for reviewing the admin login session redirect"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Review client component and routing behavior"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Review Zustand persistence and hydration handling"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality gate expectations for frontend checks"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript review expectations"}

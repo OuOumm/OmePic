@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend pre-development checklist and current app conventions"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Route and feature/shared component ownership"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Shared image card, accessibility, and component boundary rules"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Upload store and global UI preference store boundaries"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Upload response and public URL contract"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Required frontend verification commands and localization expectations"}

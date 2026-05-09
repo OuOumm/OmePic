@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend quality checklist"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Shared image card and accessibility review"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand and preference-store review"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Upload response contract review"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Lint, typecheck, build, localization checks"}
