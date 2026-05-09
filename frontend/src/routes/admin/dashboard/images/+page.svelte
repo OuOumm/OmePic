@@ -53,10 +53,13 @@
   </div>
   <p class="font-black">{t(preferences.language, 'admin.imagesTotal', { total })}</p>
   <div class="overflow-x-auto">
-    <div class="min-w-[910px]">
+    <div class="min-w-[990px]">
       {#each images as image (image.uid)}
-        <div class="grid grid-cols-[36px_1fr_120px_110px_120px_170px] items-center gap-4 studio-table-row py-3 text-sm">
+        <div class="grid grid-cols-[36px_72px_1fr_120px_110px_120px_170px] items-center gap-4 studio-table-row py-3 text-sm">
           <input type="checkbox" checked={selected.has(image.uid)} onchange={() => toggle(image.uid)} />
+          <button class="grid size-14 place-items-center overflow-hidden border-2 ink-line bg-[hsl(var(--paper-deep))]" type="button" onclick={() => (activeImage = image)} aria-label={t(preferences.language, 'common.openPreview', { title: image.uid })}>
+            <img src={`/i/${image.uid}.avif`} alt={image.uid} class="h-full w-full object-cover" loading="lazy" />
+          </button>
           <button class="min-w-0 text-left" type="button" onclick={() => (activeImage = image)}><p class="truncate font-black hover:marker-highlight">{image.uid}</p><p class="truncate text-xs text-[hsl(var(--ink-muted))]">{image.md5_hash}</p></button>
           <div>{formatBytes(image.size)}</div>
           <div>{image.storage_key}</div>

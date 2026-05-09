@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Link, Loader2 } from 'lucide-svelte';
+  import { Bell, Link, Loader2 } from 'lucide-svelte';
+  import AnnouncementDialog from '@/components/studio/AnnouncementDialog.svelte';
   import CanvasDropzone from '@/components/studio/CanvasDropzone.svelte';
   import ImageDataRow from '@/components/studio/ImageDataRow.svelte';
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
@@ -29,6 +30,8 @@
   let urlInput = $state('');
   let urlUploading = $state(false);
   let announcements = $state<Announcement[]>([]);
+  let announcementDialogOpen = $state(false);
+  let announcementDialogMode = $state<'detail' | 'history'>('detail');
   let previewRecord = $state<UploadHistoryRecord | null>(null);
   let counter = 0;
 
@@ -73,10 +76,28 @@
 
   async function loadAnnouncements() {
     try {
-      announcements = await getAnnouncements();
+      const items = await getAnnouncements();
+      announcements = items;
+      const latestStamp = items[0]?.updated_at || items[0]?.created_at || '';
+      const seenStamp = localStorage.getItem('omepic:announcement:lastSeen') ?? '';
+      if (latestStamp && latestStamp !== seenStamp) {
+        announcementDialogMode = 'detail';
+        announcementDialogOpen = true;
+      }
     } catch {
       announcements = [];
     }
+  }
+
+  function closeAnnouncementDialog() {
+    const latestStamp = announcements[0]?.updated_at || announcements[0]?.created_at || '';
+    if (latestStamp) localStorage.setItem('omepic:announcement:lastSeen', latestStamp);
+    announcementDialogOpen = false;
+  }
+
+  function openAnnouncementDialog(mode: 'detail' | 'history' = 'detail') {
+    announcementDialogMode = mode;
+    announcementDialogOpen = true;
   }
 
   function validateFiles(files: File[]) {
@@ -216,19 +237,6 @@
 
 <div class="grid gap-6 lg:grid-cols-[1fr_320px]">
   <section class="space-y-6">
-    {#if announcements.length}
-      <div class="paper-strip grid gap-3 py-4 sketch-enter">
-        {#each announcements as announcement (announcement.id)}
-          <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-blue))">{announcement.priority}</span>
-              <h2 class="mt-2 text-2xl font-black">{announcement.title}</h2>
-              <p class="text-sm font-semibold text-[hsl(var(--ink-muted))]">{announcement.content}</p>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
     {#if runtimeError}
       <div class="studio-panel border-[hsl(var(--danger))] p-4 text-sm font-bold text-[hsl(var(--danger))]">{runtimeError}</div>
     {/if}
@@ -236,7 +244,13 @@
       <div class="studio-panel bg-[hsl(var(--marker-yellow)/0.35)] p-4 text-sm font-bold">{preferences.runtimeSettings?.features.maintenance_message}</div>
     {/if}
 
-    <div role="presentation" ondragenter={() => (dragging = true)} ondragleave={() => (dragging = false)}>
+    <div class="relative" role="presentation" ondragenter={() => (dragging = true)} ondragleave={() => (dragging = false)}>
+      {#if announcements.length}
+        <button class="studio-button absolute right-3 top-3 z-20 p-2 text-xs shadow-[4px_4px_0_hsl(var(--ink))] rotate-[1deg] sm:p-2.5 sm:text-sm" type="button" onclick={() => openAnnouncementDialog('history')}>
+          <Bell class="size-4" />
+          {t(preferences.language, 'announcement.entry', { count: announcements.length })}
+        </button>
+      {/if}
       <CanvasDropzone language={preferences.language} disabled={uploadDisabled} {dragging} onFiles={handleFiles} />
     </div>
 
@@ -299,3 +313,4 @@
 {/if}
 
 <ImagePreviewDialog language={preferences.language} record={previewRecord} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && removeRecent(previewRecord)} onClose={() => (previewRecord = null)} />
+<AnnouncementDialog language={preferences.language} announcements={announcements} open={announcementDialogOpen} initialMode={announcementDialogMode} onClose={closeAnnouncementDialog} />

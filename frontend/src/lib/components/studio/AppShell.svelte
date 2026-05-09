@@ -15,9 +15,20 @@
 
   let { children } = $props();
 
+  const currentTheme = $derived(preferences.theme);
+
+  function applyTheme() {
+    if (typeof document === 'undefined') return;
+    document.documentElement.classList.toggle('dark', resolvedTheme() === 'dark');
+  }
+
   function toggleTheme() {
     setTheme(resolvedTheme() === 'dark' ? 'light' : 'dark');
   }
+
+  $effect(() => {
+    if (currentTheme) applyTheme();
+  });
 </script>
 
 <svelte:head>
@@ -35,7 +46,7 @@
   </script>
 </svelte:head>
 
-<svelte:window onstorage={() => document.documentElement.classList.toggle('dark', resolvedTheme() === 'dark')} />
+<svelte:window onstorage={applyTheme} />
 
 <div class="min-h-screen">
   <header class="sticky top-0 z-50 border-b-2 ink-line bg-[hsl(var(--paper)/0.86)] backdrop-blur-md">
