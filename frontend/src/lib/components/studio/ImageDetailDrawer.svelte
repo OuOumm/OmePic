@@ -137,7 +137,7 @@
 {#if image}
   <div class="fixed inset-0 z-[70] grid place-items-center p-2 sm:p-4" role="dialog" aria-modal="true" aria-label={t(preferences.language, 'admin.imageDetails')} tabindex="-1" onkeydown={handleKeydown} use:accessibleDialog={{ onClose }}>
     <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35 backdrop-blur-[2px]" type="button" onclick={onClose} aria-label={t(preferences.language, 'common.close')}></button>
-    <div class="studio-panel relative max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto p-3 rotate-[0.25deg] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:p-5">
+    <div class="studio-panel relative max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto bg-[hsl(var(--paper))] p-3 rotate-[0.25deg] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:p-5">
       <div class="mb-2 flex items-start justify-between gap-2 sm:mb-4 sm:gap-3">
         <span class="tape-label rotate-[-2deg]">{t(preferences.language, 'admin.imageDetails')}</span>
         <button class="studio-button p-1.5 sm:p-2" type="button" onclick={onClose} aria-label={t(preferences.language, 'common.close')}><X class="size-4" /></button>
