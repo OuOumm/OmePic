@@ -1,20 +1,27 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { Language } from '@/types';
+import { locale } from '@/i18n';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number, language: Language = 'en'): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const size = bytes / Math.pow(1024, i);
-  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  const formatted = new Intl.NumberFormat(locale(language), { maximumFractionDigits: i === 0 ? 0 : 1 }).format(size);
+  return `${formatted} ${units[i]}`;
 }
 
-export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString();
+export function formatMegabytes(value: number, language: Language = 'en'): string {
+  return `${new Intl.NumberFormat(locale(language), { maximumFractionDigits: 1 }).format(value)} MB`;
+}
+
+export function formatDate(dateStr: string, language: Language = 'en'): string {
+  return new Intl.DateTimeFormat(locale(language), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(dateStr));
 }
 
 export function getApiBaseUrl(): string {

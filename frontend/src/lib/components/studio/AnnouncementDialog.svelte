@@ -1,6 +1,9 @@
 <script lang="ts">
   import { ChevronLeft, ChevronRight, History, Megaphone, X } from 'lucide-svelte';
   import { t } from '@/i18n';
+  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { formatDate } from '@/utils';
+  import MarkdownContent from './MarkdownContent.svelte';
   import type { Announcement, Language } from '@/types';
 
   type Props = {
@@ -24,11 +27,6 @@
     return 'hsl(var(--marker-blue))';
   }
 
-  function formatDate(value: string | null | undefined) {
-    if (!value) return '';
-    return new Intl.DateTimeFormat(language === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-  }
-
   function selectAnnouncement(nextIndex: number) {
     index = nextIndex;
     mode = 'detail';
@@ -42,8 +40,8 @@
 </script>
 
 {#if open && current}
-  <div class="fixed inset-0 z-[85] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.48)] p-2 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()} onkeydown={(event) => event.key === 'Escape' && onClose()}>
-    <div class="grid max-h-[calc(100dvh-1rem)] w-full max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="announcement-dialog-title">
+  <div class="fixed inset-0 z-[85] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.48)] p-2 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()}>
+    <div class="grid max-h-[calc(100dvh-1rem)] w-full max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="announcement-dialog-title" use:accessibleDialog={{ onClose }}>
       <header class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b-[3px] ink-line p-4">
         <div class="min-w-0 overflow-hidden">
           <span class="tape-label rotate-[-2deg]" style="background:hsl(var(--marker-pink))">{mode === 'history' ? t(language, 'announcement.history') : t(language, 'announcement.notice')}</span>
@@ -61,8 +59,8 @@
                   <span class="tape-label rotate-[-1deg]" style={`background:${priorityColor(item.priority)}`}>{item.priority}</span>
                   <strong class="min-w-0 truncate text-lg font-black">{item.title}</strong>
                 </div>
-                <p class="line-clamp-2 whitespace-pre-wrap text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.content}</p>
-                <span class="text-xs font-bold text-[hsl(var(--ink-muted))]">{formatDate(item.updated_at || item.created_at)}</span>
+                <MarkdownContent content={item.content} clamp />
+                <span class="text-xs font-bold text-[hsl(var(--ink-muted))]">{formatDate(item.updated_at || item.created_at, language)}</span>
               </button>
             {/each}
           </div>
@@ -72,11 +70,11 @@
               <span class="tape-label rotate-[-1deg]" style={`background:${priorityColor(current.priority)}`}>{current.priority}</span>
               <span class="text-xs font-black text-[hsl(var(--ink-muted))]">{index + 1} / {announcements.length}</span>
             </div>
-            <p class="whitespace-pre-wrap text-base font-semibold leading-7 text-[hsl(var(--ink-muted))]">{current.content}</p>
+            <MarkdownContent content={current.content} />
             <div class="grid gap-1 border-t-2 border-dashed border-[hsl(var(--ink)/0.32)] pt-3 text-xs font-bold text-[hsl(var(--ink-muted))]">
-              <span>{t(language, 'announcement.updatedAt')}: {formatDate(current.updated_at || current.created_at)}</span>
-              {#if current.starts_at}<span>{t(language, 'announcement.startsAt')}: {formatDate(current.starts_at)}</span>{/if}
-              {#if current.ends_at}<span>{t(language, 'announcement.endsAt')}: {formatDate(current.ends_at)}</span>{/if}
+              <span>{t(language, 'announcement.updatedAt')}: {formatDate(current.updated_at || current.created_at, language)}</span>
+              {#if current.starts_at}<span>{t(language, 'announcement.startsAt')}: {formatDate(current.starts_at, language)}</span>{/if}
+              {#if current.ends_at}<span>{t(language, 'announcement.endsAt')}: {formatDate(current.ends_at, language)}</span>{/if}
             </div>
           </article>
         {/if}

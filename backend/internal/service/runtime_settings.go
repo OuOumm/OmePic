@@ -13,7 +13,9 @@ import (
 )
 
 const (
-	DefaultMaintenanceMessage           = "系统维护中，请稍后再试"
+	DefaultSiteName                  = "OmePic"
+	DefaultSiteTagline               = "上传、分享和管理图片"
+	DefaultMaintenanceMessage        = "系统维护中，请稍后再试"
 	DefaultRateLimitWindowMinutes       = 1
 	DefaultRateLimitMaxRequests         = 120
 	DefaultUploadRateLimitWindowMinutes = 10
@@ -29,7 +31,11 @@ var defaultAllowedMIMETypes = []string{
 	"image/avif",
 }
 
+var defaultAllowedMIMETypesCSV = strings.Join(defaultAllowedMIMETypes, ",")
+
 type RuntimeSettings struct {
+	SiteName                     string   `json:"site_name"`
+	SiteTagline                  string   `json:"site_tagline"`
 	PublicBaseURL                string   `json:"public_base_url"`
 	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
@@ -43,9 +49,15 @@ type RuntimeSettings struct {
 }
 
 type PublicRuntimeSettingsView struct {
+	Site     PublicSiteSettingsView    `json:"site"`
 	Upload   PublicUploadSettingsView  `json:"upload"`
 	Features PublicFeatureSettingsView `json:"features"`
 	Storage  PublicStorageSettingsView `json:"storage"`
+}
+
+type PublicSiteSettingsView struct {
+	Name    string `json:"name"`
+	Tagline string `json:"tagline"`
 }
 
 type PublicUploadSettingsView struct {
@@ -108,6 +120,8 @@ type AdminServiceStatus struct {
 }
 
 type RuntimeSettingsUpdateInput struct {
+	SiteName                     string   `json:"site_name"`
+	SiteTagline                  string   `json:"site_tagline"`
 	PublicBaseURL                string   `json:"public_base_url"`
 	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
@@ -194,9 +208,6 @@ func (s RuntimeSettings) EffectiveMaintenanceMessage() string {
 }
 
 func (s RuntimeSettings) EffectiveAllowedMIMETypes() []string {
-	if len(s.AllowedMIMETypes) == 0 {
-		return append([]string(nil), defaultAllowedMIMETypes...)
-	}
 	return append([]string(nil), s.AllowedMIMETypes...)
 }
 
@@ -213,6 +224,8 @@ func DefaultAllowedMIMETypes() []string {
 
 func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSettings, error) {
 	settings := RuntimeSettings{
+		SiteName:                     strings.TrimSpace(input.SiteName),
+		SiteTagline:                  strings.TrimSpace(input.SiteTagline),
 		PublicBaseURL:                strings.TrimSpace(input.PublicBaseURL),
 		MaxUploadSizeMB:              input.MaxUploadSizeMB,
 		AllowedMIMETypes:             input.AllowedMIMETypes,
@@ -247,6 +260,8 @@ func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSett
 func RuntimeSettingsToConfigValues(settings RuntimeSettings) map[string]string {
 	settings = normalizeRuntimeSettings(settings)
 	return map[string]string{
+		"site_name":                         settings.SiteName,
+		"site_tagline":                      settings.SiteTagline,
 		"public_base_url":                  settings.PublicBaseURL,
 		"max_upload_size_mb":               strconv.Itoa(settings.MaxUploadSizeMB),
 		"allowed_mime_types":               strings.Join(settings.AllowedMIMETypes, ","),
@@ -262,6 +277,12 @@ func RuntimeSettingsToConfigValues(settings RuntimeSettings) map[string]string {
 
 func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error) {
 	settings := defaultRuntimeSettings()
+	if value, ok := values["site_name"]; ok {
+		settings.SiteName = strings.TrimSpace(value)
+	}
+	if value, ok := values["site_tagline"]; ok {
+		settings.SiteTagline = strings.TrimSpace(value)
+	}
 	if value, ok := values["public_base_url"]; ok {
 		settings.PublicBaseURL = strings.TrimSpace(value)
 	}
@@ -278,6 +299,8 @@ func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error
 			return RuntimeSettings{}, err
 		}
 		settings.AllowedMIMETypes = allowed
+	} else {
+		values["allowed_mime_types"] = defaultAllowedMIMETypesCSV
 	}
 	if value, ok := values["allow_storage_selection"]; ok && strings.TrimSpace(value) != "" {
 		settings.AllowStorageSelect = parseBoolValue(value)
@@ -321,8 +344,10 @@ func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error
 
 func defaultRuntimeSettings() RuntimeSettings {
 	return RuntimeSettings{
-		MaxUploadSizeMB:              0,
-		AllowedMIMETypes:             []string{},
+		SiteName:                     DefaultSiteName,
+		SiteTagline:                  DefaultSiteTagline,
+		MaxUploadSizeMB:              20,
+		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
 		AllowStorageSelect:           true,
 		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
 		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
@@ -332,9 +357,20 @@ func defaultRuntimeSettings() RuntimeSettings {
 }
 
 func normalizeRuntimeSettings(settings RuntimeSettings) RuntimeSettings {
+	settings.SiteName = strings.TrimSpace(settings.SiteName)
+	if settings.SiteName == "" {
+		settings.SiteName = DefaultSiteName
+	}
+	settings.SiteTagline = strings.TrimSpace(settings.SiteTagline)
+	if settings.SiteTagline == "" {
+		settings.SiteTagline = DefaultSiteTagline
+	}
 	settings.PublicBaseURL = strings.TrimRight(strings.TrimSpace(settings.PublicBaseURL), "/")
 	settings.MaintenanceMessage = strings.TrimSpace(settings.MaintenanceMessage)
 	allowed, _ := normalizeMIMETypes(settings.AllowedMIMETypes)
+	if allowed == nil {
+		allowed = []string{}
+	}
 	settings.AllowedMIMETypes = allowed
 	return settings
 }
@@ -360,6 +396,9 @@ func normalizeMIMETypes(values []string) ([]string, error) {
 		if mimeType == "" {
 			continue
 		}
+		if mimeType == "image/jpg" {
+			mimeType = "image/jpeg"
+		}
 		if !strings.HasPrefix(mimeType, "image/") || strings.ContainsAny(mimeType, " ;") {
 			return nil, fmt.Errorf("%w: allowed mime types must be image MIME values", ErrInvalidInput)
 		}
@@ -373,6 +412,9 @@ func normalizeMIMETypes(values []string) ([]string, error) {
 		result = append(result, mimeType)
 	}
 	sort.Strings(result)
+	if result == nil {
+		return []string{}, nil
+	}
 	return result, nil
 }
 

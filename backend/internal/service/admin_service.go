@@ -249,6 +249,18 @@ func (s *AdminService) CreateIPBan(ctx context.Context, input AdminIPBanCreateIn
 		expires := time.Now().UTC().Add(time.Duration(input.DurationHours) * time.Hour)
 		expiresAt = &expires
 	}
+	existing, err := s.repo.FindActiveIPBanByHash(ctx, ipHash(ipAddress))
+	if err == nil {
+		summary, err := s.repo.ImageSummaryByIP(ctx, ipAddress)
+		if err != nil {
+			return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip image summary failed", ErrDependencyUnavailable)
+		}
+		return AdminIPBanCreateResult{Ban: existing, AffectedImageCount: summary.Count, AffectedTotalSize: summary.TotalSize}, nil
+	}
+	if err != nil && !repository.IsNotFound(err) {
+		return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip ban lookup failed", ErrDependencyUnavailable)
+	}
+
 	ban, err := s.repo.CreateIPBan(ctx, model.IPBan{
 		IPHash:          ipHash(ipAddress),
 		IPAddress:       ipAddress,

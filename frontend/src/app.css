@@ -32,6 +32,41 @@
 
   html {
     scroll-behavior: smooth;
+    scrollbar-color: hsl(var(--ink)) hsl(var(--paper-deep) / 0.72);
+    scrollbar-width: thin;
+  }
+
+  * {
+    scrollbar-color: hsl(var(--ink)) hsl(var(--paper-deep) / 0.72);
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    width: 14px;
+    height: 14px;
+  }
+
+  *::-webkit-scrollbar-track {
+    border-left: 2px solid hsl(var(--ink) / 0.35);
+    background:
+      linear-gradient(hsl(var(--ink) / 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--ink) / 0.06) 1px, transparent 1px),
+      hsl(var(--paper-deep) / 0.72);
+    background-size: 12px 12px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 2px solid hsl(var(--ink));
+    background: hsl(var(--marker-yellow));
+    box-shadow: inset 0 0 0 2px hsl(var(--paper)), inset 0 0 0 4px hsl(var(--ink));
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--marker-blue));
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: hsl(var(--paper-deep));
   }
 
   body {
@@ -120,6 +155,12 @@
     box-shadow: 1px 1px 0 hsl(var(--ink));
   }
 
+  .studio-button:focus-visible {
+    outline: 3px solid hsl(var(--marker-blue));
+    outline-offset: 3px;
+    box-shadow: 6px 6px 0 hsl(var(--ink));
+  }
+
   .studio-button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
@@ -148,11 +189,12 @@
     background: hsl(var(--paper) / 0.88);
     color: hsl(var(--ink));
     padding: 0.65rem 0.8rem;
-    outline: none;
     box-shadow: inset 3px 3px 0 hsl(var(--ink) / 0.08);
   }
 
-  .studio-input:focus {
+  .studio-input:focus-visible {
+    outline: 3px solid hsl(var(--marker-blue));
+    outline-offset: 2px;
     box-shadow: 4px 4px 0 hsl(var(--marker-blue));
   }
 
@@ -200,6 +242,11 @@
   .paper-strip {
     border-block: 3px solid hsl(var(--ink));
     background: hsl(var(--paper) / 0.46);
+  }
+
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
 

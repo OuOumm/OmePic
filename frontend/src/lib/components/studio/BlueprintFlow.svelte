@@ -1,5 +1,9 @@
 <script lang="ts">
-  export let label = 'Pipeline';
+  import type { Language } from '@/types';
+  import { t } from '@/i18n';
+
+  export let language: Language = 'en';
+  export let label = t(language, 'studio.pipeline');
   export let steps: string[] = [];
   export let activeIndex = 0;
 </script>
@@ -7,7 +11,7 @@
 <div class="blueprint-grid border-[3px] ink-line p-5 sketch-enter">
   <div class="mb-4 flex items-center justify-between gap-3">
     <h2 class="text-xl font-black">{label}</h2>
-    <span class="tape-label rotate-2">live sketch</span>
+    <span class="tape-label rotate-2">{t(language, 'studio.liveSketch')}</span>
   </div>
   <div class="relative grid gap-5 md:grid-cols-{steps.length || 1}">
     <svg class="absolute left-0 top-1/2 hidden h-10 w-full -translate-y-1/2 md:block" viewBox="0 0 900 40" preserveAspectRatio="none" aria-hidden="true">

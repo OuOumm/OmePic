@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Trash2 } from 'lucide-svelte';
-  import ImageDataRow from '@/components/studio/ImageDataRow.svelte';
+  import ConfirmDialog from '@/components/studio/ConfirmDialog.svelte';
+  import ImageDataTable from '@/components/studio/ImageDataTable.svelte';
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { deleteImageByUid } from '@/api';
@@ -15,6 +16,8 @@
   let count = $state(0);
   let loading = $state(true);
   let previewRecord = $state<UploadHistoryRecord | null>(null);
+  let confirmTarget = $state<UploadHistoryRecord | 'clear' | null>(null);
+  let busy = $state(false);
 
   async function loadData() {
     loading = true;
@@ -26,24 +29,29 @@
   }
 
   async function clearAll() {
-    if (!confirm(t(preferences.language, 'history.clearConfirm'))) return;
+    busy = true;
     await clearUploadHistory();
     records = [];
     count = 0;
+    confirmTarget = null;
+    busy = false;
     toast.success(t(preferences.language, 'history.cleared'));
   }
 
   async function remove(record: UploadHistoryRecord) {
-    if (!confirm(t(preferences.language, 'history.deleteConfirm'))) return;
+    busy = true;
     try {
       await deleteImageByUid(record.uid, getClientToken());
       await deleteUploadFromHistory(record.uid);
       records = records.filter((item) => item.uid !== record.uid);
       if (previewRecord?.uid === record.uid) previewRecord = null;
+      confirmTarget = null;
       count -= 1;
       toast.success(t(preferences.language, 'history.deleted'));
     } catch {
       toast.error(t(preferences.language, 'history.deleteError'));
+    } finally {
+      busy = false;
     }
   }
 
@@ -59,9 +67,9 @@
 
 <div class="space-y-7">
   <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-    <PageTitle eyebrow="File desk" title={t(preferences.language, 'history.title')} subtitle={t(preferences.language, 'history.subtitle')} tone="blue" />
+    <PageTitle eyebrow={t(preferences.language, 'admin.fileDeskEyebrow')} title={t(preferences.language, 'history.title')} subtitle={t(preferences.language, 'history.subtitle')} tone="blue" />
     {#if records.length > 0}
-      <button class="studio-button" data-tone="danger" type="button" onclick={clearAll}>
+      <button class="studio-button" data-tone="danger" type="button" onclick={() => (confirmTarget = 'clear')}>
         <Trash2 class="size-4" />
         {t(preferences.language, 'history.clear')}
       </button>
@@ -78,15 +86,19 @@
       </div>
     </div>
   {:else}
-    <div class="overflow-x-auto">
-      <div class="min-w-[760px]">
-        {#each records as record (record.uid)}
-          <ImageDataRow language={preferences.language} {record} canDelete={record.client_token === getClientToken()} onCopy={copy} onPreview={() => (previewRecord = record)} onDelete={() => remove(record)} />
-        {/each}
-      </div>
-    </div>
+    <ImageDataTable language={preferences.language} {records} canDelete={(record) => record.client_token === getClientToken()} onCopy={copy} onPreview={(record) => (previewRecord = record)} onDelete={(record) => (confirmTarget = record)} />
   {/if}
 
-  <ImagePreviewDialog language={preferences.language} record={previewRecord} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && remove(previewRecord)} onClose={() => (previewRecord = null)} />
+  <ImagePreviewDialog language={preferences.language} record={previewRecord} records={records} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && (confirmTarget = previewRecord)} onNavigate={(record) => (previewRecord = record)} onClose={() => (previewRecord = null)} />
+  <ConfirmDialog
+    open={confirmTarget !== null}
+    title={confirmTarget === 'clear' ? t(preferences.language, 'history.clearConfirm') : t(preferences.language, 'history.deleteConfirm')}
+    description={confirmTarget === 'clear' ? t(preferences.language, 'history.count', { count }) : confirmTarget?.original_filename || confirmTarget?.uid || ''}
+    confirmLabel={confirmTarget === 'clear' ? t(preferences.language, 'history.clear') : t(preferences.language, 'common.delete')}
+    cancelLabel={t(preferences.language, 'common.cancel')}
+    {busy}
+    onClose={() => (confirmTarget = null)}
+    onConfirm={() => confirmTarget === 'clear' ? clearAll() : confirmTarget && remove(confirmTarget)}
+  />
 </div>
 

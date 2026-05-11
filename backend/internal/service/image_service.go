@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -20,16 +19,6 @@ import (
 )
 
 const maxUploadSizeBytes = 20 * 1024 * 1024
-
-var allowedExtensions = map[string]struct{}{
-	".avif": {},
-	".png":  {},
-	".jpg":  {},
-	".jpeg": {},
-	".gif":  {},
-	".webp": {},
-	".bmp":  {},
-}
 
 type UploadInput struct {
 	Token            string
@@ -144,10 +133,6 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 		return UploadOutput{}, fmt.Errorf("%w: file size must be greater than 0 bytes", ErrInvalidInput)
 	}
 
-	extension := strings.ToLower(filepath.Ext(input.OriginalFilename))
-	if _, ok := allowedExtensions[extension]; !ok {
-		return UploadOutput{}, fmt.Errorf("%w: file type is not allowed", ErrInvalidInput)
-	}
 	if !runtimeSettingsAllowsMIME(runtimeSettings, input.MIMEType) {
 		return UploadOutput{}, fmt.Errorf("%w: file MIME type is not allowed", ErrInvalidInput)
 	}
@@ -374,6 +359,10 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 
 	options := publicStorageOptionsFromConfigs(configs, settings.AllowStorageSelect)
 	return PublicRuntimeSettingsView{
+		Site: PublicSiteSettingsView{
+			Name:    settings.SiteName,
+			Tagline: settings.SiteTagline,
+		},
 		Upload: PublicUploadSettingsView{
 			MaxUploadSizeMB:           settings.MaxUploadSizeMB,
 			AllowedMIMETypes:          append([]string(nil), settings.AllowedMIMETypes...),
@@ -523,14 +512,6 @@ func (s *ImageService) EffectivePublicBaseURL(requestBase string) string {
 		return strings.TrimRight(requestBase, "/")
 	}
 	return s.settings.EffectivePublicBaseURL(requestBase)
-}
-
-func AllowedExtensions() []string {
-	values := make([]string, 0, len(allowedExtensions))
-	for ext := range allowedExtensions {
-		values = append(values, ext)
-	}
-	return values
 }
 
 func (s *ImageService) currentRuntimeSettings() RuntimeSettings {

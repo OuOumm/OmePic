@@ -6,6 +6,8 @@
   export let language: Language;
   export let disabled = false;
   export let dragging = false;
+  export let subtitle: string | null = null;
+  export let allowedTypes = '';
   export let onFiles: (files: File[]) => void;
 
   let input: HTMLInputElement;
@@ -27,13 +29,14 @@
     if (files.length) onFiles(files);
     input.value = '';
   }
+
+  const allowedTypesId = 'upload-allowed-types';
 </script>
 
-<button
-  type="button"
-  class="group relative flex min-h-[390px] w-full overflow-hidden border-[3px] border-dashed ink-line bg-[hsl(var(--paper)/0.72)] px-6 text-left transition-transform duration-200 {dragging ? '-rotate-1 scale-[1.01] bg-[hsl(var(--marker-yellow)/0.28)]' : 'hover:-rotate-[0.35deg]'} disabled:cursor-not-allowed disabled:opacity-60"
-  disabled={disabled}
-  onclick={openPicker}
+<div
+  class="group relative flex min-h-[390px] w-full overflow-hidden border-[3px] border-dashed ink-line bg-[hsl(var(--paper)/0.72)] px-6 text-left transition-transform duration-200 {dragging ? '-rotate-1 scale-[1.01] bg-[hsl(var(--marker-yellow)/0.28)]' : 'hover:-rotate-[0.35deg]'} {disabled ? 'cursor-not-allowed opacity-60' : ''}"
+  role="group"
+  aria-describedby={allowedTypes ? allowedTypesId : undefined}
   ondragover={(event) => event.preventDefault()}
   ondrop={handleDrop}
 >
@@ -49,23 +52,26 @@
         {t(language, 'upload.dropTitle')}
       </h1>
       <p class="mt-6 max-w-2xl text-base font-bold text-[hsl(var(--ink-muted))] md:text-lg">
-        {t(language, 'upload.dropSubtitle')}
+        {subtitle ?? t(language, 'upload.dropSubtitle')}
       </p>
-      <span class="studio-button mt-8" data-tone="primary"><ImageIcon class="size-4" />{t(language, 'upload.select')}</span>
+      {#if allowedTypes}
+        <p id={allowedTypesId} class="mt-3 text-sm font-bold text-[hsl(var(--ink-muted))]">{t(language, 'upload.allowedTypes', { types: allowedTypes })}</p>
+      {/if}
+      <button class="studio-button mt-8" data-tone="primary" type="button" disabled={disabled} onclick={openPicker} aria-describedby={allowedTypes ? allowedTypesId : undefined}><ImageIcon class="size-4" aria-hidden="true" />{t(language, 'upload.select')}</button>
     </div>
 
     <div class="relative hidden min-h-72 lg:block">
       <div class="absolute left-4 top-2 rotate-[-7deg] border-2 ink-line bg-[hsl(var(--marker-pink))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
-        <Clipboard class="mb-2 size-7" />Paste
+        <Clipboard class="mb-2 size-7" />{t(language, 'upload.sourcePaste')}
       </div>
       <div class="absolute right-2 top-24 rotate-[5deg] border-2 ink-line bg-[hsl(var(--marker-blue))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
         <Link2 class="mb-2 size-7" />URL
       </div>
       <div class="absolute bottom-3 left-10 rotate-[-2deg] border-2 ink-line bg-[hsl(var(--marker-green))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
-        <Zap class="mb-2 size-7" />Host
+        <Zap class="mb-2 size-7" />{t(language, 'upload.sourceHost')}
       </div>
     </div>
   </div>
 
-  <input bind:this={input} class="sr-only" type="file" accept="image/*" multiple onchange={handleChange} />
-</button>
+  <input bind:this={input} class="sr-only" type="file" accept="image/*" multiple onchange={handleChange} aria-label={t(language, 'upload.select')} aria-describedby={allowedTypes ? allowedTypesId : undefined} />
+</div>

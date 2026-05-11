@@ -3,7 +3,7 @@
   import { toasts } from '@/stores/toast.svelte';
 </script>
 
-<div class="fixed right-4 top-4 z-[80] grid gap-3">
+<div class="fixed right-4 top-4 z-[80] grid gap-3" role="status" aria-live="polite" aria-atomic="true">
   {#each toasts.items as toast (toast.id)}
     <div
       class="studio-panel flex max-w-sm items-start gap-3 px-4 py-3 text-sm animate-in"

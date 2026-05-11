@@ -2,6 +2,7 @@
   import { RefreshCw } from 'lucide-svelte';
   import type { Language, PublicRuntimeSettings } from '@/types';
   import { t } from '@/i18n';
+  import { formatMegabytes } from '@/utils';
 
   type Props = {
     language: Language;
@@ -25,10 +26,10 @@
 <div class="studio-panel p-4 rotate-[0.25deg]">
   <div class="mb-3 flex items-center justify-between gap-3 border-b-2 ink-line pb-2">
     <div>
-      <p class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">Inspector</p>
+      <p class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">{t(language, 'admin.storageInspector')}</p>
       <h2 class="text-xl font-black">{t(language, 'upload.storage')}</h2>
     </div>
-    <button type="button" class="studio-button p-2" onclick={onRefresh} disabled={refreshing} aria-label="refresh">
+    <button type="button" class="studio-button p-2" onclick={onRefresh} disabled={refreshing} aria-label={t(language, 'common.refresh')}>
       <RefreshCw class="size-4 {refreshing ? 'animate-spin' : ''}" />
     </button>
   </div>
@@ -43,7 +44,7 @@
       </select>
     </label>
     <dl class="mt-4 grid gap-2 text-sm">
-      <div class="flex justify-between gap-3"><dt>{t(language, 'admin.settingsMaxUpload')}</dt><dd class="font-black">{settings.upload.max_upload_size_mb} MB</dd></div>
+      <div class="flex justify-between gap-3"><dt>{t(language, 'admin.settingsMaxUpload')}</dt><dd class="font-black">{formatMegabytes(settings.upload.max_upload_size_mb, language)}</dd></div>
       <div class="flex justify-between gap-3"><dt>{t(language, 'admin.settingsAllowSelection')}</dt><dd class="font-black">{settings.features.allow_storage_selection ? t(language, 'common.enabled') : t(language, 'common.disabled')}</dd></div>
       <div class="flex justify-between gap-3"><dt>{t(language, 'admin.systemDefaultStorage')}</dt><dd class="font-black">{defaultOption?.storage_key ?? '-'}</dd></div>
     </dl>

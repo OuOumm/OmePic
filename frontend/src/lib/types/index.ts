@@ -132,6 +132,8 @@ export interface AdminConfig {
 }
 
 export interface RuntimeSettings {
+  site_name: string;
+  site_tagline: string;
   public_base_url: string;
   max_upload_size_mb: number;
   allowed_mime_types: string[];
@@ -145,6 +147,10 @@ export interface RuntimeSettings {
 }
 
 export interface PublicRuntimeSettings {
+  site: {
+    name: string;
+    tagline: string;
+  };
   upload: {
     max_upload_size_mb: number;
     allowed_mime_types: string[];

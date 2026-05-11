@@ -6,7 +6,10 @@
     adminSetDefaultStorage,
     adminUpdateStorageInstance,
   } from '@/api';
+  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import ConfirmDialog from './ConfirmDialog.svelte';
   import { t } from '@/i18n';
+  import PageTitle from './PageTitle.svelte';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import type { AdminConfig, StorageInstance } from '@/types';
@@ -37,17 +40,27 @@
   let { config, onChange }: Props = $props();
   let form = $state<StorageInstance>({ ...blank });
   let editingKey = $state<string | null>(null);
+  let editorOpen = $state(false);
+  let deleteTarget = $state<StorageInstance | null>(null);
   let busyKey = $state('');
   let saving = $state(false);
+
+  function closeEditor() {
+    editingKey = null;
+    form = { ...blank };
+    editorOpen = false;
+  }
 
   function startCreate() {
     editingKey = null;
     form = { ...blank };
+    editorOpen = true;
   }
 
   function startEdit(instance: StorageInstance) {
     editingKey = instance.storage_key;
     form = { ...blank, ...instance };
+    editorOpen = true;
   }
 
   function payload() {
@@ -86,7 +99,7 @@
         : await adminCreateStorageInstance(preferences.adminToken, payload());
       onChange(next);
       toast.success(t(preferences.language, 'common.success'));
-      startCreate();
+      closeEditor();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
     } finally {
@@ -108,12 +121,13 @@
   }
 
   async function remove(instance: StorageInstance) {
-    if (!preferences.adminToken || instance.is_default || !confirm(`${t(preferences.language, 'common.delete')} ${instance.name}?`)) return;
+    if (!preferences.adminToken || instance.is_default) return;
     busyKey = instance.storage_key;
     try {
       onChange(await adminDeleteStorageInstance(preferences.adminToken, instance.storage_key));
       toast.success(t(preferences.language, 'common.success'));
-      if (editingKey === instance.storage_key) startCreate();
+      deleteTarget = null;
+      if (editingKey === instance.storage_key) closeEditor();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
     } finally {
@@ -122,91 +136,114 @@
   }
 </script>
 
-<section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_390px]">
-  <div>
-    <div class="mb-4 flex items-end justify-between border-b-[3px] ink-line pb-3">
-      <div>
-        <span class="tape-label rotate-[-2deg]">storage</span>
-        <h2 class="mt-3 text-3xl font-black">Storage instances</h2>
-      </div>
-      <button class="studio-button" data-tone="blue" type="button" onclick={startCreate}><Plus class="size-4" />New</button>
+<section class="grid min-w-0 gap-6 overflow-hidden">
+  <div class="min-w-0">
+    <PageTitle eyebrow={t(preferences.language, 'admin.submenuStorage')} title={t(preferences.language, 'admin.storageInstances')} subtitle={t(preferences.language, 'admin.settingsDescription')} tone="blue" />
+    <div class="mt-6 mb-4 flex justify-end border-b-[3px] ink-line pb-3">
+      <button class="studio-button" data-tone="blue" type="button" onclick={startCreate}><Plus class="size-4" />{t(preferences.language, 'admin.storageNew')}</button>
     </div>
-    <div class="grid gap-2">
-      {#each config.storage_configs as item (item.storage_key)}
-        <article class="studio-table-row grid gap-3 py-4 md:grid-cols-[1fr_120px_220px] md:items-center">
-          <div>
-            <div class="flex flex-wrap items-center gap-2">
-              <h3 class="text-xl font-black">{item.name}</h3>
-              {#if item.is_default}<span class="tape-label rotate-1" style="background:hsl(var(--marker-green))">{t(preferences.language, 'common.default')}</span>{/if}
-            </div>
-            <p class="text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</p>
-          </div>
-          <div class="font-black uppercase">{item.storage_backend}</div>
-          <div class="flex flex-wrap gap-2 md:justify-end">
-            <button class="studio-button p-2" type="button" onclick={() => startEdit(item)} aria-label="edit"><Edit3 class="size-4" /></button>
-            <button class="studio-button p-2 text-xs" data-tone="green" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => setDefault(item.storage_key)}>{item.is_default ? 'Default' : 'Default'}</button>
-            <button class="studio-button p-2" data-tone="danger" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => remove(item)} aria-label="delete"><Trash2 class="size-4" /></button>
-          </div>
-        </article>
-      {/each}
+    <div class="w-full min-w-0 max-w-full touch-pan-x overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+      <table class="w-full min-w-[720px] border-collapse text-sm">
+        <thead>
+          <tr class="border-b-[3px] ink-line text-left text-xs font-black uppercase tracking-[0.12em] text-[hsl(var(--ink-muted))]">
+            <th class="px-2 py-2" scope="col">{t(preferences.language, 'admin.storageName')}</th>
+            <th class="w-[180px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageKey')}</th>
+            <th class="w-[120px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageBackend')}</th>
+            <th class="w-[90px] px-2 py-2" scope="col">{t(preferences.language, 'common.default')}</th>
+            <th class="w-[220px] px-2 py-2 text-right" scope="col">{t(preferences.language, 'admin.imagesTableActions')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each config.storage_configs as item (item.storage_key)}
+            <tr class="studio-table-row align-middle">
+              <th class="min-w-0 px-2 py-4 text-left font-normal" scope="row"><span class="block truncate text-xl font-black">{item.name}</span></th>
+              <td class="min-w-0 px-2 py-4"><span class="block truncate text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</span></td>
+              <td class="px-2 py-4 font-black uppercase">{item.storage_backend}</td>
+              <td class="px-2 py-4">{#if item.is_default}<span class="tape-label rotate-1" style="background:hsl(var(--marker-green))">{t(preferences.language, 'common.default')}</span>{:else}<span class="text-[hsl(var(--ink-muted))]">-</span>{/if}</td>
+              <td class="px-2 py-4">
+                <div class="flex flex-wrap justify-end gap-2">
+                  <button class="studio-button p-2" type="button" onclick={() => startEdit(item)} aria-label={t(preferences.language, 'announcement.edit')}><Edit3 class="size-4" /></button>
+                  <button class="studio-button p-2 text-xs" data-tone="green" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => setDefault(item.storage_key)}>{t(preferences.language, 'common.default')}</button>
+                  <button class="studio-button p-2" data-tone="danger" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => (deleteTarget = item)} aria-label={t(preferences.language, 'common.delete')}><Trash2 class="size-4" /></button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     </div>
   </div>
 
-  <form class="studio-panel h-fit p-5 rotate-[0.25deg]" onsubmit={(event) => { event.preventDefault(); save(); }}>
-    <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">
-      <h2 class="text-2xl font-black">{editingKey ? 'Edit storage' : 'Create storage'}</h2>
-      {#if editingKey}<button class="studio-button p-2" type="button" onclick={startCreate} aria-label="cancel"><X class="size-4" /></button>{/if}
-    </div>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <label class="grid gap-2 text-sm font-black">
-        Key
-        <input class="studio-input" bind:value={form.storage_key} disabled={!!editingKey} />
-      </label>
-      <label class="grid gap-2 text-sm font-black">
-        Name
-        <input class="studio-input" bind:value={form.name} />
-      </label>
-    </div>
-    <label class="mt-4 grid gap-2 text-sm font-black">
-      Backend
-      <select class="studio-input" bind:value={form.storage_backend}>
-        <option value="local">local</option>
-        <option value="s3">s3</option>
-        <option value="webdav">webdav</option>
-      </select>
-    </label>
-
-    {#if form.storage_backend === 'local'}
-      <label class="mt-4 grid gap-2 text-sm font-black">
-        Local path
-        <input class="studio-input" bind:value={form.local_storage_path} />
-      </label>
-    {:else if form.storage_backend === 's3'}
-      <div class="mt-4 grid gap-3">
-        <label class="grid gap-2 text-sm font-black">Endpoint<input class="studio-input" bind:value={form.s3_endpoint} /></label>
+  {#if editorOpen}
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-editor-title" tabindex="-1" use:accessibleDialog={{ onClose: closeEditor }}>
+      <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35" type="button" onclick={closeEditor} aria-label={t(preferences.language, 'common.cancel')}></button>
+      <form class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[0.25deg]" onsubmit={(event) => { event.preventDefault(); save(); }}>
+        <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">
+          <h2 id="storage-editor-title" class="text-2xl font-black">{editingKey ? t(preferences.language, 'admin.storageEdit') : t(preferences.language, 'admin.storageCreate')}</h2>
+          <button class="studio-button p-2" type="button" onclick={closeEditor} aria-label={t(preferences.language, 'common.cancel')}><X class="size-4" /></button>
+        </div>
         <div class="grid gap-3 sm:grid-cols-2">
-          <label class="grid gap-2 text-sm font-black">Region<input class="studio-input" bind:value={form.s3_region} /></label>
-          <label class="grid gap-2 text-sm font-black">Bucket<input class="studio-input" bind:value={form.s3_bucket} /></label>
+          <label class="grid gap-2 text-sm font-black">
+            {t(preferences.language, 'admin.storageKey')}
+            <input class="studio-input" bind:value={form.storage_key} disabled={!!editingKey} />
+          </label>
+          <label class="grid gap-2 text-sm font-black">
+            {t(preferences.language, 'admin.storageName')}
+            <input class="studio-input" bind:value={form.name} />
+          </label>
         </div>
-        <label class="grid gap-2 text-sm font-black">Access key<input class="studio-input" bind:value={form.s3_access_key} /></label>
-        <label class="grid gap-2 text-sm font-black">Secret key<input class="studio-input" type="password" bind:value={form.s3_secret_key} /></label>
-        <div class="grid gap-2 text-sm font-black">
-          <label class="flex items-center gap-3"><input type="checkbox" bind:checked={form.s3_use_ssl} />Use SSL</label>
-          <label class="flex items-center gap-3"><input type="checkbox" bind:checked={form.s3_force_path_style} />Force path style</label>
-        </div>
-      </div>
-    {:else}
-      <div class="mt-4 grid gap-3">
-        <label class="grid gap-2 text-sm font-black">WebDAV URL<input class="studio-input" bind:value={form.webdav_url} /></label>
-        <label class="grid gap-2 text-sm font-black">User<input class="studio-input" bind:value={form.webdav_user} /></label>
-        <label class="grid gap-2 text-sm font-black">Password<input class="studio-input" type="password" bind:value={form.webdav_pass} /></label>
-      </div>
-    {/if}
+        <label class="mt-4 grid gap-2 text-sm font-black">
+          {t(preferences.language, 'admin.storageBackend')}
+          <select class="studio-input" bind:value={form.storage_backend}>
+            <option value="local">local</option>
+            <option value="s3">s3</option>
+            <option value="webdav">webdav</option>
+          </select>
+        </label>
 
-    <label class="mt-4 flex items-center gap-3 border-y-2 ink-line py-3 font-black">
-      <input type="checkbox" bind:checked={form.is_default} />
-      {t(preferences.language, 'common.default')}
-    </label>
-    <button class="studio-button mt-5 w-full" data-tone="primary" type="submit" disabled={saving || !form.storage_key.trim() || !form.name.trim()}><Save class="size-4" />{t(preferences.language, 'common.save')}</button>
-  </form>
+        {#if form.storage_backend === 'local'}
+          <label class="mt-4 grid gap-2 text-sm font-black">
+            {t(preferences.language, 'admin.storageLocalPath')}
+            <input class="studio-input" bind:value={form.local_storage_path} />
+          </label>
+        {:else if form.storage_backend === 's3'}
+          <div class="mt-4 grid gap-3">
+            <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storageEndpoint')}<input class="studio-input" bind:value={form.s3_endpoint} /></label>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storageRegion')}<input class="studio-input" bind:value={form.s3_region} /></label>
+              <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storageBucket')}<input class="studio-input" bind:value={form.s3_bucket} /></label>
+            </div>
+            <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storageAccessKey')}<input class="studio-input" bind:value={form.s3_access_key} /></label>
+            <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storageSecretKey')}<input class="studio-input" type="password" autocomplete="new-password" bind:value={form.s3_secret_key} /></label>
+            <div class="grid gap-2 text-sm font-black">
+              <label class="flex items-center gap-3"><input type="checkbox" bind:checked={form.s3_use_ssl} />{t(preferences.language, 'admin.storageUseSsl')}</label>
+              <label class="flex items-center gap-3"><input type="checkbox" bind:checked={form.s3_force_path_style} />{t(preferences.language, 'admin.storageForcePathStyle')}</label>
+            </div>
+          </div>
+        {:else}
+          <div class="mt-4 grid gap-3">
+            <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storageWebdavUrl')}<input class="studio-input" bind:value={form.webdav_url} /></label>
+            <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storageUser')}<input class="studio-input" bind:value={form.webdav_user} /></label>
+            <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storagePassword')}<input class="studio-input" type="password" autocomplete="new-password" bind:value={form.webdav_pass} /></label>
+          </div>
+        {/if}
+
+        <label class="mt-4 flex items-center gap-3 border-y-2 ink-line py-3 font-black">
+          <input type="checkbox" bind:checked={form.is_default} />
+          {t(preferences.language, 'common.default')}
+        </label>
+        <button class="studio-button mt-5 w-full" data-tone="primary" type="submit" disabled={saving || !form.storage_key.trim() || !form.name.trim()}><Save class="size-4" />{t(preferences.language, 'common.save')}</button>
+      </form>
+    </div>
+  {/if}
+  <ConfirmDialog
+    open={deleteTarget !== null}
+    title={`${t(preferences.language, 'common.delete')} ${deleteTarget?.name ?? ''}?`}
+    description={deleteTarget?.storage_key ?? ''}
+    confirmLabel={t(preferences.language, 'common.delete')}
+    cancelLabel={t(preferences.language, 'common.cancel')}
+    busy={Boolean(deleteTarget && busyKey === deleteTarget.storage_key)}
+    onClose={() => (deleteTarget = null)}
+    onConfirm={() => deleteTarget && remove(deleteTarget)}
+  />
 </section>

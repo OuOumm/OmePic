@@ -2,7 +2,8 @@
   import { Bell, Link, Loader2 } from 'lucide-svelte';
   import AnnouncementDialog from '@/components/studio/AnnouncementDialog.svelte';
   import CanvasDropzone from '@/components/studio/CanvasDropzone.svelte';
-  import ImageDataRow from '@/components/studio/ImageDataRow.svelte';
+  import ConfirmDialog from '@/components/studio/ConfirmDialog.svelte';
+  import ImageDataTable from '@/components/studio/ImageDataTable.svelte';
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
   import { ApiError, deleteImageByUid, getAnnouncements, getRuntimeSettings, uploadImageWithProgress } from '@/api';
@@ -33,9 +34,14 @@
   let announcementDialogOpen = $state(false);
   let announcementDialogMode = $state<'detail' | 'history'>('detail');
   let previewRecord = $state<UploadHistoryRecord | null>(null);
+  let deleteTarget = $state<UploadHistoryRecord | null>(null);
+  let deleting = $state(false);
   let counter = 0;
 
   const activeTasks = $derived(tasks.filter((task) => task.status === 'pending' || task.status === 'uploading' || task.status === 'error'));
+  const siteName = $derived(preferences.runtimeSettings?.site.name || 'OmePic');
+  const siteTitle = $derived(preferences.runtimeSettings?.site.tagline ? `${siteName} - ${preferences.runtimeSettings.site.tagline}` : siteName);
+  const allowedMimeTypesText = $derived(preferences.runtimeSettings?.upload.effective_allowed_mime_types?.join(', ') ?? '');
   const maintenanceMode = $derived(preferences.runtimeSettings?.features.maintenance_mode ?? false);
   const uploadDisabled = $derived(runtimeLoading || maintenanceMode || activeTasks.some((task) => task.status === 'pending' || task.status === 'uploading'));
 
@@ -200,15 +206,18 @@
   }
 
   async function removeRecent(record: UploadHistoryRecord) {
-    if (!confirm(t(preferences.language, 'history.deleteConfirm'))) return;
+    deleting = true;
     try {
       await deleteImageByUid(record.uid, getClientToken());
       await deleteUploadFromHistory(record.uid);
       recentUploads = recentUploads.filter((item) => item.uid !== record.uid);
       if (previewRecord?.uid === record.uid) previewRecord = null;
+      deleteTarget = null;
       toast.success(t(preferences.language, 'history.deleted'));
     } catch {
       toast.error(t(preferences.language, 'history.deleteError'));
+    } finally {
+      deleting = false;
     }
   }
 
@@ -233,12 +242,12 @@
   });
 </script>
 
-<svelte:head><title>OmePic</title></svelte:head>
+<svelte:head><title>{siteTitle}</title></svelte:head>
 
 <div class="grid gap-6 lg:grid-cols-[1fr_320px]">
   <section class="space-y-6">
     {#if runtimeError}
-      <div class="studio-panel border-[hsl(var(--danger))] p-4 text-sm font-bold text-[hsl(var(--danger))]">{runtimeError}</div>
+      <div class="studio-panel border-[hsl(var(--danger))] p-4 text-sm font-bold text-[hsl(var(--danger))]" role="alert">{runtimeError}</div>
     {/if}
     {#if maintenanceMode}
       <div class="studio-panel bg-[hsl(var(--marker-yellow)/0.35)] p-4 text-sm font-bold">{preferences.runtimeSettings?.features.maintenance_message}</div>
@@ -251,13 +260,13 @@
           {t(preferences.language, 'announcement.entry', { count: announcements.length })}
         </button>
       {/if}
-      <CanvasDropzone language={preferences.language} disabled={uploadDisabled} {dragging} onFiles={handleFiles} />
+      <CanvasDropzone language={preferences.language} disabled={uploadDisabled} {dragging} allowedTypes={allowedMimeTypesText} onFiles={handleFiles} />
     </div>
 
     <div class="grid gap-3 border-y-[3px] ink-line py-5 md:grid-cols-[1fr_auto] md:items-end">
       <label class="grid gap-2 text-sm font-black">
         {t(preferences.language, 'upload.urlLabel')}
-        <input class="studio-input" bind:value={urlInput} placeholder={t(preferences.language, 'upload.urlPlaceholder')} onkeydown={(event) => event.key === 'Enter' && handleUrlUpload()} />
+        <input class="studio-input" bind:value={urlInput} type="url" name="image-url" autocomplete="url" inputmode="url" placeholder={t(preferences.language, 'upload.urlPlaceholder')} onkeydown={(event) => event.key === 'Enter' && handleUrlUpload()} />
       </label>
       <button class="studio-button" type="button" onclick={handleUrlUpload} disabled={urlUploading || uploadDisabled || !urlInput.trim()} data-tone="primary">
         {#if urlUploading}<Loader2 class="size-4 animate-spin" />{:else}<Link class="size-4" />{/if}
@@ -276,19 +285,19 @@
       onRefresh={() => loadRuntime(false)}
     />
     <div class="studio-panel p-4 rotate-[-0.35deg]">
-      <h2 class="border-b-2 ink-line pb-2 text-xl font-black">Upload queue</h2>
+      <h2 class="border-b-2 ink-line pb-2 text-xl font-black">{t(preferences.language, 'upload.queueTitle')}</h2>
       {#if activeTasks.length}
-        <div class="mt-3 grid gap-3">
+        <ul class="mt-3 grid gap-3">
           {#each activeTasks as task (task.id)}
-            <div class="min-w-0 overflow-hidden border-b-2 border-dashed border-[hsl(var(--ink)/0.32)] pb-3 text-sm">
+            <li class="min-w-0 overflow-hidden border-b-2 border-dashed border-[hsl(var(--ink)/0.32)] pb-3 text-sm">
               <div class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 font-black overflow-hidden"><span class="block min-w-0 truncate" title={task.file.name}>{task.file.name}</span><span class="text-right whitespace-nowrap">{task.progress}%</span></div>
-              <div class="mt-2 h-2 border-2 ink-line"><div class="h-full bg-[hsl(var(--marker-green))]" style={`width:${task.progress}%`}></div></div>
+              <div class="mt-2 h-2 border-2 ink-line" role="progressbar" aria-label={task.file.name} aria-valuemin="0" aria-valuemax="100" aria-valuenow={task.progress}><div class="h-full bg-[hsl(var(--marker-green))]" style={`width:${task.progress}%`}></div></div>
               {#if task.error}<p class="mt-1 text-xs text-[hsl(var(--danger))]">{task.error}</p>{/if}
-            </div>
+            </li>
           {/each}
-        </div>
+        </ul>
       {:else}
-        <p class="mt-3 text-sm text-[hsl(var(--ink-muted))]">No active uploads.</p>
+        <p class="mt-3 text-sm text-[hsl(var(--ink-muted))]">{t(preferences.language, 'upload.queueEmpty')}</p>
       {/if}
     </div>
   </aside>
@@ -298,19 +307,23 @@
   <section class="mt-10">
     <div class="mb-4 flex items-end justify-between border-b-[3px] ink-line pb-3">
       <div>
-        <p class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">File desk</p>
+        <p class="text-xs font-black uppercase text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.fileDeskEyebrow')}</p>
         <h2 class="text-3xl font-black">{t(preferences.language, 'upload.recentTitle')}</h2>
       </div>
     </div>
-    <div class="overflow-x-auto">
-      <div class="min-w-[760px]">
-        {#each recentUploads as record (record.uid)}
-          <ImageDataRow language={preferences.language} {record} canDelete={record.client_token === getClientToken()} onCopy={copy} onPreview={() => (previewRecord = record)} onDelete={() => removeRecent(record)} />
-        {/each}
-      </div>
-    </div>
+    <ImageDataTable language={preferences.language} records={recentUploads} canDelete={(record) => record.client_token === getClientToken()} onCopy={copy} onPreview={(record) => (previewRecord = record)} onDelete={(record) => (deleteTarget = record)} />
   </section>
 {/if}
 
-<ImagePreviewDialog language={preferences.language} record={previewRecord} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && removeRecent(previewRecord)} onClose={() => (previewRecord = null)} />
+<ImagePreviewDialog language={preferences.language} record={previewRecord} records={recentUploads} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && (deleteTarget = previewRecord)} onNavigate={(record) => (previewRecord = record)} onClose={() => (previewRecord = null)} />
 <AnnouncementDialog language={preferences.language} announcements={announcements} open={announcementDialogOpen} initialMode={announcementDialogMode} onClose={closeAnnouncementDialog} />
+<ConfirmDialog
+  open={deleteTarget !== null}
+  title={t(preferences.language, 'history.deleteConfirm')}
+  description={deleteTarget?.original_filename || deleteTarget?.uid || ''}
+  confirmLabel={t(preferences.language, 'common.delete')}
+  cancelLabel={t(preferences.language, 'common.cancel')}
+  busy={deleting}
+  onClose={() => (deleteTarget = null)}
+  onConfirm={() => deleteTarget && removeRecent(deleteTarget)}
+/>
