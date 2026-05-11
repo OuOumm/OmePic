@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-05-10
+- **Total Sessions**: 7
+- **Last Active**: 2026-05-11
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~197 | Active |
+| `journal-1.md` | ~230 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-05-11 | Refine studio image management | `d1f3be9` | `main` |
 | 6 | 2026-05-10 | Frontend UI refinements and environment validation | `0f5240c` | `main` |
 | 5 | 2026-05-07 | 优化后台图片搜索提示和 IP 列 | `1d5d21d` | `main` |
 | 4 | 2026-05-03 | shadcn/ui frontend rebuild | `19d1810` | `main` |
