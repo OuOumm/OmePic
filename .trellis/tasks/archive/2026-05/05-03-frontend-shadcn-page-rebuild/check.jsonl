@@ -1,8 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec index for checking compliance."}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Verify files remain in the intended route/feature/shared structure."}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Review component boundaries, accessibility, and UI primitive consistency."}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Check hooks were not moved or used in unsafe ways."}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Check persisted preferences and upload/admin stores remain stable."}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Check TypeScript contract discipline."}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality gate criteria for lint, typecheck, build, and UX checks."}
-{"file": ".trellis/tasks/05-03-frontend-shadcn-page-rebuild/research/shadcn-official-style.md", "reason": "Official shadcn/ui style references used as visual review criteria."}

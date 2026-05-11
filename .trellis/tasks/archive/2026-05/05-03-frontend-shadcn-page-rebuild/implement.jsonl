@@ -1,8 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec index and pre-development checklist for the UI refactor."}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Route, feature, and shared component placement rules for frontend changes."}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component boundaries, client/server split, shared primitive guidance, and accessibility expectations."}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Avoid regressions in hook usage while reshaping page components."}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Protect Zustand and persisted preference patterns during layout refactor."}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Maintain TypeScript and runtime contract discipline."}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Required lint, typecheck, accessibility, and UX verification standards."}
-{"file": ".trellis/tasks/05-03-frontend-shadcn-page-rebuild/research/shadcn-official-style.md", "reason": "Official shadcn/ui style references and repo mapping for implementation."}

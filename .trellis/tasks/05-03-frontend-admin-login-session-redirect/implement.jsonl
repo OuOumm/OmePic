@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend pre-development checklist for the admin login UI/session change"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Keep route and feature component ownership aligned with the Next.js app structure"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Ensure login page client component behavior follows component boundaries"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Persisted Zustand admin session state drives the redirect behavior"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend verification expectations for lint, typecheck, and build"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript safety expectations for the session redirect change"}
