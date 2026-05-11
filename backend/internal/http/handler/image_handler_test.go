@@ -50,6 +50,13 @@ func (c *handlerFakeCache) SetImage(_ context.Context, record model.ImageRecord)
 	return nil
 }
 
+func (c *handlerFakeCache) SetImages(_ context.Context, records []model.ImageRecord) error {
+	for _, record := range records {
+		c.images[record.UID] = model.CachedImageFromRecord(record)
+	}
+	return nil
+}
+
 func (c *handlerFakeCache) DeleteImage(_ context.Context, uid string) error {
 	delete(c.images, uid)
 	return nil
@@ -68,6 +75,13 @@ func (c *handlerFakeCache) SetMD5IfAbsent(_ context.Context, md5Hash string, uid
 
 func (c *handlerFakeCache) SetMD5(_ context.Context, md5Hash string, uid string) error {
 	c.md5ToUID[md5Hash] = uid
+	return nil
+}
+
+func (c *handlerFakeCache) SetMD5Mappings(_ context.Context, mappings map[string]string) error {
+	for md5Hash, uid := range mappings {
+		c.md5ToUID[md5Hash] = uid
+	}
 	return nil
 }
 

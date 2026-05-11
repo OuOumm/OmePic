@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -12,13 +13,24 @@ import (
 type ImageCache interface {
 	GetImage(ctx context.Context, uid string) (*model.CachedImage, error)
 	SetImage(ctx context.Context, record model.ImageRecord) error
+	SetImages(ctx context.Context, records []model.ImageRecord) error
 	DeleteImage(ctx context.Context, uid string) error
 	GetMD5(ctx context.Context, md5Hash string) (string, error)
 	SetMD5(ctx context.Context, md5Hash string, uid string) error
+	SetMD5Mappings(ctx context.Context, mappings map[string]string) error
 	SetMD5IfAbsent(ctx context.Context, md5Hash string, uid string) error
 	DeleteMD5(ctx context.Context, md5Hash string) error
 	Ping(ctx context.Context) error
 }
+
+const (
+	defaultRedisDialTimeout  = 3 * time.Second
+	defaultRedisReadTimeout  = 2 * time.Second
+	defaultRedisWriteTimeout = 2 * time.Second
+	defaultRedisPoolSize     = 16
+	defaultRedisPoolTimeout  = 3 * time.Second
+	defaultRedisMinIdleConns = 2
+)
 
 type RedisCache struct {
 	client *redis.Client
@@ -37,7 +49,30 @@ func NewClient(redisURL string) (*redis.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	applyClientDefaults(options)
 	return redis.NewClient(options), nil
+}
+
+func applyClientDefaults(options *redis.Options) {
+	if options.DialTimeout == 0 {
+		options.DialTimeout = defaultRedisDialTimeout
+	}
+	if options.ReadTimeout == 0 {
+		options.ReadTimeout = defaultRedisReadTimeout
+	}
+	if options.WriteTimeout == 0 {
+		options.WriteTimeout = defaultRedisWriteTimeout
+	}
+	if options.PoolSize == 0 {
+		options.PoolSize = defaultRedisPoolSize
+	}
+	if options.PoolTimeout == 0 {
+		options.PoolTimeout = defaultRedisPoolTimeout
+	}
+	if options.MinIdleConns == 0 {
+		options.MinIdleConns = defaultRedisMinIdleConns
+	}
+	options.ContextTimeoutEnabled = true
 }
 
 func NewWithClient(client *redis.Client) *RedisCache {
@@ -75,6 +110,23 @@ func (c *RedisCache) SetImage(ctx context.Context, record model.ImageRecord) err
 	return c.client.Set(ctx, uidKey(record.UID), payload, 0).Err()
 }
 
+func (c *RedisCache) SetImages(ctx context.Context, records []model.ImageRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	pipe := c.client.Pipeline()
+	for _, record := range records {
+		payload, err := json.Marshal(model.CachedImageFromRecord(record))
+		if err != nil {
+			return err
+		}
+		pipe.Set(ctx, uidKey(record.UID), payload, 0)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 func (c *RedisCache) DeleteImage(ctx context.Context, uid string) error {
 	return c.client.Del(ctx, uidKey(uid)).Err()
 }
@@ -92,6 +144,19 @@ func (c *RedisCache) GetMD5(ctx context.Context, md5Hash string) (string, error)
 
 func (c *RedisCache) SetMD5(ctx context.Context, md5Hash string, uid string) error {
 	return c.client.Set(ctx, md5Key(md5Hash), uid, 0).Err()
+}
+
+func (c *RedisCache) SetMD5Mappings(ctx context.Context, mappings map[string]string) error {
+	if len(mappings) == 0 {
+		return nil
+	}
+
+	pipe := c.client.Pipeline()
+	for md5Hash, uid := range mappings {
+		pipe.Set(ctx, md5Key(md5Hash), uid, 0)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (c *RedisCache) SetMD5IfAbsent(ctx context.Context, md5Hash string, uid string) error {

@@ -332,18 +332,22 @@ func (s *ImageService) Preheat(ctx context.Context) (int, error) {
 
 	count := 0
 	seenMD5 := make(map[string]struct{}, len(records))
+	mappings := make(map[string]string, len(records))
 	for _, record := range records {
-		if err := s.cache.SetImage(ctx, record); err != nil {
-			return count, fmt.Errorf("%w: redis uid preheat failed", ErrDependencyUnavailable)
-		}
 		seenKey := scopedMD5SeenKey(record.StorageKey, record.MD5Hash)
 		if _, ok := seenMD5[seenKey]; !ok {
-			if err := s.cache.SetMD5(ctx, scopedMD5CacheKey(record.StorageKey, record.MD5Hash), record.UID); err != nil {
-				return count, fmt.Errorf("%w: redis md5 preheat failed", ErrDependencyUnavailable)
-			}
 			seenMD5[seenKey] = struct{}{}
+			mappings[scopedMD5CacheKey(record.StorageKey, record.MD5Hash)] = record.UID
 		}
 		count++
+	}
+
+	if err := s.cache.SetImages(ctx, records); err != nil {
+		return 0, fmt.Errorf("%w: redis uid preheat failed", ErrDependencyUnavailable)
+	}
+
+	if err := s.cache.SetMD5Mappings(ctx, mappings); err != nil {
+		return 0, fmt.Errorf("%w: redis md5 preheat failed", ErrDependencyUnavailable)
 	}
 
 	s.logger.Info("redis cache preheated", "records", count)

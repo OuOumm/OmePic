@@ -23,10 +23,12 @@ import (
 )
 
 type fakeCache struct {
-	images    map[string]model.CachedImage
-	md5ToUID  map[string]string
-	imageSets int
-	md5Sets   int
+	images         map[string]model.CachedImage
+	md5ToUID       map[string]string
+	imageSets      int
+	imageBatchSets int
+	md5Sets        int
+	md5BatchSets   int
 }
 
 func newFakeCache() *fakeCache {
@@ -51,6 +53,15 @@ func (c *fakeCache) SetImage(_ context.Context, record model.ImageRecord) error 
 	return nil
 }
 
+func (c *fakeCache) SetImages(_ context.Context, records []model.ImageRecord) error {
+	for _, record := range records {
+		c.images[record.UID] = model.CachedImageFromRecord(record)
+		c.imageSets++
+	}
+	c.imageBatchSets++
+	return nil
+}
+
 func (c *fakeCache) DeleteImage(_ context.Context, uid string) error {
 	delete(c.images, uid)
 	return nil
@@ -71,6 +82,15 @@ func (c *fakeCache) SetMD5IfAbsent(_ context.Context, md5Hash string, uid string
 func (c *fakeCache) SetMD5(_ context.Context, md5Hash string, uid string) error {
 	c.md5ToUID[md5Hash] = uid
 	c.md5Sets++
+	return nil
+}
+
+func (c *fakeCache) SetMD5Mappings(_ context.Context, mappings map[string]string) error {
+	for md5Hash, uid := range mappings {
+		c.md5ToUID[md5Hash] = uid
+		c.md5Sets++
+	}
+	c.md5BatchSets++
 	return nil
 }
 
@@ -804,6 +824,9 @@ func TestPreheatWarmsUIDAndMD5Keys(t *testing.T) {
 	}
 	if cacheStore.imageSets != len(records) || cacheStore.md5Sets != len(records) {
 		t.Fatalf("expected preheat to populate cache for all records")
+	}
+	if cacheStore.imageBatchSets != 1 || cacheStore.md5BatchSets != 1 {
+		t.Fatalf("expected preheat to use batched redis writes, got image batches %d and md5 batches %d", cacheStore.imageBatchSets, cacheStore.md5BatchSets)
 	}
 }
 
