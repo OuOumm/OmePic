@@ -161,7 +161,7 @@ func TestFrontendFallbackServesSecurityHeaders(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
-	assertSecurityHeader(t, recorder, "Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+	assertSecurityHeader(t, recorder, "Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 	assertSecurityHeader(t, recorder, "X-Content-Type-Options", "nosniff")
 	assertSecurityHeader(t, recorder, "Referrer-Policy", "strict-origin-when-cross-origin")
 	assertSecurityHeader(t, recorder, "Permissions-Policy", "camera=(), microphone=(), geolocation=()")
