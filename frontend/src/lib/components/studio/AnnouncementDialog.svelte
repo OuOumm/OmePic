@@ -12,9 +12,10 @@
     open: boolean;
     initialMode?: 'detail' | 'history';
     onClose: () => void;
+    onAcknowledge: () => void;
   };
 
-  let { language, announcements, open, initialMode = 'detail', onClose }: Props = $props();
+  let { language, announcements, open, initialMode = 'detail', onClose, onAcknowledge }: Props = $props();
   let index = $state(0);
   let mode = $state<'detail' | 'history'>('detail');
 
@@ -93,7 +94,7 @@
           {:else}
             <button class="studio-button" type="button" onclick={() => (mode = 'history')}><History class="size-4" />{t(language, 'announcement.viewAll')}</button>
           {/if}
-          <button class="studio-button" data-tone="primary" type="button" onclick={onClose}>{t(language, 'announcement.gotIt')}</button>
+          <button class="studio-button" data-tone="primary" type="button" onclick={onAcknowledge}>{t(language, 'announcement.gotIt')}</button>
         </div>
       </footer>
     </div>

@@ -145,6 +145,28 @@ func TestFrontendFallbackPreservesAPINotFoundBehaviorByMethod(t *testing.T) {
 	}
 }
 
+func TestFrontendFallbackServesSecurityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	webDir := t.TempDir()
+	writeTestFile(t, filepath.Join(webDir, "index.html"), "<!doctype html><title>home</title>")
+
+	engine := gin.New()
+	registerFrontendRoutes(engine, webDir, nil)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+	assertSecurityHeader(t, recorder, "Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+	assertSecurityHeader(t, recorder, "X-Content-Type-Options", "nosniff")
+	assertSecurityHeader(t, recorder, "Referrer-Policy", "strict-origin-when-cross-origin")
+	assertSecurityHeader(t, recorder, "Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+}
+
 func TestFrontendFallbackDisabledWhenBuildMissing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -158,6 +180,13 @@ func TestFrontendFallbackDisabledWhenBuildMissing(t *testing.T) {
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+}
+
+func assertSecurityHeader(t *testing.T, recorder *httptest.ResponseRecorder, name string, want string) {
+	t.Helper()
+	if got := recorder.Header().Get(name); got != want {
+		t.Fatalf("unexpected %s header: got %q want %q", name, got, want)
 	}
 }
 

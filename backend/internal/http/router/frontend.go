@@ -11,7 +11,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const defaultFrontendDir = "web"
+const (
+	defaultFrontendDir = "web"
+
+	frontendContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+)
 
 func registerFrontendRoutes(engine *gin.Engine, frontendDir string, logger *slog.Logger) {
 	root := strings.TrimSpace(frontendDir)
@@ -32,6 +36,8 @@ func registerFrontendRoutes(engine *gin.Engine, frontendDir string, logger *slog
 	}
 
 	engine.NoRoute(func(c *gin.Context) {
+		setFrontendSecurityHeaders(c.Writer)
+
 		requestPath := c.Request.URL.Path
 		if shouldKeepAsAPI404(c.Request.Method, requestPath) {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -59,6 +65,13 @@ func registerFrontendRoutes(engine *gin.Engine, frontendDir string, logger *slog
 
 		c.File(indexPath)
 	})
+}
+
+func setFrontendSecurityHeaders(writer http.ResponseWriter) {
+	writer.Header().Set("Content-Security-Policy", frontendContentSecurityPolicy)
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	writer.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 }
 
 func serveFrontendFile(c *gin.Context, root string, requestPath string) bool {

@@ -2,7 +2,7 @@
   import { ExternalLink, Image as ImageIcon, Trash2 } from 'lucide-svelte';
   import type { Language, UploadHistoryRecord } from '@/types';
   import { t } from '@/i18n';
-  import { formatBytes } from '@/utils';
+  import { formatBytes, safeImageUrl } from '@/utils';
 
   export let language: Language;
   export let records: UploadHistoryRecord[] = [];
@@ -24,12 +24,13 @@
     </thead>
     <tbody>
       {#each records as record (record.uid)}
+        {@const imageUrl = safeImageUrl(record.url)}
         <tr class="studio-table-row align-middle">
           <th class="min-w-0 px-2 py-3 text-left font-normal" scope="row">
             <button class="flex min-w-0 items-center gap-3 text-left" type="button" onclick={() => onPreview(record)} aria-label={t(language, 'common.openPreview', { title: record.original_filename || record.uid })}>
               <span class="grid size-12 shrink-0 place-items-center overflow-hidden border-2 ink-line bg-[hsl(var(--paper-deep))]">
-                {#if record.url}
-                  <img src={record.url} alt={record.original_filename || record.uid} class="h-full w-full object-cover" loading="lazy" decoding="async" width="48" height="48" />
+                {#if imageUrl}
+                  <img src={imageUrl} alt={record.original_filename || record.uid} class="h-full w-full object-cover" loading="lazy" decoding="async" width="48" height="48" />
                 {:else}
                   <ImageIcon class="size-5" aria-hidden="true" />
                 {/if}
@@ -47,7 +48,9 @@
               <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.url)} aria-label={t(language, 'common.copyUrl')}>URL</button>
               <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.markdown)} aria-label={t(language, 'common.copyMarkdown')}>MD</button>
               <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.bbcode)} aria-label={t(language, 'common.copyBBCode')}>BB</button>
-              <a class="studio-button p-2" href={record.url} target="_blank" rel="noreferrer" aria-label={t(language, 'common.openPreview', { title: record.uid })}><ExternalLink class="size-4" aria-hidden="true" /></a>
+              {#if imageUrl}
+                <a class="studio-button p-2" href={imageUrl} target="_blank" rel="noopener noreferrer" aria-label={t(language, 'common.openPreview', { title: record.uid })}><ExternalLink class="size-4" aria-hidden="true" /></a>
+              {/if}
               {#if canDelete(record)}
                 <button class="studio-button p-2" data-tone="danger" type="button" onclick={() => onDelete(record)} aria-label={t(language, 'history.delete')}><Trash2 class="size-4" aria-hidden="true" /></button>
               {/if}

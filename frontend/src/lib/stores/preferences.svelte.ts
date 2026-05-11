@@ -3,7 +3,7 @@ import { detectLanguage, htmlLang } from '@/i18n';
 
 const PREF_STORAGE_KEY = 'omepic-ui-preferences';
 const UPLOAD_PREF_KEY = 'omepic-upload-preferences';
-const ADMIN_TOKEN_KEY = 'omepic-admin-token';
+let inMemoryAdminToken: string | null = null;
 
 export type PreferencesState = {
   language: Language;
@@ -12,6 +12,11 @@ export type PreferencesState = {
   adminToken: string | null;
   runtimeSettings: PublicRuntimeSettings | null;
 };
+
+function clearLegacyAdminToken() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('omepic-admin-token');
+}
 
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -33,19 +38,19 @@ function syncDocumentLanguage(language: Language) {
   document.documentElement.lang = htmlLang(language);
 }
 
-const uiPrefs = readJSON(PREF_STORAGE_KEY, { language: detectLanguage(), theme: 'dark' as Theme });
+const uiPrefs = readJSON(PREF_STORAGE_KEY, { language: detectLanguage(), theme: 'light' as Theme });
 const uploadPrefs = readJSON(UPLOAD_PREF_KEY, { selectedStorageKey: '' });
-const adminPrefs = readJSON(ADMIN_TOKEN_KEY, { token: null as string | null });
 
 export const preferences = $state<PreferencesState>({
   language: uiPrefs.language === 'en' || uiPrefs.language === 'zh' ? uiPrefs.language : detectLanguage(),
-  theme: uiPrefs.theme === 'light' || uiPrefs.theme === 'dark' || uiPrefs.theme === 'system' ? uiPrefs.theme : 'dark',
+  theme: uiPrefs.theme === 'light' || uiPrefs.theme === 'dark' || uiPrefs.theme === 'system' ? uiPrefs.theme : 'light',
   selectedStorageKey: uploadPrefs.selectedStorageKey || '',
-  adminToken: adminPrefs.token ?? null,
+  adminToken: inMemoryAdminToken,
   runtimeSettings: null,
 });
 
 syncDocumentLanguage(preferences.language);
+clearLegacyAdminToken();
 
 export function setLanguage(language: Language) {
   preferences.language = language;
@@ -68,18 +73,18 @@ export function setRuntimeSettings(runtimeSettings: PublicRuntimeSettings | null
 }
 
 export function setAdminToken(token: string) {
+  inMemoryAdminToken = token;
   preferences.adminToken = token;
-  writeJSON(ADMIN_TOKEN_KEY, { token });
 }
 
 export function clearAdminToken() {
+  inMemoryAdminToken = null;
   preferences.adminToken = null;
-  if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_TOKEN_KEY);
 }
 
 export function resolvedTheme() {
   if (preferences.theme === 'system') {
-    if (typeof window === 'undefined') return 'dark';
+    if (typeof window === 'undefined') return 'light';
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
   return preferences.theme;

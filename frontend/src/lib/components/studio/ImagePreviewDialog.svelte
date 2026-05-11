@@ -4,6 +4,7 @@
   import { accessibleDialog } from '@/actions/accessible-dialog';
   import ImageSwitchButton from './ImageSwitchButton.svelte';
   import type { Language, UploadHistoryRecord } from '@/types';
+  import { normalizeDownloadFilename, safeImageUrl } from '@/utils';
 
   type Props = {
     language: Language;
@@ -19,7 +20,8 @@
   let { language, record, canDelete = false, records = [], onCopy, onDelete, onNavigate, onClose }: Props = $props();
   let imageLoaded = $state(false);
 
-  const filename = $derived(record?.original_filename || record?.uid || t(language, 'common.fallbackImage'));
+  const filename = $derived(normalizeDownloadFilename(record?.original_filename || record?.uid, t(language, 'common.fallbackImage')));
+  const imageUrl = $derived(record ? safeImageUrl(record.url) : null);
   const currentIndex = $derived(record ? records.findIndex((item) => item.uid === record.uid) : -1);
   const hasNavigation = $derived(Boolean(onNavigate) && records.length > 1 && currentIndex >= 0);
   const previousRecord = $derived(hasNavigation && currentIndex > 0 ? records[currentIndex - 1] : null);
@@ -41,7 +43,7 @@
   }
 
   $effect(() => {
-    if (record?.url) imageLoaded = false;
+    if (imageUrl) imageLoaded = false;
   });
 </script>
 
@@ -61,7 +63,9 @@
         {#if !imageLoaded}
           <div class="absolute inset-6 animate-pulse border-2 border-dashed border-[hsl(var(--ink)/0.32)] bg-[hsl(var(--paper)/0.38)]" aria-hidden="true"></div>
         {/if}
-        <img src={record.url} alt={filename} class="max-h-[62dvh] max-w-full object-contain transition-opacity duration-200 {imageLoaded ? 'opacity-100' : 'opacity-0'}" loading="eager" decoding="async" width="1280" height="720" onload={() => (imageLoaded = true)} />
+        {#if imageUrl}
+          <img src={imageUrl} alt={filename} class="max-h-[62dvh] max-w-full object-contain transition-opacity duration-200 {imageLoaded ? 'opacity-100' : 'opacity-0'}" loading="eager" decoding="async" width="1280" height="720" onload={() => (imageLoaded = true)} />
+        {/if}
         {#if hasNavigation}
           <ImageSwitchButton direction="previous" {language} disabled={!previousRecord} onclick={() => navigateTo(previousRecord)} />
           <ImageSwitchButton direction="next" {language} disabled={!nextRecord} onclick={() => navigateTo(nextRecord)} />
@@ -77,10 +81,12 @@
             <Copy class="size-4" />
             {t(language, 'common.copyUrl')}
           </button>
-          <a class="studio-button" href={record.url} download={filename} target="_blank" rel="noreferrer">
-            <Download class="size-4" />
-            {t(language, 'common.download')}
-          </a>
+          {#if imageUrl}
+            <a class="studio-button" href={imageUrl} download={filename} target="_blank" rel="noopener noreferrer">
+              <Download class="size-4" />
+              {t(language, 'common.download')}
+            </a>
+          {/if}
           {#if canDelete && onDelete}
             <button class="studio-button" data-tone="danger" type="button" onclick={onDelete}>
               <Trash2 class="size-4" />

@@ -3,9 +3,19 @@ import { detectLanguage } from "./i18n";
 
 const PREF_STORAGE_KEY = "omepic-ui-preferences";
 const TOKEN_STORAGE_KEY = "omepic-client-token";
-const ADMIN_TOKEN_KEY = "omepic-admin-token";
 
 function generateToken(): string {
+  const random = globalThis.crypto;
+  if (random?.randomUUID) {
+    return random.randomUUID();
+  }
+
+  const bytes = new Uint8Array(32);
+  if (random?.getRandomValues) {
+    random.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let token = "";
   for (let i = 0; i < 32; i++) {
@@ -84,26 +94,4 @@ export function resolveTheme(theme: Theme): "light" | "dark" {
       : "light";
   }
   return theme;
-}
-
-export function getAdminToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(ADMIN_TOKEN_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      return data.token ?? null;
-    }
-  } catch { /* corrupted */ }
-  return null;
-}
-
-export function setAdminToken(token: string) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(ADMIN_TOKEN_KEY, JSON.stringify({ token }));
-}
-
-export function clearAdminToken() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(ADMIN_TOKEN_KEY);
 }

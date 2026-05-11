@@ -3,6 +3,9 @@ import { twMerge } from 'tailwind-merge';
 import type { Language } from '@/types';
 import { locale } from '@/i18n';
 
+const fallbackOrigin = 'http://localhost';
+const blockedImageSchemes = new Set(['javascript:', 'data:', 'vbscript:', 'file:']);
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -41,6 +44,37 @@ export function getAbsoluteUrl(url: string): string {
 export function getImageUrl(uid: string): string {
   const base = getApiBaseUrl();
   return `${base}/i/${uid}.avif`;
+}
+
+export function safeImageUrl(value: string, origin = currentOrigin()): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed, origin);
+    if (blockedImageSchemes.has(parsed.protocol)) return null;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (parsed.origin !== origin) return null;
+    return trimmed.startsWith('/') ? `${parsed.pathname}${parsed.search}${parsed.hash}` : parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function isAllowedImageMimeType(mimeType: string, allowedMimeTypes: string[]): boolean {
+  const normalized = mimeType.split(';', 1)[0].trim().toLowerCase();
+  if (normalized === 'image/svg+xml') return false;
+  return allowedMimeTypes.map((value) => value.trim().toLowerCase()).includes(normalized);
+}
+
+export function normalizeDownloadFilename(value: string | null | undefined, fallback: string): string {
+  const normalized = (value ?? '').replace(/[\\/:*?"<>|]/g, '').trim();
+  return normalized || fallback;
+}
+
+function currentOrigin(): string {
+  if (typeof window === 'undefined') return fallbackOrigin;
+  return window.location.origin;
 }
 
 export function getAbsoluteImageUrl(uid: string): string {

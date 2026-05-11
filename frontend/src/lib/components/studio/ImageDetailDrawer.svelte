@@ -168,7 +168,7 @@
     </dl>
 
     <div class="mt-3 flex flex-wrap gap-1.5 sm:mt-4 sm:gap-2">
-      <a class="studio-button px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm" data-tone="blue" href={imageUrl} target="_blank" rel="noreferrer"><ExternalLink class="size-3.5 sm:size-4" />{t(preferences.language, 'admin.imageOpen')}</a>
+      <a class="studio-button px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm" data-tone="blue" href={imageUrl} target="_blank" rel="noopener noreferrer"><ExternalLink class="size-3.5 sm:size-4" />{t(preferences.language, 'admin.imageOpen')}</a>
       {#if isIpBanned}
         <button class="studio-button px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm" type="button" disabled><CheckCircle2 class="size-3.5 sm:size-4" />{t(preferences.language, 'admin.securityBanned')}</button>
       {:else}

@@ -59,7 +59,7 @@
 
   function startEdit(instance: StorageInstance) {
     editingKey = instance.storage_key;
-    form = { ...blank, ...instance };
+    form = { ...blank, ...instance, s3_secret_key: '', webdav_pass: '' };
     editorOpen = true;
   }
 
@@ -78,14 +78,14 @@
       base.s3_region = form.s3_region?.trim();
       base.s3_bucket = form.s3_bucket?.trim();
       base.s3_access_key = form.s3_access_key?.trim();
-      base.s3_secret_key = form.s3_secret_key?.trim();
+      if (!editingKey || form.s3_secret_key?.trim()) base.s3_secret_key = form.s3_secret_key?.trim();
       base.s3_use_ssl = form.s3_use_ssl;
       base.s3_force_path_style = form.s3_force_path_style;
     }
     if (form.storage_backend === 'webdav') {
       base.webdav_url = form.webdav_url?.trim();
       base.webdav_user = form.webdav_user?.trim();
-      base.webdav_pass = form.webdav_pass?.trim();
+      if (!editingKey || form.webdav_pass?.trim()) base.webdav_pass = form.webdav_pass?.trim();
     }
     return base;
   }

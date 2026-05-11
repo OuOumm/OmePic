@@ -13,6 +13,7 @@
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import type { Announcement, Language, UploadHistoryRecord, UploadResult } from '@/types';
+  import { isAllowedImageMimeType, normalizeDownloadFilename } from '@/utils';
 
   type UploadTask = {
     id: string;
@@ -96,6 +97,10 @@
   }
 
   function closeAnnouncementDialog() {
+    announcementDialogOpen = false;
+  }
+
+  function acknowledgeAnnouncementDialog() {
     const latestStamp = announcements[0]?.updated_at || announcements[0]?.created_at || '';
     if (latestStamp) localStorage.setItem('omepic:announcement:lastSeen', latestStamp);
     announcementDialogOpen = false;
@@ -116,7 +121,7 @@
         toast.error(`${file.name}: ${t(preferences.language, 'upload.error')}`);
         return false;
       }
-      if (allowedTypes.length > 0 && !allowedTypes.includes(file.type.toLowerCase())) {
+      if (allowedTypes.length > 0 && !isAllowedImageMimeType(file.type, allowedTypes)) {
         toast.error(`${file.name}: ${t(preferences.language, 'upload.error')}`);
         return false;
       }
@@ -173,26 +178,51 @@
   }
 
   async function handleUrlUpload() {
-    const url = urlInput.trim();
-    if (!url) return;
-    if (!/^https?:\/\//i.test(url)) {
+    const rawUrl = urlInput.trim();
+    if (!rawUrl) return;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
       toast.error(t(preferences.language, 'upload.invalidUrl'));
       return;
     }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      toast.error(t(preferences.language, 'upload.invalidUrl'));
+      return;
+    }
+
     urlUploading = true;
     try {
-      const response = await fetch(url);
+      const response = await fetch(parsed.toString());
       if (!response.ok) throw new Error('Download failed');
+      const redirected = new URL(response.url || parsed.toString());
+      if (redirected.protocol !== 'http:' && redirected.protocol !== 'https:') {
+        toast.error(t(preferences.language, 'upload.invalidUrl'));
+        return;
+      }
+      const maxBytes = preferences.runtimeSettings?.upload.max_upload_size_mb ? preferences.runtimeSettings.upload.max_upload_size_mb * 1024 * 1024 : 0;
+      const contentLength = Number(response.headers.get('Content-Length') ?? 0);
+      if (maxBytes > 0 && Number.isFinite(contentLength) && contentLength > maxBytes) {
+        toast.error(t(preferences.language, 'upload.error'));
+        return;
+      }
       const blob = await response.blob();
+      if (maxBytes > 0 && blob.size > maxBytes) {
+        toast.error(t(preferences.language, 'upload.error'));
+        return;
+      }
       const mimeType = response.headers.get('Content-Type') || blob.type;
-      if (!mimeType.startsWith('image/')) {
+      const allowedTypes = preferences.runtimeSettings?.upload.effective_allowed_mime_types ?? [];
+      if (!mimeType.startsWith('image/') || (allowedTypes.length > 0 && !isAllowedImageMimeType(mimeType, allowedTypes))) {
         toast.error(t(preferences.language, 'upload.urlNotImage'));
         return;
       }
-      const filename = url.split('/').pop()?.split('?')[0] || 'image';
+      const filename = normalizeDownloadFilename(decodeURIComponent(redirected.pathname.split('/').pop() ?? ''), 'image');
       toast.success(t(preferences.language, 'upload.urlSuccess'));
       urlInput = '';
-      await handleFiles([new File([blob], filename, { type: mimeType })]);
+      await handleFiles([new File([blob], filename, { type: mimeType.split(';', 1)[0].trim().toLowerCase() })]);
     } catch {
       toast.error(t(preferences.language, 'upload.urlDownloadFail'));
     } finally {
@@ -208,7 +238,7 @@
   async function removeRecent(record: UploadHistoryRecord) {
     deleting = true;
     try {
-      await deleteImageByUid(record.uid, getClientToken());
+      await deleteImageByUid(record.uid, record.client_token);
       await deleteUploadFromHistory(record.uid);
       recentUploads = recentUploads.filter((item) => item.uid !== record.uid);
       if (previewRecord?.uid === record.uid) previewRecord = null;
@@ -316,7 +346,7 @@
 {/if}
 
 <ImagePreviewDialog language={preferences.language} record={previewRecord} records={recentUploads} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && (deleteTarget = previewRecord)} onNavigate={(record) => (previewRecord = record)} onClose={() => (previewRecord = null)} />
-<AnnouncementDialog language={preferences.language} announcements={announcements} open={announcementDialogOpen} initialMode={announcementDialogMode} onClose={closeAnnouncementDialog} />
+<AnnouncementDialog language={preferences.language} announcements={announcements} open={announcementDialogOpen} initialMode={announcementDialogMode} onClose={closeAnnouncementDialog} onAcknowledge={acknowledgeAnnouncementDialog} />
 <ConfirmDialog
   open={deleteTarget !== null}
   title={t(preferences.language, 'history.deleteConfirm')}

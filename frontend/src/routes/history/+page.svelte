@@ -41,7 +41,7 @@
   async function remove(record: UploadHistoryRecord) {
     busy = true;
     try {
-      await deleteImageByUid(record.uid, getClientToken());
+      await deleteImageByUid(record.uid, record.client_token);
       await deleteUploadFromHistory(record.uid);
       records = records.filter((item) => item.uid !== record.uid);
       if (previewRecord?.uid === record.uid) previewRecord = null;

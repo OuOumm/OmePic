@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:backend": "vite build && node scripts/copy-static-to-backend.mjs",
     "lint": "eslint .",
+    "test": "vitest run",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "vitest": "^4.0.16"
   }
 }
