@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminCreateStorageInstance, adminDeleteImages, adminUpdateSystemSettings } from './api';
+import { adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminUpdateSystemSettings } from './api';
 import type { RuntimeSettings, StorageInstance } from '@/types';
 
 const jsonResponse = (status: number, payload: unknown) =>
@@ -68,6 +68,17 @@ describe('admin API helpers', () => {
       },
       body: JSON.stringify({ uids: ['uid-1', 'uid-2'] }),
     });
+  });
+
+  it('passes AbortSignal through admin image listing requests', async () => {
+    const controller = new AbortController();
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: { items: [], total: 0 } }));
+
+    await adminGetImages('admin-token', 2, 30, 'needle', controller.signal);
+
+    expect(fetch).toHaveBeenCalledWith('http://localhost:8080/admin/images?page=2&pageSize=30&search=needle', expect.objectContaining({
+      signal: controller.signal,
+    }));
   });
 
   it('preserves typed response data when updating system settings', async () => {

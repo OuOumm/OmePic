@@ -7,13 +7,14 @@
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
   import { ApiError, deleteImageByUid, getAnnouncements, getRuntimeSettings, uploadImageWithProgress } from '@/api';
-  import { getClientToken } from '@/preferences';
+  import { getClientToken } from '@/client-token';
   import { saveUploadToHistory, deleteUploadFromHistory, getRecentUploads } from '@/indexeddb/upload-history';
   import { t } from '@/i18n';
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import type { Announcement, Language, UploadHistoryRecord, UploadResult } from '@/types';
-  import { isAllowedImageMimeType, normalizeDownloadFilename } from '@/utils';
+  import { isAbortError, isAllowedImageMimeType, normalizeDownloadFilename } from '@/utils';
+  import { createProgressReporter, runWithConcurrency } from '@/upload-queue';
 
   type UploadTask = {
     id: string;
@@ -45,6 +46,7 @@
   const allowedMimeTypesText = $derived(preferences.runtimeSettings?.upload.effective_allowed_mime_types?.join(', ') ?? '');
   const maintenanceMode = $derived(preferences.runtimeSettings?.features.maintenance_mode ?? false);
   const uploadDisabled = $derived(runtimeLoading || maintenanceMode || activeTasks.some((task) => task.status === 'pending' || task.status === 'uploading'));
+  const uploadConcurrency = 3;
 
   function uploadErrorMessage(lang: Language, err: unknown): string {
     if (err instanceof ApiError && err.code === 'rate_limited') {
@@ -56,20 +58,22 @@
     return err instanceof Error ? err.message : t(lang, 'upload.error');
   }
 
-  async function loadRuntime(showLoading = true) {
+  async function loadRuntime(showLoading = true, signal?: AbortSignal) {
     if (showLoading) runtimeLoading = true;
     runtimeError = null;
     try {
-      const settings = await getRuntimeSettings();
+      const settings = await getRuntimeSettings(signal);
+      if (signal?.aborted) return;
       setRuntimeSettings(settings);
       if (preferences.selectedStorageKey && !settings.storage.options.some((option) => option.storage_key === preferences.selectedStorageKey)) {
         setSelectedStorageKey('');
       }
     } catch (err) {
+      if (isAbortError(err)) return;
       runtimeError = err instanceof Error ? err.message : t(preferences.language, 'common.error');
       setRuntimeSettings(null);
     } finally {
-      runtimeLoading = false;
+      if (!signal?.aborted) runtimeLoading = false;
     }
   }
 
@@ -81,9 +85,10 @@
     }
   }
 
-  async function loadAnnouncements() {
+  async function loadAnnouncements(signal?: AbortSignal) {
     try {
-      const items = await getAnnouncements();
+      const items = await getAnnouncements(signal);
+      if (signal?.aborted) return;
       announcements = items;
       const latestStamp = items[0]?.updated_at || items[0]?.created_at || '';
       const seenStamp = localStorage.getItem('omepic:announcement:lastSeen') ?? '';
@@ -91,7 +96,8 @@
         announcementDialogMode = 'detail';
         announcementDialogOpen = true;
       }
-    } catch {
+    } catch (err) {
+      if (isAbortError(err)) return;
       announcements = [];
     }
   }
@@ -132,13 +138,14 @@
   async function uploadTask(task: UploadTask) {
     tasks = tasks.map((item) => (item.id === task.id ? { ...item, status: 'uploading', progress: 0 } : item));
     const token = getClientToken();
+    const reportProgress = createProgressReporter((progress) => {
+      tasks = tasks.map((item) => (item.id === task.id ? { ...item, progress } : item));
+    });
     try {
       const result = await uploadImageWithProgress(
         task.file,
         token,
-        (progress) => {
-          tasks = tasks.map((item) => (item.id === task.id ? { ...item, progress } : item));
-        },
+        reportProgress,
         preferences.selectedStorageKey || undefined,
       );
       tasks = tasks.map((item) => (item.id === task.id ? { ...item, status: 'success', progress: 100, result } : item));
@@ -158,11 +165,12 @@
         saved_at: new Date().toISOString(),
       });
       toast.success(result.is_duplicate ? t(preferences.language, 'upload.duplicate') : t(preferences.language, 'upload.success'));
-      await loadRecent();
+      return result;
     } catch (err) {
       const message = uploadErrorMessage(preferences.language, err);
       tasks = tasks.map((item) => (item.id === task.id ? { ...item, status: 'error', error: message } : item));
       toast.error(`${task.file.name}: ${message}`);
+      return null;
     }
   }
 
@@ -174,7 +182,8 @@
     const accepted = validateFiles(files);
     const next = accepted.map((file) => ({ id: `task-${++counter}`, file, progress: 0, status: 'pending' as const }));
     tasks = [...next, ...tasks];
-    await Promise.all(next.map(uploadTask));
+    const results = await runWithConcurrency(next.map((task) => () => uploadTask(task)), uploadConcurrency);
+    if (results.some(Boolean)) await loadRecent();
   }
 
   async function handleUrlUpload() {
@@ -252,9 +261,10 @@
   }
 
   $effect(() => {
-    loadRuntime();
+    const controller = new AbortController();
+    loadRuntime(true, controller.signal);
     loadRecent();
-    loadAnnouncements();
+    loadAnnouncements(controller.signal);
     const pasteHandler = (event: ClipboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
@@ -268,7 +278,10 @@
       }
     };
     window.addEventListener('paste', pasteHandler);
-    return () => window.removeEventListener('paste', pasteHandler);
+    return () => {
+      controller.abort();
+      window.removeEventListener('paste', pasteHandler);
+    };
   });
 </script>
 

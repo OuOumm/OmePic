@@ -9,7 +9,7 @@
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
-  import { formatBytes } from '@/utils';
+  import { formatBytes, isAbortError } from '@/utils';
   import type { AdminAbuseOverview, AdminIPBan, AdminSystemSettings } from '@/types';
 
   let overview = $state<AdminAbuseOverview | null>(null);
@@ -25,24 +25,36 @@
   const safeBans = $derived(Array.isArray(bans) ? bans : []);
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
 
-  async function loadAbuse() {
+  async function loadAbuse(signal?: AbortSignal) {
     if (!preferences.adminToken) return;
-    const [nextOverview, nextBans] = await Promise.all([adminGetAbuseOverview(preferences.adminToken), adminGetIPBans(preferences.adminToken)]);
-    overview = nextOverview ? { ...nextOverview, top_ips: Array.isArray(nextOverview.top_ips) ? nextOverview.top_ips : [] } : null;
-    bans = Array.isArray(nextBans) ? nextBans : [];
+    try {
+      const [nextOverview, nextBans] = await Promise.all([adminGetAbuseOverview(preferences.adminToken, undefined, undefined, signal), adminGetIPBans(preferences.adminToken, signal)]);
+      if (signal?.aborted) return;
+      overview = nextOverview ? { ...nextOverview, top_ips: Array.isArray(nextOverview.top_ips) ? nextOverview.top_ips : [] } : null;
+      bans = Array.isArray(nextBans) ? nextBans : [];
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+    }
   }
 
-  async function loadRateLimit() {
+  async function loadRateLimit(signal?: AbortSignal) {
     if (!preferences.adminToken) return;
-    system = await adminGetSystemSettings(preferences.adminToken);
+    try {
+      const nextSystem = await adminGetSystemSettings(preferences.adminToken, signal);
+      if (!signal?.aborted) system = nextSystem;
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+    }
   }
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     if (activeTab === 'rate-limit') {
-      await loadRateLimit();
+      await loadRateLimit(signal);
       return;
     }
-    await loadAbuse();
+    await loadAbuse(signal);
   }
 
   function normalizeLimit(value: number) {
@@ -102,7 +114,11 @@
     await loadAbuse();
   }
 
-  $effect(() => { load(); });
+  $effect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 <svelte:head><title>{t(preferences.language, 'admin.abuseTitle')} · {siteName}</title></svelte:head>

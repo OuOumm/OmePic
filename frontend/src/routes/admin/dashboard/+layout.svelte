@@ -4,6 +4,7 @@
   import { adminGetStatus } from '@/api';
   import { t } from '@/i18n';
   import { clearAdminToken, preferences } from '@/stores/preferences.svelte';
+  import { isAbortError } from '@/utils';
   import type { AdminStatus } from '@/types';
 
   let status = $state<AdminStatus | null>(null);
@@ -39,9 +40,19 @@
   }
 
   $effect(() => {
-    if (preferences.adminToken) {
-      adminGetStatus(preferences.adminToken).then((next) => (status = next)).catch(() => clearAdminToken());
+    if (!preferences.adminToken) {
+      status = null;
+      return;
     }
+    const controller = new AbortController();
+    adminGetStatus(preferences.adminToken, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) status = next;
+      })
+      .catch((err) => {
+        if (!isAbortError(err)) clearAdminToken();
+      });
+    return () => controller.abort();
   });
 </script>
 

@@ -166,18 +166,20 @@ function adminHeaders(token: string): HeadersInit {
   };
 }
 
-export async function adminLogin(password: string): Promise<string> {
+export async function adminLogin(password: string, signal?: AbortSignal): Promise<string> {
   const data = await apiFetch<{ token: string }>("/admin/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
+    signal,
   });
   return data.token;
 }
 
-export async function adminGetStatus(token: string): Promise<AdminStatus> {
+export async function adminGetStatus(token: string, signal?: AbortSignal): Promise<AdminStatus> {
   return apiFetch<AdminStatus>("/admin/status", {
     headers: adminAuthHeaders(token),
+    signal,
   });
 }
 
@@ -185,10 +187,12 @@ export async function adminGetImages(
   token: string,
   page: number,
   pageSize: number,
-  search?: string
+  search?: string,
+  signal?: AbortSignal
 ): Promise<AdminImagesResponse> {
   return apiFetch<AdminImagesResponse>("/admin/images", {
     headers: adminHeaders(token),
+    signal,
     params: {
       page: String(page),
       pageSize: String(pageSize),
@@ -216,9 +220,10 @@ export async function adminCreateIPBan(
   });
 }
 
-export async function adminGetIPBans(token: string): Promise<AdminIPBan[]> {
+export async function adminGetIPBans(token: string, signal?: AbortSignal): Promise<AdminIPBan[]> {
   return apiFetch<AdminIPBan[]>("/admin/ip-bans", {
     headers: adminAuthHeaders(token),
+    signal,
   });
 }
 
@@ -242,10 +247,12 @@ export async function adminDeleteIPBanImages(
 export async function adminGetAbuseOverview(
   token: string,
   from?: string,
-  to?: string
+  to?: string,
+  signal?: AbortSignal
 ): Promise<AdminAbuseOverview> {
   return apiFetch<AdminAbuseOverview>("/admin/abuse/overview", {
     headers: adminAuthHeaders(token),
+    signal,
     params: {
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
@@ -253,16 +260,18 @@ export async function adminGetAbuseOverview(
   });
 }
 
-export async function adminGetAbuseIPDetail(token: string, ip: string): Promise<AdminAbuseIPDetail> {
+export async function adminGetAbuseIPDetail(token: string, ip: string, signal?: AbortSignal): Promise<AdminAbuseIPDetail> {
   return apiFetch<AdminAbuseIPDetail>("/admin/abuse/ip", {
     headers: adminAuthHeaders(token),
+    signal,
     params: { ip },
   });
 }
 
-export async function adminGetConfig(token: string): Promise<AdminConfig> {
+export async function adminGetConfig(token: string, signal?: AbortSignal): Promise<AdminConfig> {
   return apiFetch<AdminConfig>("/admin/config", {
     headers: adminAuthHeaders(token),
+    signal,
   });
 }
 
@@ -310,9 +319,10 @@ export async function adminSetDefaultStorage(
   });
 }
 
-export async function adminGetSystemSettings(token: string): Promise<AdminSystemSettings> {
+export async function adminGetSystemSettings(token: string, signal?: AbortSignal): Promise<AdminSystemSettings> {
   return apiFetch<AdminSystemSettings>("/admin/system-settings", {
     headers: adminAuthHeaders(token),
+    signal,
   });
 }
 
@@ -327,9 +337,10 @@ export async function adminUpdateSystemSettings(
   });
 }
 
-export async function adminGetAnnouncements(token: string): Promise<Announcement[]> {
+export async function adminGetAnnouncements(token: string, signal?: AbortSignal): Promise<Announcement[]> {
   const data = await apiFetch<AnnouncementListResponse>("/admin/announcements", {
     headers: adminAuthHeaders(token),
+    signal,
   });
   return data.items;
 }

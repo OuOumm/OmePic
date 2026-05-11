@@ -5,7 +5,7 @@
   import { adminGetStatus, adminGetSystemSettings, adminLogin } from '@/api';
   import { t } from '@/i18n';
   import { preferences, setAdminToken } from '@/stores/preferences.svelte';
-  import { formatBytes } from '@/utils';
+  import { formatBytes, isAbortError } from '@/utils';
   import type { AdminStatus, AdminSystemSettings } from '@/types';
 
   let password = $state('');
@@ -28,19 +28,27 @@
     }
   }
 
-  async function loadData() {
+  async function loadData(signal?: AbortSignal) {
     if (!preferences.adminToken) return;
     loading = true;
     try {
-      [status, system] = await Promise.all([adminGetStatus(preferences.adminToken), adminGetSystemSettings(preferences.adminToken)]);
+      const [nextStatus, nextSystem] = await Promise.all([adminGetStatus(preferences.adminToken, signal), adminGetSystemSettings(preferences.adminToken, signal)]);
+      if (signal?.aborted) return;
+      status = nextStatus;
+      system = nextSystem;
     } catch (err) {
+      if (isAbortError(err)) return;
       error = err instanceof Error ? err.message : t(preferences.language, 'common.error');
     } finally {
-      loading = false;
+      if (!signal?.aborted) loading = false;
     }
   }
 
-  $effect(() => { loadData(); });
+  $effect(() => {
+    const controller = new AbortController();
+    void loadData(controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 <svelte:head><title>{t(preferences.language, 'admin.statusTitle')} · OmePic</title></svelte:head>

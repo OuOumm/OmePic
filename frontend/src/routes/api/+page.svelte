@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Copy, KeyRound, Terminal } from 'lucide-svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
-  import { getClientToken } from '@/preferences';
+  import { getClientToken } from '@/client-token';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';

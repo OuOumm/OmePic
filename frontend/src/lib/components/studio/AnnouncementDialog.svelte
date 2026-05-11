@@ -2,7 +2,7 @@
   import { ChevronLeft, ChevronRight, History, Megaphone, X } from 'lucide-svelte';
   import { t } from '@/i18n';
   import { accessibleDialog } from '@/actions/accessible-dialog';
-  import { formatDate } from '@/utils';
+  import { formatDate, markdownSummaryText } from '@/utils';
   import MarkdownContent from './MarkdownContent.svelte';
   import type { Announcement, Language } from '@/types';
 
@@ -60,7 +60,7 @@
                   <span class="tape-label rotate-[-1deg]" style={`background:${priorityColor(item.priority)}`}>{item.priority}</span>
                   <strong class="min-w-0 truncate text-lg font-black">{item.title}</strong>
                 </div>
-                <MarkdownContent content={item.content} clamp />
+                <p class="line-clamp-2 whitespace-pre-wrap text-sm font-semibold text-[hsl(var(--ink-muted))]">{markdownSummaryText(item.content)}</p>
                 <span class="text-xs font-bold text-[hsl(var(--ink-muted))]">{formatDate(item.updated_at || item.created_at, language)}</span>
               </button>
             {/each}

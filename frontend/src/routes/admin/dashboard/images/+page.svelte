@@ -8,7 +8,7 @@
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
-  import { formatBytes } from '@/utils';
+  import { isAbortError, formatBytes } from '@/utils';
   import type { AdminImage } from '@/types';
 
   let images = $state<AdminImage[]>([]);
@@ -20,14 +20,22 @@
   let banTargetImage = $state<AdminImage | null>(null);
   let deleteTarget = $state<AdminImage | 'selected' | null>(null);
   let busy = $state(false);
+  let debouncedSearch = $state('');
   const pageSize = 30;
+  const searchDebounceMs = 300;
 
-  async function load() {
+  async function load(currentPage = page, currentSearch = debouncedSearch, signal?: AbortSignal) {
     if (!preferences.adminToken) return;
-    const data = await adminGetImages(preferences.adminToken, page, pageSize, search || undefined);
-    images = data.items;
-    total = data.total;
-    selected = new Set();
+    try {
+      const data = await adminGetImages(preferences.adminToken, currentPage, pageSize, currentSearch || undefined, signal);
+      if (signal?.aborted) return;
+      images = data.items;
+      total = data.total;
+      selected = new Set();
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+    }
   }
 
   async function removeSelected() {
@@ -74,11 +82,30 @@
     }
   }
 
+  function loadCurrent() {
+    void load();
+  }
+
   function toggle(uid: string) {
     selected = new Set(selected.has(uid) ? Array.from(selected).filter((item) => item !== uid) : [...selected, uid]);
   }
 
-  $effect(() => { load(); });
+  $effect(() => {
+    const nextSearch = search.trim();
+    const timer = window.setTimeout(() => {
+      if (debouncedSearch !== nextSearch) {
+        debouncedSearch = nextSearch;
+        page = 1;
+      }
+    }, searchDebounceMs);
+    return () => window.clearTimeout(timer);
+  });
+
+  $effect(() => {
+    const controller = new AbortController();
+    void load(page, debouncedSearch, controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 <svelte:head><title>{t(preferences.language, 'admin.imagesTitle')} · OmePic</title></svelte:head>
@@ -89,7 +116,7 @@
     <label class="relative min-w-0">
       <span class="sr-only">{t(preferences.language, 'common.search')}</span>
       <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-      <input class="studio-input w-full pl-10" bind:value={search} name="admin-image-search" autocomplete="off" placeholder={t(preferences.language, 'admin.imagesSearch')} onkeydown={(event) => event.key === 'Enter' && load()} />
+      <input class="studio-input w-full pl-10" bind:value={search} name="admin-image-search" autocomplete="off" placeholder={t(preferences.language, 'admin.imagesSearch')} />
     </label>
     <button class="studio-button w-full justify-center md:w-auto" data-tone="danger" type="button" disabled={selected.size === 0} onclick={() => (deleteTarget = 'selected')}><Trash2 class="size-4" />{t(preferences.language, 'admin.imagesDelete')} ({selected.size})</button>
   </div>
@@ -131,11 +158,11 @@
     </table>
   </div>
   <div class="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-t-[3px] ink-line pt-3">
-    <button class="studio-button px-3 py-1.5 text-sm" disabled={page <= 1} onclick={() => { page -= 1; load(); }}>{t(preferences.language, 'admin.imagesPrev')}</button>
+    <button class="studio-button px-3 py-1.5 text-sm" disabled={page <= 1} onclick={() => { page -= 1; }}>{t(preferences.language, 'admin.imagesPrev')}</button>
     <span class="min-w-0 justify-center text-center text-sm font-black">{t(preferences.language, 'admin.imagesPage', { page })}</span>
-    <button class="studio-button px-3 py-1.5 text-sm" disabled={page * pageSize >= total} onclick={() => { page += 1; load(); }}>{t(preferences.language, 'admin.imagesNext')}</button>
+    <button class="studio-button px-3 py-1.5 text-sm" disabled={page * pageSize >= total} onclick={() => { page += 1; }}>{t(preferences.language, 'admin.imagesNext')}</button>
   </div>
-  <ImageDetailDrawer image={activeImage} images={images} onNavigate={(image) => (activeImage = image)} onClose={() => (activeImage = null)} onDeleted={() => { load(); }} />
+  <ImageDetailDrawer image={activeImage} images={images} onNavigate={(image) => (activeImage = image)} onClose={() => (activeImage = null)} onDeleted={loadCurrent} />
   <BanIPDialog target={banTargetImage ? { ip: banTargetImage.ip_address, label: banTargetImage.ip_address_masked } : null} busy={busy} onClose={() => (banTargetImage = null)} onConfirm={banOne} />
   <ConfirmDialog
     open={deleteTarget !== null}

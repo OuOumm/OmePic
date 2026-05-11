@@ -6,7 +6,7 @@
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
-  import { formatBytes } from '@/utils';
+  import { formatBytes, isAbortError } from '@/utils';
   import type { AdminAbuseIPDetail } from '@/types';
 
   type Props = {
@@ -23,7 +23,7 @@
   let busy = $state(false);
   let purgeOpen = $state(false);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     if (!preferences.adminToken || !ip) {
       detail = null;
       return;
@@ -31,12 +31,14 @@
     loading = true;
     error = '';
     try {
-      detail = await adminGetAbuseIPDetail(preferences.adminToken, ip);
+      const nextDetail = await adminGetAbuseIPDetail(preferences.adminToken, ip, signal);
+      if (!signal?.aborted) detail = nextDetail;
     } catch (err) {
+      if (isAbortError(err)) return;
       error = err instanceof Error ? err.message : t(preferences.language, 'common.error');
       toast.error(error);
     } finally {
-      loading = false;
+      if (!signal?.aborted) loading = false;
     }
   }
 
@@ -76,7 +78,11 @@
     }
   }
 
-  $effect(() => { load(); });
+  $effect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 {#if ip}

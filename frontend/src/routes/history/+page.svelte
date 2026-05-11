@@ -6,7 +6,7 @@
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { deleteImageByUid } from '@/api';
   import { clearUploadHistory, deleteUploadFromHistory, getAllUploads, getUploadCount } from '@/indexeddb/upload-history';
-  import { getClientToken } from '@/preferences';
+  import { getClientToken } from '@/client-token';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';

@@ -43,13 +43,15 @@
   <script>
     try {
       const raw = localStorage.getItem('omepic-ui-preferences');
-      const prefs = raw ? JSON.parse(raw) : { theme: 'dark' };
-      const theme = prefs.theme === 'system'
-        ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-        : (prefs.theme || 'dark');
+      const prefs = raw ? JSON.parse(raw) : {};
+      const theme = prefs.theme === 'dark'
+        ? 'dark'
+        : prefs.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light';
       document.documentElement.classList.toggle('dark', theme === 'dark');
     } catch {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('dark');
     }
   </script>
 </svelte:head>

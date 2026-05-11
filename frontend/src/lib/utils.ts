@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { Language } from '@/types';
+import type { Language, Theme } from '@/types';
 import { locale } from '@/i18n';
 
 const fallbackOrigin = 'http://localhost';
@@ -67,9 +67,45 @@ export function isAllowedImageMimeType(mimeType: string, allowedMimeTypes: strin
   return allowedMimeTypes.map((value) => value.trim().toLowerCase()).includes(normalized);
 }
 
+export function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
 export function normalizeDownloadFilename(value: string | null | undefined, fallback: string): string {
   const normalized = (value ?? '').replace(/[\\/:*?"<>|]/g, '').trim();
   return normalized || fallback;
+}
+
+export function getInitialThemeScriptTheme(rawPreferences: string | null, systemPrefersDark: boolean): 'light' | 'dark' {
+  try {
+    const prefs = rawPreferences ? JSON.parse(rawPreferences) as { theme?: unknown } : {};
+    if (prefs.theme === 'dark') return 'dark';
+    if (prefs.theme === 'system') return systemPrefersDark ? 'dark' : 'light';
+    return 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+export function normalizeTheme(theme: unknown): Theme {
+  return theme === 'light' || theme === 'dark' || theme === 'system' ? theme : 'light';
+}
+
+export function markdownSummaryText(content: string, maxLength = 180): string {
+  const plain = content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/[*_~>#|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const chars = Array.from(plain);
+  return chars.length > maxLength ? `${chars.slice(0, maxLength).join('')}…` : plain;
 }
 
 function currentOrigin(): string {

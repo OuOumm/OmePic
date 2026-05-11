@@ -6,7 +6,7 @@
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import StorageInstanceManager from '@/components/studio/StorageInstanceManager.svelte';
   import { t } from '@/i18n';
-  import { formatMegabytes } from '@/utils';
+  import { formatMegabytes, isAbortError } from '@/utils';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import type { AdminConfig, AdminSystemSettings } from '@/types';
@@ -24,10 +24,16 @@
     return Array.isArray(runtimeTypes) ? runtimeTypes.join(', ') : '';
   }
 
-  async function load() {
-    if (!preferences.adminToken) return;
-    [config, system] = await Promise.all([adminGetConfig(preferences.adminToken), adminGetSystemSettings(preferences.adminToken)]);
-    mimeTypesText = runtimeMimeTypesText(system);
+  async function load(signal?: AbortSignal) {
+    if (!preferences.adminToken || activeTab === 'announcements') return;
+    try {
+      [config, system] = await Promise.all([adminGetConfig(preferences.adminToken, signal), adminGetSystemSettings(preferences.adminToken, signal)]);
+      if (signal?.aborted) return;
+      mimeTypesText = runtimeMimeTypesText(system);
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+    }
   }
 
   function parseMimeTypes(value: string) {
@@ -52,7 +58,11 @@
     }
   }
 
-  $effect(() => { load(); });
+  $effect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 <svelte:head><title>{t(preferences.language, 'admin.settingsTitle')} · {siteName}</title></svelte:head>

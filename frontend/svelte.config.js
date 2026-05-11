@@ -8,7 +8,7 @@ const config = {
       pages: 'out',
       assets: 'out',
       fallback: 'index.html',
-      precompress: false,
+      precompress: true,
       strict: true,
     }),
     alias: {

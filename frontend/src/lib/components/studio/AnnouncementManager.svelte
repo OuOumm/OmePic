@@ -14,6 +14,7 @@
   import PageTitle from './PageTitle.svelte';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
+  import { isAbortError, markdownSummaryText } from '@/utils';
   import type { Announcement, AnnouncementInput } from '@/types';
 
   const blank: AnnouncementInput = {
@@ -50,15 +51,17 @@
   let viewingAnnouncement = $state<Announcement | null>(null);
   let deleteTarget = $state<Announcement | null>(null);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     if (!preferences.adminToken) return;
     loading = true;
     try {
-      announcements = await adminGetAnnouncements(preferences.adminToken);
+      const items = await adminGetAnnouncements(preferences.adminToken, signal);
+      if (!signal?.aborted) announcements = items;
     } catch (err) {
+      if (isAbortError(err)) return;
       toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
     } finally {
-      loading = false;
+      if (!signal?.aborted) loading = false;
     }
   }
 
@@ -122,7 +125,11 @@
     await load();
   }
 
-  $effect(() => { load(); });
+  $effect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 <section>
@@ -158,7 +165,7 @@
                 <td class="px-2 py-4"><span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-pink))">{labelFor(priorityOptions, item.priority)}</span></td>
                 <td class="min-w-0 px-2 py-4">
                   <button class="max-w-3xl text-left text-sm font-semibold text-[hsl(var(--ink-muted))]" type="button" onclick={() => (viewingAnnouncement = item)} aria-label={t(preferences.language, 'announcement.viewDetail')}>
-                    <span class="line-clamp-2 whitespace-pre-wrap">{item.content}</span>
+                    <span class="line-clamp-2 whitespace-pre-wrap">{markdownSummaryText(item.content)}</span>
                   </button>
                 </td>
                 <td class="px-2 py-4">

@@ -1,5 +1,6 @@
 import type { Language, PublicRuntimeSettings, Theme } from '@/types';
 import { detectLanguage, htmlLang } from '@/i18n';
+import { normalizeTheme } from '@/utils';
 
 const PREF_STORAGE_KEY = 'omepic-ui-preferences';
 const UPLOAD_PREF_KEY = 'omepic-upload-preferences';
@@ -40,10 +41,12 @@ function syncDocumentLanguage(language: Language) {
 
 const uiPrefs = readJSON(PREF_STORAGE_KEY, { language: detectLanguage(), theme: 'light' as Theme });
 const uploadPrefs = readJSON(UPLOAD_PREF_KEY, { selectedStorageKey: '' });
+const initialLanguage = uiPrefs.language === 'en' || uiPrefs.language === 'zh' ? uiPrefs.language : detectLanguage();
+const initialTheme = normalizeTheme(uiPrefs.theme);
 
 export const preferences = $state<PreferencesState>({
-  language: uiPrefs.language === 'en' || uiPrefs.language === 'zh' ? uiPrefs.language : detectLanguage(),
-  theme: uiPrefs.theme === 'light' || uiPrefs.theme === 'dark' || uiPrefs.theme === 'system' ? uiPrefs.theme : 'light',
+  language: initialLanguage,
+  theme: initialTheme,
   selectedStorageKey: uploadPrefs.selectedStorageKey || '',
   adminToken: inMemoryAdminToken,
   runtimeSettings: null,
@@ -59,8 +62,8 @@ export function setLanguage(language: Language) {
 }
 
 export function setTheme(theme: Theme) {
-  preferences.theme = theme;
-  writeJSON(PREF_STORAGE_KEY, { language: preferences.language, theme });
+  preferences.theme = normalizeTheme(theme);
+  writeJSON(PREF_STORAGE_KEY, { language: preferences.language, theme: preferences.theme });
 }
 
 export function setSelectedStorageKey(selectedStorageKey: string) {
