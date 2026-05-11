@@ -107,7 +107,7 @@
 
 <svelte:head><title>{t(preferences.language, 'admin.abuseTitle')} · {siteName}</title></svelte:head>
 
-<div class="min-w-0 space-y-8 overflow-hidden">
+<div class="min-w-0 space-y-6 overflow-hidden">
   {#if activeTab === 'rate-limit'}
     <PageTitle eyebrow={t(preferences.language, 'admin.submenuRateLimit')} title={t(preferences.language, 'admin.rateLimitTitle')} subtitle={t(preferences.language, 'admin.rateLimitDescription')} tone="blue" />
     {#if system}
