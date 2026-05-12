@@ -19,6 +19,7 @@ const DB_NAME = 'omepic';
 const STORE_NAME = 'uploads';
 const DB_VERSION = 1;
 const CREATED_AT_INDEX = 'created_at';
+let dbPromise: Promise<IDBDatabase> | null = null;
 
 function ensureUploadStore(db: IDBDatabase, tx: IDBTransaction | null): void {
   const store = db.objectStoreNames.contains(STORE_NAME)
@@ -31,14 +32,32 @@ function ensureUploadStore(db: IDBDatabase, tx: IDBTransaction | null): void {
 }
 
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       ensureUploadStore(req.result, req.transaction);
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error);
+    };
+    req.onblocked = () => {
+      dbPromise = null;
+      reject(new DOMException('IndexedDB upgrade blocked', 'InvalidStateError'));
+    };
   });
+
+  return dbPromise;
 }
 
 function uploadTime(record: UploadHistoryRecord): number {

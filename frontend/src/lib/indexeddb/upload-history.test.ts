@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UploadHistoryRecord } from '@/types';
 import { buildUploadHistoryPage, selectedUploadUidsOnPage, sortUploadsByNewestUploadTime } from './upload-history';
 
@@ -97,5 +97,65 @@ describe('selectedUploadUidsOnPage', () => {
     ];
 
     expect(selectedUploadUidsOnPage(records, records.map((item) => item.uid))).toEqual(['visible-a', 'visible-b']);
+  });
+});
+
+describe('IndexedDB connection reuse', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('reuses the IndexedDB open request across persistence operations', async () => {
+    const objectStore = {
+      count: vi.fn(() => makeCountRequest()),
+    };
+    const transaction = {
+      objectStore: vi.fn(() => objectStore),
+      onerror: undefined,
+    };
+    const db = {
+      close: vi.fn(),
+      createObjectStore: vi.fn(),
+      objectStoreNames: { contains: vi.fn(() => true) },
+      transaction: vi.fn(() => transaction),
+      onversionchange: undefined,
+    };
+    function makeCountRequest() {
+      const request: { result: number; onsuccess?: (event: Event) => void } = { result: 0, onsuccess: undefined };
+      queueMicrotask(() => request.onsuccess?.(new Event('success')));
+      return request;
+    }
+
+    const open = vi.fn(() => {
+      const request: {
+        result: typeof db;
+        transaction: null;
+        onblocked?: () => void;
+        onerror?: () => void;
+        onsuccess?: (event: Event) => void;
+        onupgradeneeded?: () => void;
+      } = {
+        result: db,
+        transaction: null,
+        onblocked: undefined,
+        onerror: undefined,
+        onsuccess: undefined,
+        onupgradeneeded: undefined,
+      };
+      queueMicrotask(() => {
+        if (request.onsuccess) request.onsuccess(new Event('success'));
+      });
+      return request;
+    });
+
+    vi.stubGlobal('indexedDB', { open });
+
+    const { getUploadCount: getCount } = await import('./upload-history');
+
+    await getCount();
+    await getCount();
+
+    expect(open).toHaveBeenCalledTimes(1);
   });
 });

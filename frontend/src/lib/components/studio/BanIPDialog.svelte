@@ -1,7 +1,7 @@
 <script lang="ts">
   import { X } from 'lucide-svelte';
   import { t } from '@/i18n';
-  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { attachAccessibleDialog } from '@/actions/accessible-dialog';
   import { preferences } from '@/stores/preferences.svelte';
 
   type BanDialogTarget = {
@@ -26,6 +26,7 @@
   let reason = $state('');
   let selectedPreset = $state('24');
   let customHours = $state(24);
+  let previousIp = '';
 
   const presets = $derived([
     { label: t(preferences.language, 'admin.securityDuration1Hour'), value: '1' },
@@ -46,17 +47,22 @@
   }
 
   $effect(() => {
-    if (target) {
-      reason = t(preferences.language, 'admin.securityManualReview');
-      selectedPreset = '24';
-      customHours = 24;
+    const nextIp = target?.ip ?? '';
+    if (!nextIp) {
+      previousIp = '';
+      return;
     }
+    if (nextIp === previousIp) return;
+    previousIp = nextIp;
+    reason = t(preferences.language, 'admin.securityManualReview');
+    selectedPreset = '24';
+    customHours = 24;
   });
 </script>
 
 {#if target}
   <div class="fixed inset-0 z-[90] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.42)] p-4 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()}>
-    <div class="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto border-[3px] ink-line bg-[hsl(var(--paper))] p-4 shadow-[8px_8px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:p-5" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="ban-dialog-title" use:accessibleDialog={{ onClose }}>
+    <div class="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto border-[3px] ink-line bg-[hsl(var(--paper))] p-4 shadow-[8px_8px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:p-5" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="ban-dialog-title" {@attach attachAccessibleDialog(() => ({ onClose }))}>
       <div class="mb-5 flex items-start justify-between gap-3 border-b-[3px] ink-line pb-3">
         <div>
           <span class="tape-label rotate-[-2deg]" style="background:hsl(var(--marker-pink))">{t(preferences.language, 'admin.securityModeration')}</span>

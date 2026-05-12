@@ -14,7 +14,7 @@
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import type { Announcement, Language, UploadHistoryRecord, UploadResult } from '@/types';
-  import { isAbortError, isAllowedImageMimeType, normalizeDownloadFilename } from '@/utils';
+  import { imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAbortError, isAllowedImageMimeType, isBlockedImageMimeType, normalizeDownloadFilename, normalizedImageMimeType } from '@/utils';
   import { errorMessage } from '@/ui-errors';
   import { createProgressReporter, runWithConcurrency } from '@/upload-queue';
 
@@ -28,13 +28,13 @@
   };
 
   let tasks = $state<UploadTask[]>([]);
-  let recentUploads = $state<UploadHistoryRecord[]>([]);
+  let recentUploads = $state.raw<UploadHistoryRecord[]>([]);
   let runtimeLoading = $state(true);
   let runtimeError = $state<string | null>(null);
   let dragging = $state(false);
   let urlInput = $state('');
   let urlUploading = $state(false);
-  let announcements = $state<Announcement[]>([]);
+  let announcements = $state.raw<Announcement[]>([]);
   let announcementDialogOpen = $state(false);
   let announcementDialogMode = $state<'detail' | 'history'>('detail');
   let previewRecord = $state<UploadHistoryRecord | null>(null);
@@ -45,7 +45,10 @@
   const activeTasks = $derived(tasks.filter((task) => task.status === 'pending' || task.status === 'uploading' || task.status === 'error'));
   const siteName = $derived(preferences.runtimeSettings?.site.name || 'OmePic');
   const siteTitle = $derived(preferences.runtimeSettings?.site.tagline ? `${siteName} - ${preferences.runtimeSettings.site.tagline}` : siteName);
-  const allowedMimeTypesText = $derived(preferences.runtimeSettings?.upload.effective_allowed_mime_types?.join(', ') ?? '');
+  const allowedMimeTypes = $derived(preferences.runtimeSettings?.upload.effective_allowed_mime_types ?? []);
+  const allowedMimeTypesText = $derived(allowedMimeTypes.join(', '));
+  const uploadAccept = $derived(imageAcceptFromMimeTypes(allowedMimeTypes));
+  const publicImageAllowedOrigins = $derived(imageUrlAllowedOrigins(preferences.runtimeSettings?.access.public_base_url));
   const maintenanceMode = $derived(preferences.runtimeSettings?.features.maintenance_mode ?? false);
   const uploadDisabled = $derived(runtimeLoading || maintenanceMode || activeTasks.some((task) => task.status === 'pending' || task.status === 'uploading'));
   const uploadConcurrency = 3;
@@ -137,11 +140,16 @@
     });
   }
 
+  function updateTask(id: string, values: Partial<Omit<UploadTask, 'id' | 'file'>>) {
+    const task = tasks.find((item) => item.id === id);
+    if (task) Object.assign(task, values);
+  }
+
   async function uploadTask(task: UploadTask) {
-    tasks = tasks.map((item) => (item.id === task.id ? { ...item, status: 'uploading', progress: 0 } : item));
+    updateTask(task.id, { status: 'uploading', progress: 0 });
     const token = getClientToken();
     const reportProgress = createProgressReporter((progress) => {
-      tasks = tasks.map((item) => (item.id === task.id ? { ...item, progress } : item));
+      updateTask(task.id, { progress });
     });
     try {
       const result = await uploadImageWithProgress(
@@ -150,7 +158,7 @@
         reportProgress,
         preferences.selectedStorageKey || undefined,
       );
-      tasks = tasks.map((item) => (item.id === task.id ? { ...item, status: 'success', progress: 100, result } : item));
+      updateTask(task.id, { status: 'success', progress: 100, result });
       await saveUploadToHistory({
         uid: result.uid,
         url: result.url,
@@ -170,7 +178,7 @@
       return result;
     } catch (err) {
       const message = uploadErrorMessage(preferences.language, err);
-      tasks = tasks.map((item) => (item.id === task.id ? { ...item, status: 'error', error: message } : item));
+      updateTask(task.id, { status: 'error', error: message });
       toast.error(`${task.file.name}: ${message}`);
       return null;
     }
@@ -261,31 +269,29 @@
     }
   }
 
+  function handlePaste(event: ClipboardEvent) {
+    const target = event.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+    const files = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => normalizedImageMimeType(item.type).startsWith('image/') && !isBlockedImageMimeType(item.type))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (files.length) {
+      event.preventDefault();
+      handleFiles(files);
+    }
+  }
+
   $effect(() => {
     const controller = new AbortController();
     loadRuntime(true, controller.signal);
     loadRecent();
     loadAnnouncements(controller.signal);
-    const pasteHandler = (event: ClipboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-      const files = Array.from(event.clipboardData?.items ?? [])
-        .filter((item) => item.type.startsWith('image/'))
-        .map((item) => item.getAsFile())
-        .filter((file): file is File => Boolean(file));
-      if (files.length) {
-        event.preventDefault();
-        handleFiles(files);
-      }
-    };
-    window.addEventListener('paste', pasteHandler);
-    return () => {
-      controller.abort();
-      window.removeEventListener('paste', pasteHandler);
-    };
+    return () => controller.abort();
   });
 </script>
 
+<svelte:window onpaste={handlePaste} />
 <svelte:head><title>{siteTitle}</title></svelte:head>
 
 <div class="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -304,7 +310,7 @@
           {t(preferences.language, 'announcement.entry', { count: announcements.length })}
         </button>
       {/if}
-      <CanvasDropzone language={preferences.language} disabled={uploadDisabled} {dragging} allowedTypes={allowedMimeTypesText} onFiles={handleFiles} />
+      <CanvasDropzone language={preferences.language} disabled={uploadDisabled} {dragging} allowedTypes={allowedMimeTypesText} accept={uploadAccept} onFiles={handleFiles} onDragStateChange={(value) => (dragging = value)} />
     </div>
 
     <div class="grid gap-3 border-y-[3px] ink-line py-5 md:grid-cols-[1fr_auto] md:items-end">
@@ -355,11 +361,11 @@
         <h2 class="text-3xl font-black">{t(preferences.language, 'upload.recentTitle')}</h2>
       </div>
     </div>
-    <ImageDataTable language={preferences.language} records={recentUploads} canDelete={(record) => record.client_token === getClientToken()} onCopy={copy} onPreview={(record) => (previewRecord = record)} onDelete={(record) => (deleteTarget = record)} />
+    <ImageDataTable language={preferences.language} records={recentUploads} allowedImageOrigins={publicImageAllowedOrigins} canDelete={(record) => record.client_token === getClientToken()} onCopy={copy} onPreview={(record) => (previewRecord = record)} onDelete={(record) => (deleteTarget = record)} />
   </section>
 {/if}
 
-<ImagePreviewDialog language={preferences.language} record={previewRecord} records={recentUploads} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && (deleteTarget = previewRecord)} onNavigate={(record) => (previewRecord = record)} onClose={() => (previewRecord = null)} />
+<ImagePreviewDialog language={preferences.language} record={previewRecord} records={recentUploads} allowedImageOrigins={publicImageAllowedOrigins} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && (deleteTarget = previewRecord)} onNavigate={(record) => (previewRecord = record)} onClose={() => (previewRecord = null)} />
 <AnnouncementDialog language={preferences.language} announcements={announcements} open={announcementDialogOpen} initialMode={announcementDialogMode} onClose={closeAnnouncementDialog} onAcknowledge={acknowledgeAnnouncementDialog} />
 <ConfirmDialog
   open={deleteTarget !== null}

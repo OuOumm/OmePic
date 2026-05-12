@@ -1,6 +1,5 @@
 <script lang="ts">
-  import DOMPurify from 'dompurify';
-  import { marked, type Token } from 'marked';
+  import type { Token, TokensList } from 'marked';
 
   type Props = {
     content: string;
@@ -8,23 +7,33 @@
   };
 
   let { content, clamp = false }: Props = $props();
+  let tokens = $state<TokensList | null>(null);
+  let parsedContent = '';
 
-  marked.use({
-    async: false,
-    gfm: true,
-    breaks: true
+  async function parseMarkdown(nextContent: string) {
+    const [{ marked }, { default: DOMPurify }] = await Promise.all([
+      import('marked'),
+      import('dompurify'),
+    ]);
+    marked.use({ async: false, gfm: true, breaks: true });
+    const nextTokens = marked.lexer(DOMPurify.sanitize(nextContent));
+    if (parsedContent === nextContent) tokens = nextTokens;
+  }
+
+  $effect(() => {
+    parsedContent = content;
+    tokens = null;
+    void parseMarkdown(content);
   });
 
-  const tokens = $derived(marked.lexer(DOMPurify.sanitize(content)));
-
-  function textFromTokens(items: Token[] | undefined) {
+  function textFromTokens(items: Token[] | TokensList | undefined) {
     if (!items) return '';
     return items.map((item) => ('text' in item ? item.text : '')).join('');
   }
 </script>
 
-<div class="markdown-content text-[hsl(var(--ink-muted))]" class:line-clamp-2={clamp}>
-  {#each tokens as token (token.raw)}
+<div class={['markdown-content text-[hsl(var(--ink-muted))]', clamp && 'line-clamp-2']}>
+  {#each tokens ?? [] as token (token.raw)}
     {#if token.type === 'heading'}
       <svelte:element this={`h${Math.min(token.depth, 4)}`}>{textFromTokens(token.tokens)}</svelte:element>
     {:else if token.type === 'paragraph'}

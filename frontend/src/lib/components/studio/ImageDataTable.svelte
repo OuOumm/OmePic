@@ -4,21 +4,39 @@
   import { t } from '@/i18n';
   import { formatBytes, safeImageUrl } from '@/utils';
 
-  export let language: Language;
-  export let records: UploadHistoryRecord[] = [];
-  export let canDelete: (record: UploadHistoryRecord) => boolean = () => false;
-  export let selectable = false;
-  export let selectedUids: ReadonlySet<string> | readonly string[] = [];
-  export let canSelect: (record: UploadHistoryRecord) => boolean = () => true;
-  export let onToggleSelect: (record: UploadHistoryRecord) => void = () => {};
-  export let onToggleSelectAll: (checked: boolean) => void = () => {};
-  export let onCopy: (value: string) => void;
-  export let onPreview: (record: UploadHistoryRecord) => void;
-  export let onDelete: (record: UploadHistoryRecord) => void;
+  type Props = {
+    language: Language;
+    records?: UploadHistoryRecord[];
+    allowedImageOrigins?: readonly string[];
+    canDelete?: (record: UploadHistoryRecord) => boolean;
+    selectable?: boolean;
+    selectedUids?: ReadonlySet<string> | readonly string[];
+    canSelect?: (record: UploadHistoryRecord) => boolean;
+    onToggleSelect?: (record: UploadHistoryRecord) => void;
+    onToggleSelectAll?: (checked: boolean) => void;
+    onCopy: (value: string) => void;
+    onPreview: (record: UploadHistoryRecord) => void;
+    onDelete: (record: UploadHistoryRecord) => void;
+  };
 
-  $: selectedUidList = 'has' in selectedUids ? Array.from(selectedUids) : [...selectedUids];
-  $: selectableRecords = selectable ? records.filter(canSelect) : [];
-  $: allSelectableSelected = selectableRecords.length > 0 && selectableRecords.every((record) => selectedUidList.includes(record.uid));
+  let {
+    language,
+    records = [],
+    allowedImageOrigins = [],
+    canDelete = () => false,
+    selectable = false,
+    selectedUids = [],
+    canSelect = () => true,
+    onToggleSelect = () => {},
+    onToggleSelectAll = () => {},
+    onCopy,
+    onPreview,
+    onDelete,
+  }: Props = $props();
+
+  const selectedUidSet = $derived(selectedUids instanceof Set ? selectedUids : new Set(selectedUids));
+  const selectableRecords = $derived(selectable ? records.filter(canSelect) : []);
+  const allSelectableSelected = $derived(selectableRecords.length > 0 && selectableRecords.every((record) => selectedUidSet.has(record.uid)));
 </script>
 
 <div class="overflow-x-auto">
@@ -38,14 +56,14 @@
     </thead>
     <tbody>
       {#each records as record (record.uid)}
-        {@const imageUrl = safeImageUrl(record.url)}
+        {@const imageUrl = safeImageUrl(record.url, undefined, allowedImageOrigins)}
         <tr class="studio-table-row align-middle">
           {#if selectable}
-            <td class="px-2 py-3 align-middle">
-              <input type="checkbox" checked={selectedUidList.includes(record.uid)} disabled={!canSelect(record)} aria-label={t(language, 'history.selectRecord', { title: record.original_filename || record.uid })} onchange={() => onToggleSelect(record)} />
+            <td class="px-2 py-2 align-middle">
+              <input type="checkbox" checked={selectedUidSet.has(record.uid)} disabled={!canSelect(record)} aria-label={t(language, 'history.selectRecord', { title: record.original_filename || record.uid })} onchange={() => onToggleSelect(record)} />
             </td>
           {/if}
-          <th class="min-w-0 px-2 py-3 text-left font-normal" scope="row">
+          <th class="min-w-0 px-2 py-2 text-left font-normal" scope="row">
             <button class="flex min-w-0 items-center gap-3 text-left" type="button" onclick={() => onPreview(record)} aria-label={t(language, 'common.openPreview', { title: record.original_filename || record.uid })}>
               <span class="grid size-12 shrink-0 place-items-center overflow-hidden border-2 ink-line bg-[hsl(var(--paper-deep))]">
                 {#if imageUrl}
@@ -60,18 +78,18 @@
               </span>
             </button>
           </th>
-          <td class="px-2 py-3 font-bold">{formatBytes(record.size, language)}</td>
-          <td class="min-w-0 px-2 py-3 font-bold"><span class="block truncate">{record.storage_key}</span></td>
-          <td class="px-2 py-3">
+          <td class="px-2 py-2 font-bold">{formatBytes(record.size, language)}</td>
+          <td class="min-w-0 px-2 py-2 font-bold"><span class="block truncate">{record.storage_key}</span></td>
+          <td class="px-2 py-2">
             <div class="flex min-w-[170px] flex-nowrap justify-end gap-1.5 overflow-visible whitespace-nowrap">
-              <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.url)} aria-label={t(language, 'common.copyUrl')}>URL</button>
-              <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.markdown)} aria-label={t(language, 'common.copyMarkdown')}>MD</button>
-              <button class="studio-button p-2 text-xs" type="button" onclick={() => onCopy(record.bbcode)} aria-label={t(language, 'common.copyBBCode')}>BB</button>
+              <button class="studio-button px-2 py-1.5 text-xs" type="button" onclick={() => onCopy(record.url)} aria-label={t(language, 'common.copyUrl')} title={t(language, 'common.copyUrl')}>URL</button>
+              <button class="studio-button px-2 py-1.5 text-xs" type="button" onclick={() => onCopy(record.markdown)} aria-label={t(language, 'common.copyMarkdown')} title={t(language, 'common.copyMarkdown')}>MD</button>
+              <button class="studio-button px-2 py-1.5 text-xs" type="button" onclick={() => onCopy(record.bbcode)} aria-label={t(language, 'common.copyBBCode')} title={t(language, 'common.copyBBCode')}>BB</button>
               {#if imageUrl}
-                <a class="studio-button p-2" href={imageUrl} target="_blank" rel="noopener noreferrer" aria-label={t(language, 'common.openPreview', { title: record.uid })}><ExternalLink class="size-4" aria-hidden="true" /></a>
+                <a class="studio-button px-2 py-1.5" href={imageUrl} target="_blank" rel="noopener noreferrer" aria-label={t(language, 'common.openPreview', { title: record.uid })}><ExternalLink class="size-4" aria-hidden="true" /></a>
               {/if}
               {#if canDelete(record)}
-                <button class="studio-button p-2" data-tone="danger" type="button" onclick={() => onDelete(record)} aria-label={t(language, 'history.delete')}><Trash2 class="size-4" aria-hidden="true" /></button>
+                <button class="studio-button px-2 py-1.5" data-tone="danger" type="button" onclick={() => onDelete(record)} aria-label={t(language, 'history.delete')}><Trash2 class="size-4" aria-hidden="true" /></button>
               {/if}
             </div>
           </td>

@@ -4,6 +4,7 @@
   import ToastViewport from './ToastViewport.svelte';
   import { preferences, setLanguage, setTheme, resolvedTheme } from '@/stores/preferences.svelte';
   import { t } from '@/i18n';
+  import { initialThemeScript } from '@/utils';
 
   let menuOpen = $state(false);
 
@@ -20,6 +21,8 @@
   let { children } = $props();
 
   const currentTheme = $derived(preferences.theme);
+  const scriptTag = 'script';
+  const themeBootstrapScript = initialThemeScript();
 
   function isActive(href: string) {
     return href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
@@ -27,7 +30,9 @@
 
   function applyTheme() {
     if (typeof document === 'undefined') return;
-    document.documentElement.classList.toggle('dark', resolvedTheme() === 'dark');
+    const isDark = resolvedTheme() === 'dark';
+    if (document.documentElement.classList.contains('dark') === isDark) return;
+    document.documentElement.classList.toggle('dark', isDark);
   }
 
   function toggleTheme() {
@@ -36,30 +41,22 @@
 
   $effect(() => {
     if (currentTheme) applyTheme();
+    if (currentTheme !== 'system' || typeof window === 'undefined') return;
+
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    media.addEventListener('change', applyTheme);
+    return () => media.removeEventListener('change', applyTheme);
   });
 </script>
 
 <svelte:head>
-  <script>
-    try {
-      const raw = localStorage.getItem('omepic-ui-preferences');
-      const prefs = raw ? JSON.parse(raw) : {};
-      const theme = prefs.theme === 'dark'
-        ? 'dark'
-        : prefs.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light';
-      document.documentElement.classList.toggle('dark', theme === 'dark');
-    } catch {
-      document.documentElement.classList.remove('dark');
-    }
-  </script>
+  <svelte:element this={scriptTag}>{themeBootstrapScript}</svelte:element>
 </svelte:head>
 
 <svelte:window onstorage={applyTheme} />
 
 <div class="min-h-screen">
-  <header class="sticky top-0 z-50 border-b-2 ink-line bg-[hsl(var(--paper)/0.86)] backdrop-blur-md">
+  <header class="sticky top-0 z-50 border-b-2 ink-line bg-[hsl(var(--paper)/0.86)] backdrop-blur-md will-change-[backdrop-filter]">
     <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:px-6">
       <a href="/" class="group flex items-center gap-3 font-black tracking-tight">
         <span class="grid size-10 place-items-center border-2 ink-line bg-[hsl(var(--marker-yellow))] shadow-[4px_4px_0_hsl(var(--ink))] transition-transform group-hover:-rotate-3">OP</span>

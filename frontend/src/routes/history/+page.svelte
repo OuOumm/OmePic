@@ -12,10 +12,11 @@
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import type { UploadHistoryRecord } from '@/types';
+  import { imageUrlAllowedOrigins } from '@/utils';
 
-  let allRecords = $state<UploadHistoryRecord[]>([]);
-  let records = $state<UploadHistoryRecord[]>([]);
-  let filteredRecords = $state<UploadHistoryRecord[]>([]);
+  let allRecords = $state.raw<UploadHistoryRecord[]>([]);
+  let records = $state.raw<UploadHistoryRecord[]>([]);
+  let filteredRecords = $state.raw<UploadHistoryRecord[]>([]);
   let count = $state(0);
   let filteredCount = $state(0);
   let page = $state(1);
@@ -33,6 +34,7 @@
   const selectedCount = $derived(selectedUids.length);
   const showingEmptyState = $derived(!loading && count === 0);
   const showingNoMatches = $derived(!loading && count > 0 && filteredCount === 0);
+  const publicImageAllowedOrigins = $derived(imageUrlAllowedOrigins(preferences.runtimeSettings?.access.public_base_url));
 
   function applyHistoryPage(currentPage = page) {
     const pageData = buildUploadHistoryPage(allRecords, { query: search, page: currentPage, pageSize });
@@ -216,6 +218,7 @@
     <ImageDataTable
       language={preferences.language}
       {records}
+      allowedImageOrigins={publicImageAllowedOrigins}
       selectable
       selectedUids={selectedUids}
       canDelete={(record) => record.client_token === getClientToken()}
@@ -232,7 +235,7 @@
     </div>
   {/if}
 
-  <ImagePreviewDialog language={preferences.language} record={previewRecord} records={filteredRecords} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && (confirmTarget = previewRecord)} onNavigate={(record) => (previewRecord = record)} onClose={() => (previewRecord = null)} />
+  <ImagePreviewDialog language={preferences.language} record={previewRecord} records={filteredRecords} allowedImageOrigins={publicImageAllowedOrigins} canDelete={previewRecord?.client_token === getClientToken()} onCopy={copy} onDelete={() => previewRecord && (confirmTarget = previewRecord)} onNavigate={(record) => (previewRecord = record)} onClose={() => (previewRecord = null)} />
   <ConfirmDialog
     open={confirmTarget !== null}
     title={confirmTarget === 'clear' ? t(preferences.language, 'history.clearConfirm') : confirmTarget === 'selected' ? t(preferences.language, 'history.deleteSelectedConfirm', { count: selectedCount }) : t(preferences.language, 'history.deleteConfirm')}

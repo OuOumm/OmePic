@@ -5,6 +5,7 @@ import { locale } from '@/i18n';
 
 const fallbackOrigin = 'http://localhost';
 const blockedImageSchemes = new Set(['javascript:', 'data:', 'vbscript:', 'file:']);
+const defaultImageAcceptTypes = ['image/avif', 'image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -57,7 +58,7 @@ export function getImageUrl(uid: string): string {
   return `${base}${getImagePath(uid)}`;
 }
 
-export function safeImageUrl(value: string, origin = currentOrigin()): string | null {
+export function safeImageUrl(value: string, origin = currentOrigin(), allowedOrigins: readonly string[] = []): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
@@ -65,17 +66,61 @@ export function safeImageUrl(value: string, origin = currentOrigin()): string | 
     const parsed = new URL(trimmed, origin);
     if (blockedImageSchemes.has(parsed.protocol)) return null;
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    if (parsed.origin !== origin) return null;
+    const allowedOriginSet = new Set([origin, ...allowedOrigins].map((item) => originFromUrl(item)).filter((item): item is string => Boolean(item)));
+    if (!allowedOriginSet.has(parsed.origin)) return null;
     return trimmed.startsWith('/') ? `${parsed.pathname}${parsed.search}${parsed.hash}` : parsed.toString();
   } catch {
     return null;
   }
 }
 
-export function isAllowedImageMimeType(mimeType: string, allowedMimeTypes: string[]): boolean {
+export function imageUrlAllowedOrigins(publicBaseUrl?: string | null): string[] {
+  const origin = originFromUrl(publicBaseUrl ?? '');
+  return origin ? [origin] : [];
+}
+
+function originFromUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed, currentOrigin());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+export function normalizedImageMimeType(mimeType: string): string {
   const normalized = mimeType.split(';', 1)[0].trim().toLowerCase();
-  if (normalized === 'image/svg+xml') return false;
-  return allowedMimeTypes.map((value) => value.trim().toLowerCase()).includes(normalized);
+  return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
+}
+
+export function isBlockedImageMimeType(mimeType: string): boolean {
+  return normalizedImageMimeType(mimeType) === 'image/svg+xml';
+}
+
+export function normalizedAllowedImageMimeTypes(allowedMimeTypes: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of allowedMimeTypes) {
+    const normalized = normalizedImageMimeType(value);
+    if (!normalized || normalized === 'image/svg+xml' || !normalized.startsWith('image/')) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+export function imageAcceptFromMimeTypes(allowedMimeTypes?: readonly string[] | null): string {
+  const normalized = normalizedAllowedImageMimeTypes(allowedMimeTypes?.length ? allowedMimeTypes : defaultImageAcceptTypes);
+  return normalized.join(',');
+}
+
+export function isAllowedImageMimeType(mimeType: string, allowedMimeTypes: readonly string[]): boolean {
+  const normalized = normalizedImageMimeType(mimeType);
+  if (!normalized || normalized === 'image/svg+xml') return false;
+  return normalizedAllowedImageMimeTypes(allowedMimeTypes).includes(normalized);
 }
 
 export function isAbortError(err: unknown): boolean {
@@ -96,6 +141,10 @@ export function getInitialThemeScriptTheme(rawPreferences: string | null, system
   } catch {
     return 'light';
   }
+}
+
+export function initialThemeScript(storageKey = 'omepic-ui-preferences'): string {
+  return `(function(){try{var raw=localStorage.getItem(${JSON.stringify(storageKey)});var prefersDark=matchMedia('(prefers-color-scheme: dark)').matches;var prefs=raw?JSON.parse(raw):{};var theme=prefs.theme==='dark'||prefs.theme==='system'&&prefersDark?'dark':'light';document.documentElement.classList.toggle('dark',theme==='dark')}catch{document.documentElement.classList.remove('dark')}})();`;
 }
 
 export function normalizeTheme(theme: unknown): Theme {

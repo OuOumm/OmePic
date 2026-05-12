@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminUpdateSystemSettings, deleteImageByUid } from './api';
+import { adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminGetStatus, adminUpdateSystemSettings, deleteImageByUid } from './api';
 import type { RuntimeSettings, StorageInstance } from '@/types';
 
 const jsonResponse = (status: number, payload: unknown) =>
@@ -88,9 +88,16 @@ describe('admin API helpers', () => {
 
     await adminGetImages('admin-token', 2, 30, 'needle', controller.signal);
 
-    expect(fetch).toHaveBeenCalledWith('http://localhost:8080/admin/images?page=2&pageSize=30&search=needle', expect.objectContaining({
+    const [url, options] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe('http://localhost:8080/admin/images?page=2&pageSize=30&search=needle');
+    expect(options).toMatchObject({
+      cache: 'no-store',
+      headers: {
+        Authorization: 'Bearer admin-token',
+        'Content-Type': 'application/json',
+      },
       signal: controller.signal,
-    }));
+    });
   });
 
   it('preserves typed response data when updating system settings', async () => {
@@ -124,5 +131,39 @@ describe('admin API helpers', () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: system }));
 
     await expect(adminUpdateSystemSettings('admin-token', runtimeSettings)).resolves.toEqual(system);
+  });
+
+  it('deduplicates concurrent GET requests within the same auth scope', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, {
+      success: true,
+      data: { total_images: 1, total_storage_size: 2, today_uploads: 3, unique_tokens: 4 },
+    }));
+
+    const [left, right] = await Promise.all([
+      adminGetStatus('admin-token'),
+      adminGetStatus('admin-token'),
+    ]);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(left).toEqual(right);
+  });
+
+  it('keeps GET request deduplication scoped by auth headers', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(200, {
+        success: true,
+        data: { total_images: 1, total_storage_size: 2, today_uploads: 3, unique_tokens: 4 },
+      }))
+      .mockResolvedValueOnce(jsonResponse(200, {
+        success: true,
+        data: { total_images: 5, total_storage_size: 6, today_uploads: 7, unique_tokens: 8 },
+      }));
+
+    await Promise.all([
+      adminGetStatus('admin-token-a'),
+      adminGetStatus('admin-token-b'),
+    ]);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

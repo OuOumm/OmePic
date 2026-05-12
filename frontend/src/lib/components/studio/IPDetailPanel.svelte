@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Ban, ShieldCheck, Trash2, X } from 'lucide-svelte';
   import { adminDeleteIPBan, adminDeleteIPBanImages, adminGetAbuseIPDetail } from '@/api';
-  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { attachAccessibleDialog } from '@/actions/accessible-dialog';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
@@ -89,7 +89,7 @@
 </script>
 
 {#if ip}
-  <div class="fixed inset-0 z-[70] grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="ip-detail-title" tabindex="-1" use:accessibleDialog={{ onClose }}>
+  <div class="fixed inset-0 z-[70] grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="ip-detail-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose }))}>
     <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35 backdrop-blur-[2px]" type="button" onclick={onClose} aria-label={t(preferences.language, 'common.close')}></button>
     <div class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[0.25deg] sketch-enter">
       <div class="mb-5 flex items-start justify-between gap-3 border-b-[3px] ink-line pb-3">

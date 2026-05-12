@@ -119,6 +119,7 @@ const en: TranslationMap = {
   'announcement.startsAt': 'Starts',
   'announcement.endsAt': 'Ends',
   'image.uid': 'UID',
+  'image.url': 'URL',
   'image.size': 'Size',
   'image.type': 'Type',
   'image.created': 'Created',
@@ -128,6 +129,7 @@ const en: TranslationMap = {
   'image.ip': 'IP',
   'image.md5': 'MD5',
   'image.filename': 'Filename',
+  'image.copyUid': 'Copy UID',
   'image.copyMd5': 'Copy MD5',
   'image.copyToken': 'Copy token',
   'image.storage': 'Storage',
@@ -410,6 +412,7 @@ const zh: TranslationMap = {
   'announcement.startsAt': '开始时间',
   'announcement.endsAt': '结束时间',
   'image.uid': 'UID',
+  'image.url': 'URL',
   'image.size': '大小',
   'image.type': '类型',
   'image.created': '创建时间',
@@ -419,6 +422,7 @@ const zh: TranslationMap = {
   'image.ip': 'IP',
   'image.md5': 'MD5',
   'image.filename': '文件名',
+  'image.copyUid': '复制 UID',
   'image.copyMd5': '复制 MD5',
   'image.copyToken': '复制 Token',
   'image.storage': '存储',
@@ -585,6 +589,7 @@ const zh: TranslationMap = {
 };
 
 const translations: Record<Language, TranslationMap> = { en, zh };
+const translationCache = new Map<string, string>();
 
 export function detectLanguage(): Language {
   if (typeof navigator === 'undefined') return 'en';
@@ -600,12 +605,20 @@ export function locale(lang: Language): string {
 }
 
 export function t(lang: Language, key: string, params?: Record<string, string | number>): string {
+  if (!params) {
+    const cacheKey = `${lang}:${key}`;
+    const cached = translationCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+    const map = translations[lang] ?? translations.en;
+    const text = map[key] ?? translations.en[key] ?? key;
+    translationCache.set(cacheKey, text);
+    return text;
+  }
+
   const map = translations[lang] ?? translations.en;
   let text = map[key] ?? translations.en[key] ?? key;
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, String(v));
-    });
-  }
+  Object.entries(params).forEach(([k, v]) => {
+    text = text.replace(`{${k}}`, String(v));
+  });
   return text;
 }

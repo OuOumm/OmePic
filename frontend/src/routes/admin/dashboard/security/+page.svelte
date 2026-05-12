@@ -12,8 +12,8 @@
   import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { AdminAbuseOverview, AdminIPBan, AdminSystemSettings } from '@/types';
 
-  let overview = $state<AdminAbuseOverview | null>(null);
-  let bans = $state<AdminIPBan[]>([]);
+  let overview = $state.raw<AdminAbuseOverview | null>(null);
+  let bans = $state.raw<AdminIPBan[]>([]);
   let system = $state<AdminSystemSettings | null>(null);
   let banTarget = $state<{ ip: string; label?: string } | null>(null);
   let confirmTarget = $state<{ action: 'unban' | 'purge'; ban: AdminIPBan } | null>(null);

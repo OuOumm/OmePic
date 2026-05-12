@@ -6,7 +6,7 @@
     adminSetDefaultStorage,
     adminUpdateStorageInstance,
   } from '@/api';
-  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { attachAccessibleDialog } from '@/actions/accessible-dialog';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import { t } from '@/i18n';
   import PageTitle from './PageTitle.svelte';
@@ -143,28 +143,26 @@
       <button class="studio-button" data-tone="blue" type="button" onclick={startCreate}><Plus class="size-4" />{t(preferences.language, 'admin.storageNew')}</button>
     </div>
     <div class="w-full min-w-0 max-w-full touch-pan-x overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-      <table class="w-full min-w-[720px] border-collapse text-sm">
+      <table class="w-full min-w-[660px] border-collapse text-sm">
         <thead>
           <tr class="border-b-[3px] ink-line text-left text-xs font-black uppercase tracking-[0.12em] text-[hsl(var(--ink-muted))]">
             <th class="px-2 py-2" scope="col">{t(preferences.language, 'admin.storageName')}</th>
             <th class="w-[180px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageKey')}</th>
             <th class="w-[120px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageBackend')}</th>
-            <th class="w-[90px] px-2 py-2" scope="col">{t(preferences.language, 'common.default')}</th>
-            <th class="w-[220px] px-2 py-2 text-right" scope="col">{t(preferences.language, 'admin.imagesTableActions')}</th>
+            <th class="w-[250px] px-2 py-2 text-right" scope="col">{t(preferences.language, 'admin.imagesTableActions')}</th>
           </tr>
         </thead>
         <tbody>
           {#each config.storage_configs as item (item.storage_key)}
             <tr class="studio-table-row align-middle">
-              <th class="min-w-0 px-2 py-4 text-left font-normal" scope="row"><span class="block truncate text-xl font-black">{item.name}</span></th>
-              <td class="min-w-0 px-2 py-4"><span class="block truncate text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</span></td>
-              <td class="px-2 py-4 font-black uppercase">{item.storage_backend}</td>
-              <td class="px-2 py-4">{#if item.is_default}<span class="tape-label rotate-1" style="background:hsl(var(--marker-green))">{t(preferences.language, 'common.default')}</span>{:else}<span class="text-[hsl(var(--ink-muted))]">-</span>{/if}</td>
-              <td class="px-2 py-4">
-                <div class="flex flex-wrap justify-end gap-2">
-                  <button class="studio-button p-2" type="button" onclick={() => startEdit(item)} aria-label={t(preferences.language, 'announcement.edit')}><Edit3 class="size-4" /></button>
-                  <button class="studio-button p-2 text-xs" data-tone="green" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => setDefault(item.storage_key)}>{t(preferences.language, 'common.default')}</button>
-                  <button class="studio-button p-2" data-tone="danger" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => (deleteTarget = item)} aria-label={t(preferences.language, 'common.delete')}><Trash2 class="size-4" /></button>
+              <th class="min-w-0 px-2 py-2 text-left font-normal" scope="row"><span class="block truncate font-black">{item.name}</span></th>
+              <td class="min-w-0 px-2 py-2"><span class="block truncate text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</span></td>
+              <td class="px-2 py-2 font-black uppercase">{item.storage_backend}</td>
+              <td class="px-2 py-2">
+                <div class="flex flex-nowrap justify-end gap-2">
+                  <button class="studio-button px-2 py-1.5" type="button" onclick={() => startEdit(item)} aria-label={t(preferences.language, 'announcement.edit')}><Edit3 class="size-4" /></button>
+                  <button class="studio-button px-2 py-1.5 text-xs" data-tone="green" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => setDefault(item.storage_key)}>{t(preferences.language, 'common.default')}</button>
+                  <button class="studio-button px-2 py-1.5" data-tone="danger" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => (deleteTarget = item)} aria-label={t(preferences.language, 'common.delete')}><Trash2 class="size-4" /></button>
                 </div>
               </td>
             </tr>
@@ -175,7 +173,7 @@
   </div>
 
   {#if editorOpen}
-    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-editor-title" tabindex="-1" use:accessibleDialog={{ onClose: closeEditor }}>
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-editor-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: closeEditor }))}>
       <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35" type="button" onclick={closeEditor} aria-label={t(preferences.language, 'common.cancel')}></button>
       <form class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[0.25deg]" onsubmit={(event) => { event.preventDefault(); save(); }}>
         <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">

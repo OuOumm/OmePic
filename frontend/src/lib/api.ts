@@ -22,6 +22,15 @@ import type {
 
 type ApiFetchOptions = RequestInit & { params?: Record<string, string> };
 
+type PendingGetRequest = {
+  controller: AbortController;
+  promise: Promise<unknown>;
+  subscribers: number;
+  done: boolean;
+};
+
+const pendingGetRequests = new Map<string, PendingGetRequest>();
+
 export class ApiError extends Error {
   code?: string;
   status?: number;
@@ -36,8 +45,7 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
-  const { params, ...requestOptions } = options;
+function buildApiUrl(path: string, params?: Record<string, string>): string {
   const base = getApiBaseUrl();
   let url = `${base}${path}`;
   if (params) {
@@ -45,12 +53,104 @@ async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise
     url += `?${searchParams.toString()}`;
   }
 
-  const res = await fetch(url, { cache: "no-store", ...requestOptions });
-  const json: ApiResponse<T> = await res.json();
+  return url;
+}
+
+function requestMethod(options: RequestInit): string {
+  return (options.method ?? "GET").toUpperCase();
+}
+
+function normalizedHeaders(headers: HeadersInit | undefined): [string, string][] {
+  return Array.from(new Headers(headers).entries()).sort(([left], [right]) => left.localeCompare(right));
+}
+
+function pendingRequestKey(method: string, url: string, options: RequestInit): string {
+  return JSON.stringify([method, url, normalizedHeaders(options.headers), options.credentials ?? ""]);
+}
+
+function abortError(): DOMException {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+function attachPendingRequest<T>(entry: PendingGetRequest, signal?: AbortSignal | null): Promise<T> {
+  if (signal?.aborted) return Promise.reject(abortError());
+
+  entry.subscribers += 1;
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", handleAbort);
+      entry.subscribers -= 1;
+      if (entry.subscribers === 0 && !entry.done) entry.controller.abort();
+    };
+    const handleAbort = () => {
+      cleanup();
+      reject(abortError());
+    };
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
+    entry.promise.then(
+      (value) => {
+        cleanup();
+        resolve(value as T);
+      },
+      (err) => {
+        cleanup();
+        reject(err);
+      }
+    );
+  });
+}
+
+async function fetchApiResponse<T>(url: string, requestOptions: RequestInit, signal?: AbortSignal | null): Promise<T> {
+  const fetchOptions: RequestInit = signal
+    ? { cache: "no-store", ...requestOptions, signal }
+    : { cache: "no-store", ...requestOptions };
+  const res = await fetch(url, fetchOptions);
+  let json: ApiResponse<T>;
+  try {
+    json = await res.json() as ApiResponse<T>;
+  } catch {
+    throw new ApiError(res.ok ? "Invalid response from server" : `HTTP ${res.status}`, { status: res.status });
+  }
+
   if (!res.ok || !json.success) {
     throw apiErrorFromResponse(json, res.status, `HTTP ${res.status}`);
   }
   return json.data as T;
+}
+
+async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  const { params, ...requestOptions } = options;
+  const url = buildApiUrl(path, params);
+  const method = requestMethod(requestOptions);
+
+  if (method === "GET") {
+    if (requestOptions.signal?.aborted) return Promise.reject(abortError());
+    const key = pendingRequestKey(method, url, requestOptions);
+    let entry = pendingGetRequests.get(key);
+    if (!entry) {
+      const controller = new AbortController();
+      const pending: PendingGetRequest = {
+        controller,
+        promise: Promise.resolve(),
+        subscribers: 0,
+        done: false,
+      };
+      pending.promise = fetchApiResponse<T>(url, requestOptions, controller.signal)
+        .finally(() => {
+          pending.done = true;
+          pendingGetRequests.delete(key);
+        });
+      entry = pending;
+      pendingGetRequests.set(key, entry);
+    }
+    return attachPendingRequest<T>(entry, requestOptions.signal);
+  }
+
+  return fetchApiResponse<T>(url, requestOptions, requestOptions.signal);
 }
 
 function apiErrorFromResponse<T>(

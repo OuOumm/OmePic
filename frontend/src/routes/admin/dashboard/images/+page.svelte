@@ -11,7 +11,7 @@
   import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { AdminImage } from '@/types';
 
-  let images = $state<AdminImage[]>([]);
+  let images = $state.raw<AdminImage[]>([]);
   let total = $state(0);
   let page = $state(1);
   let search = $state('');

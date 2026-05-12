@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Copy, Download, Trash2, X } from 'lucide-svelte';
   import { t } from '@/i18n';
-  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { attachAccessibleDialog } from '@/actions/accessible-dialog';
   import ImageSwitchButton from './ImageSwitchButton.svelte';
   import type { Language, UploadHistoryRecord } from '@/types';
   import { normalizeDownloadFilename, safeImageUrl } from '@/utils';
@@ -11,17 +11,19 @@
     record: UploadHistoryRecord | null;
     canDelete?: boolean;
     records?: UploadHistoryRecord[];
+    allowedImageOrigins?: readonly string[];
     onCopy: (value: string) => void;
     onDelete?: () => void;
     onNavigate?: (record: UploadHistoryRecord) => void;
     onClose: () => void;
   };
 
-  let { language, record, canDelete = false, records = [], onCopy, onDelete, onNavigate, onClose }: Props = $props();
+  let { language, record, canDelete = false, records = [], allowedImageOrigins = [], onCopy, onDelete, onNavigate, onClose }: Props = $props();
   let imageLoaded = $state(false);
+  let previousImageUrl: string | null = null;
 
   const filename = $derived(normalizeDownloadFilename(record?.original_filename || record?.uid, t(language, 'common.fallbackImage')));
-  const imageUrl = $derived(record ? safeImageUrl(record.url) : null);
+  const imageUrl = $derived(record ? safeImageUrl(record.url, undefined, allowedImageOrigins) : null);
   const currentIndex = $derived(record ? records.findIndex((item) => item.uid === record.uid) : -1);
   const hasNavigation = $derived(Boolean(onNavigate) && records.length > 1 && currentIndex >= 0);
   const previousRecord = $derived(hasNavigation && currentIndex > 0 ? records[currentIndex - 1] : null);
@@ -43,13 +45,16 @@
   }
 
   $effect(() => {
-    if (imageUrl) imageLoaded = false;
+    if (imageUrl !== previousImageUrl) {
+      previousImageUrl = imageUrl;
+      if (imageUrl) imageLoaded = false;
+    }
   });
 </script>
 
 {#if record}
   <div class="fixed inset-0 z-[90] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.52)] p-2 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()}>
-    <div class="grid max-h-[calc(100dvh-1rem)] w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="image-preview-title" onkeydown={handleKeydown} use:accessibleDialog={{ onClose }}>
+    <div class="grid max-h-[calc(100dvh-1rem)] w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="image-preview-title" onkeydown={handleKeydown} {@attach attachAccessibleDialog(() => ({ onClose }))}>
       <header class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b-[3px] ink-line p-3 sm:gap-3 sm:p-4">
         <div class="min-w-0 overflow-hidden">
           <span class="tape-label rotate-[-2deg]" style="background:hsl(var(--marker-blue))">{t(language, 'studio.preview')}</span>

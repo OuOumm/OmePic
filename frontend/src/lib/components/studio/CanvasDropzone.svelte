@@ -2,13 +2,20 @@
   import { Clipboard, Image as ImageIcon, Link2, Zap } from 'lucide-svelte';
   import type { Language } from '@/types';
   import { t } from '@/i18n';
+  import { isBlockedImageMimeType, normalizedImageMimeType } from '@/utils';
 
-  export let language: Language;
-  export let disabled = false;
-  export let dragging = false;
-  export let subtitle: string | null = null;
-  export let allowedTypes = '';
-  export let onFiles: (files: File[]) => void;
+  type Props = {
+    language: Language;
+    disabled?: boolean;
+    dragging?: boolean;
+    subtitle?: string | null;
+    allowedTypes?: string;
+    accept?: string;
+    onFiles: (files: File[]) => void;
+    onDragStateChange?: (dragging: boolean) => void;
+  };
+
+  let { language, disabled = false, dragging = false, subtitle = null, allowedTypes = '', accept = '', onFiles, onDragStateChange }: Props = $props();
 
   let input: HTMLInputElement;
 
@@ -19,13 +26,13 @@
   function handleDrop(event: DragEvent) {
     event.preventDefault();
     if (disabled) return;
-    dragging = false;
-    const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith('image/'));
+    onDragStateChange?.(false);
+    const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => normalizedImageMimeType(file.type).startsWith('image/') && !isBlockedImageMimeType(file.type));
     if (files.length) onFiles(files);
   }
 
   function handleChange() {
-    const files = Array.from(input.files ?? []);
+    const files = Array.from(input.files ?? []).filter((file) => !isBlockedImageMimeType(file.type));
     if (files.length) onFiles(files);
     input.value = '';
   }
@@ -40,7 +47,7 @@
   ondragover={(event) => event.preventDefault()}
   ondrop={handleDrop}
 >
-  <svg class="absolute inset-0 h-full w-full opacity-60" viewBox="0 0 900 420" preserveAspectRatio="none" aria-hidden="true">
+  <svg class="absolute inset-0 h-full w-full opacity-60 pointer-events-none" viewBox="0 0 900 420" preserveAspectRatio="none" aria-hidden="true">
     <path class="ink-draw" d="M47 72 C187 18, 272 77, 392 48 C518 18, 624 42, 837 24" stroke="hsl(var(--ink))" stroke-width="3" stroke-linecap="round" fill="none" />
     <path class="ink-draw" style="animation-delay:.22s" d="M92 343 C216 278, 345 381, 486 315 C612 256, 709 339, 850 282" stroke="hsl(var(--marker-blue))" stroke-width="10" stroke-linecap="round" fill="none" />
   </svg>
@@ -61,17 +68,17 @@
     </div>
 
     <div class="relative hidden min-h-72 lg:block">
-      <div class="upload-source-card absolute left-4 top-2 rotate-[-7deg] bg-[hsl(var(--marker-pink))] px-4 py-3 font-black" data-tone="pink">
+      <div class="absolute left-4 top-2 rotate-[-7deg] border-2 ink-line bg-[hsl(var(--marker-pink))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
         <Clipboard class="mb-2 size-7" />{t(language, 'upload.sourcePaste')}
       </div>
-      <div class="upload-source-card absolute right-2 top-24 rotate-[5deg] bg-[hsl(var(--marker-blue))] px-4 py-3 font-black" data-tone="blue">
+      <div class="absolute right-2 top-24 rotate-[5deg] border-2 ink-line bg-[hsl(var(--marker-blue))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
         <Link2 class="mb-2 size-7" />URL
       </div>
-      <div class="upload-source-card absolute bottom-3 left-10 rotate-[-2deg] bg-[hsl(var(--marker-green))] px-4 py-3 font-black" data-tone="green">
+      <div class="absolute bottom-3 left-10 rotate-[-2deg] border-2 ink-line bg-[hsl(var(--marker-green))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
         <Zap class="mb-2 size-7" />{t(language, 'upload.sourceHost')}
       </div>
     </div>
   </div>
 
-  <input bind:this={input} class="sr-only" type="file" accept="image/*" multiple onchange={handleChange} aria-label={t(language, 'upload.select')} aria-describedby={allowedTypes ? allowedTypesId : undefined} />
+  <input bind:this={input} class="sr-only" type="file" accept={accept} multiple onchange={handleChange} aria-label={t(language, 'upload.select')} aria-describedby={allowedTypes ? allowedTypesId : undefined} />
 </div>

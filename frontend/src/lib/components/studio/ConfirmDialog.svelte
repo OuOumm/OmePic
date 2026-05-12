@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AlertTriangle, X } from 'lucide-svelte';
-  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { attachAccessibleDialog } from '@/actions/accessible-dialog';
 
   type Props = {
     open: boolean;
@@ -24,7 +24,7 @@
 
 {#if open}
   <div class="fixed inset-0 z-[110] grid min-h-dvh place-items-center overflow-x-hidden overflow-y-auto bg-[hsl(var(--ink)/0.48)] px-3 py-4 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && !busy && onClose()}>
-    <div class="w-[min(100%,calc(100vw-1.5rem))] max-w-md overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] p-3 shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:p-5 sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby={description ? 'confirm-dialog-description' : undefined} use:accessibleDialog={{ onClose: busy ? undefined : onClose }}>
+    <div class="w-[min(100%,calc(100vw-1.5rem))] max-w-md overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] p-3 shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:p-5 sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby={description ? 'confirm-dialog-description' : undefined} {@attach attachAccessibleDialog(() => ({ onClose: busy ? undefined : onClose }))}>
       <div class="mb-4 flex min-w-0 items-start justify-between gap-2 border-b-[3px] ink-line pb-3 sm:mb-5 sm:gap-3">
         <div class="min-w-0 flex-1 overflow-hidden">
           <span class="tape-label max-w-full rotate-[-2deg] truncate" style={tone === 'danger' ? 'background:hsl(var(--marker-pink))' : 'background:hsl(var(--marker-blue))'}><AlertTriangle class="inline size-4" aria-hidden="true" /> {confirmLabel}</span>

@@ -1,3 +1,5 @@
+import { fromAction, type Attachment } from 'svelte/attachments';
+
 type DialogOptions = {
   onClose?: () => void;
 };
@@ -62,4 +64,8 @@ export function accessibleDialog(node: HTMLElement, options: DialogOptions = {})
       previouslyFocused?.focus();
     },
   };
+}
+
+export function attachAccessibleDialog(options: () => DialogOptions = () => ({})): Attachment<HTMLElement> {
+  return fromAction(accessibleDialog, options);
 }

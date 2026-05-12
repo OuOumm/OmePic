@@ -37,7 +37,7 @@
   {#if settings}
     <label class="grid gap-2 text-sm font-bold">
       {t(language, 'upload.storage')}
-      <select class="studio-input" value={selected} onchange={(event) => onSelect((event.currentTarget as HTMLSelectElement).value)} disabled={!settings.features.allow_storage_selection || uniqueOptions.length <= 1}>
+      <select class="studio-input" value={selected} onchange={(event) => onSelect(event.currentTarget.value)} disabled={!settings.features.allow_storage_selection || uniqueOptions.length <= 1}>
         {#each uniqueOptions as option (option.storage_key)}
           <option value={option.is_default ? '' : option.storage_key}>{option.name}{option.is_default ? ` · ${t(language, 'common.default')}` : ''}</option>
         {/each}

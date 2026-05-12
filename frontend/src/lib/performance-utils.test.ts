@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getInitialThemeScriptTheme, markdownSummaryText } from './utils';
+import { getInitialThemeScriptTheme, initialThemeScript, markdownSummaryText } from './utils';
 
 describe('getInitialThemeScriptTheme', () => {
   it('defaults missing and invalid stored themes to light', () => {
@@ -11,6 +11,16 @@ describe('getInitialThemeScriptTheme', () => {
   it('resolves system theme from the current media query', () => {
     expect(getInitialThemeScriptTheme('{"theme":"system"}', true)).toBe('dark');
     expect(getInitialThemeScriptTheme('{"theme":"system"}', false)).toBe('light');
+  });
+});
+
+describe('initialThemeScript', () => {
+  it('uses the shared preference storage key and dark class toggle', () => {
+    const script = initialThemeScript();
+
+    expect(script).toContain('omepic-ui-preferences');
+    expect(script).toContain("prefers-color-scheme: dark");
+    expect(script).toContain("classList.toggle('dark'");
   });
 });
 

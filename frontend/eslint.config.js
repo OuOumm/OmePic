@@ -36,6 +36,6 @@ export default ts.config(
     },
   },
   {
-    ignores: ['.svelte-kit/**', '.next/**', 'out/**', 'node_modules/**'],
+    ignores: ['.svelte-kit/**', 'out/**', 'node_modules/**'],
   }
 );

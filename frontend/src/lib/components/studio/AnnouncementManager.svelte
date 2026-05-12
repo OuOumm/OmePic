@@ -7,7 +7,7 @@
     adminGetAnnouncements,
     adminUpdateAnnouncement,
   } from '@/api';
-  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { attachAccessibleDialog } from '@/actions/accessible-dialog';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import { t } from '@/i18n';
   import MarkdownContent from './MarkdownContent.svelte';
@@ -42,7 +42,7 @@
     return t(preferences.language, options.find((option) => option.value === value)?.labelKey ?? value);
   }
 
-  let announcements = $state<Announcement[]>([]);
+  let announcements = $state.raw<Announcement[]>([]);
   let form = $state<AnnouncementInput>({ ...blank });
   let editingId = $state<number | null>(null);
   let loading = $state(false);
@@ -171,21 +171,21 @@
           </thead>
           <tbody>
             {#each announcements as item (item.id)}
-              <tr class="studio-table-row align-top">
-                <th class="min-w-0 px-2 py-4 text-left font-normal" scope="row"><span class="block truncate text-xl font-black">{item.title}</span></th>
-                <td class="px-2 py-4"><span class="tape-label rotate-1">{labelFor(statusOptions, item.status ?? 'published')}</span></td>
-                <td class="px-2 py-4"><span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-pink))">{labelFor(priorityOptions, item.priority)}</span></td>
-                <td class="min-w-0 px-2 py-4">
+              <tr class="studio-table-row align-middle">
+                <th class="min-w-0 px-2 py-2 text-left font-normal" scope="row"><span class="block truncate font-black">{item.title}</span></th>
+                <td class="px-2 py-2"><span class="tape-label rotate-1">{labelFor(statusOptions, item.status ?? 'published')}</span></td>
+                <td class="px-2 py-2"><span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-pink))">{labelFor(priorityOptions, item.priority)}</span></td>
+                <td class="min-w-0 px-2 py-2">
                   <button class="max-w-3xl text-left text-sm font-semibold text-[hsl(var(--ink-muted))]" type="button" onclick={() => (viewingAnnouncement = item)} aria-label={t(preferences.language, 'announcement.viewDetail')}>
                     <span class="line-clamp-2 whitespace-pre-wrap">{markdownSummaryText(item.content)}</span>
                   </button>
                 </td>
-                <td class="px-2 py-4">
+                <td class="px-2 py-2">
                   <div class="flex justify-end gap-2">
-                    <button class="studio-button p-2" type="button" onclick={() => (viewingAnnouncement = item)} aria-label={t(preferences.language, 'announcement.viewDetail')}><Eye class="size-4" /></button>
-                    <button class="studio-button p-2" type="button" onclick={() => edit(item)} aria-label={t(preferences.language, 'announcement.edit')}><Pencil class="size-4" /></button>
-                    <button class="studio-button p-2" type="button" onclick={() => archive(item)} aria-label={t(preferences.language, 'announcement.archive')}><Archive class="size-4" /></button>
-                    <button class="studio-button p-2" data-tone="danger" type="button" onclick={() => (deleteTarget = item)} aria-label={t(preferences.language, 'common.delete')}><Trash2 class="size-4" /></button>
+                    <button class="studio-button px-2 py-1.5" type="button" onclick={() => (viewingAnnouncement = item)} aria-label={t(preferences.language, 'announcement.viewDetail')}><Eye class="size-4" /></button>
+                    <button class="studio-button px-2 py-1.5" type="button" onclick={() => edit(item)} aria-label={t(preferences.language, 'announcement.edit')}><Pencil class="size-4" /></button>
+                    <button class="studio-button px-2 py-1.5" type="button" onclick={() => archive(item)} aria-label={t(preferences.language, 'announcement.archive')}><Archive class="size-4" /></button>
+                    <button class="studio-button px-2 py-1.5" data-tone="danger" type="button" onclick={() => (deleteTarget = item)} aria-label={t(preferences.language, 'common.delete')}><Trash2 class="size-4" /></button>
                   </div>
                 </td>
               </tr>
@@ -197,7 +197,7 @@
   </div>
 
   {#if viewingAnnouncement}
-    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-detail-title" tabindex="-1" use:accessibleDialog={{ onClose: () => (viewingAnnouncement = null) }}>
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-detail-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: () => (viewingAnnouncement = null) }))}>
       <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35 backdrop-blur-[2px]" type="button" aria-label={t(preferences.language, 'common.cancel')} onclick={() => (viewingAnnouncement = null)}></button>
       <div class="studio-panel relative grid max-h-[calc(100dvh-3rem)] w-full max-w-3xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-5 rotate-[0.25deg]">
         <div class="mb-4 flex items-start justify-between gap-3 border-b-[3px] ink-line pb-3">
@@ -215,7 +215,7 @@
   {/if}
 
   {#if editorOpen}
-    <div class="fixed inset-0 z-50 grid place-items-center bg-[hsl(var(--ink)/0.45)] p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-editor-title" tabindex="-1" use:accessibleDialog={{ onClose: reset }}>
+    <div class="fixed inset-0 z-50 grid place-items-center bg-[hsl(var(--ink)/0.45)] p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-editor-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: reset }))}>
       <button class="absolute inset-0 cursor-default" type="button" aria-label={t(preferences.language, 'common.cancel')} onclick={reset}></button>
       <form class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[0.35deg]" onsubmit={(event) => { event.preventDefault(); save(); }}>
         <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">

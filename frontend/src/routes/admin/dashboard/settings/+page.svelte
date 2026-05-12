@@ -11,7 +11,7 @@
   import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { AdminConfig, AdminSystemSettings } from '@/types';
 
-  let config = $state<AdminConfig | null>(null);
+  let config = $state.raw<AdminConfig | null>(null);
   let system = $state<AdminSystemSettings | null>(null);
   let savingRuntime = $state(false);
   let mimeTypesText = $state('');

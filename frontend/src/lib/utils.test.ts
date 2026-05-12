@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getApiExampleBaseUrl, getImagePath, getImageUrl, isAllowedImageMimeType, normalizeDownloadFilename, safeImageUrl } from './utils';
+import { getApiExampleBaseUrl, getImagePath, getImageUrl, imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAllowedImageMimeType, normalizeDownloadFilename, safeImageUrl } from './utils';
 
 describe('image URL helpers', () => {
   it('builds public image paths from canonical UIDs', () => {
@@ -19,6 +19,13 @@ describe('safeImageUrl', () => {
     expect(safeImageUrl('https://example.test/i/demo.avif', 'https://example.test')).toBe('https://example.test/i/demo.avif');
   });
 
+  it('allows runtime public image origins when explicitly whitelisted', () => {
+    const allowedOrigins = imageUrlAllowedOrigins('https://cdn.example.test/assets/');
+
+    expect(safeImageUrl('https://cdn.example.test/i/demo.avif', 'https://example.test', allowedOrigins)).toBe('https://cdn.example.test/i/demo.avif');
+    expect(safeImageUrl('https://evil.test/i/demo.avif', 'https://example.test', allowedOrigins)).toBeNull();
+  });
+
   it('rejects javascript, data, and cross-origin URLs', () => {
     expect(safeImageUrl('javascript:alert(1)', 'https://example.test')).toBeNull();
     expect(safeImageUrl('data:image/svg+xml,<svg></svg>', 'https://example.test')).toBeNull();
@@ -33,6 +40,17 @@ describe('isAllowedImageMimeType', () => {
     expect(isAllowedImageMimeType('image/png; charset=binary', allowed)).toBe(true);
     expect(isAllowedImageMimeType('image/webp', allowed)).toBe(false);
     expect(isAllowedImageMimeType('image/svg+xml', allowed)).toBe(false);
+  });
+});
+
+describe('imageAcceptFromMimeTypes', () => {
+  it('builds a file picker accept list without svg', () => {
+    expect(imageAcceptFromMimeTypes(['image/png', 'image/svg+xml', 'image/jpg; charset=binary', 'text/plain'])).toBe('image/png,image/jpeg');
+  });
+
+  it('falls back to raster image defaults', () => {
+    expect(imageAcceptFromMimeTypes()).toContain('image/avif');
+    expect(imageAcceptFromMimeTypes()).not.toContain('svg');
   });
 });
 

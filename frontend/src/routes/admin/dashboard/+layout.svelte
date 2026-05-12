@@ -8,7 +8,10 @@
   import { isAbortError } from '@/utils';
   import type { AdminStatus } from '@/types';
 
+  type AuthState = 'logged_out' | 'checking' | 'authenticated';
+
   let status = $state<AdminStatus | null>(null);
+  let authState = $state<AuthState>(preferences.adminToken ? 'checking' : 'logged_out');
   let { children } = $props();
 
   const links = $derived([
@@ -48,17 +51,26 @@
   });
 
   $effect(() => {
-    if (!preferences.adminToken) {
+    const token = preferences.adminToken;
+    if (!token) {
+      authState = 'logged_out';
       status = null;
       return;
     }
+
+    authState = 'checking';
+    status = null;
     const controller = new AbortController();
-    adminGetStatus(preferences.adminToken, controller.signal)
+    adminGetStatus(token, controller.signal)
       .then((next) => {
-        if (!controller.signal.aborted) status = next;
+        if (controller.signal.aborted) return;
+        status = next;
+        authState = 'authenticated';
       })
       .catch((err) => {
         if (!isAbortError(err)) {
+          authState = 'logged_out';
+          status = null;
           clearAdminToken();
           void goto('/admin/dashboard', { replaceState: true });
         }
@@ -67,8 +79,8 @@
   });
 </script>
 
-<div class={preferences.adminToken ? 'grid gap-6 lg:grid-cols-[250px_1fr]' : 'grid min-h-[calc(100dvh-8rem)] place-items-center'}>
-  {#if preferences.adminToken}
+<div class={authState === 'authenticated' ? 'grid gap-6 lg:grid-cols-[250px_1fr]' : 'grid min-h-[calc(100dvh-8rem)] place-items-center'}>
+  {#if authState === 'authenticated'}
     <aside class="studio-panel h-fit p-4 lg:sticky lg:top-24">
       <div class="border-b-2 ink-line pb-3">
         <h1 class="text-2xl font-black">{t(preferences.language, 'admin.blueprintTitle')}</h1>
@@ -120,9 +132,13 @@
     </aside>
   {/if}
 
-  {#if preferences.adminToken || isDashboardEntry}
-    <section class={preferences.adminToken ? 'min-w-0 overflow-hidden' : 'w-full max-w-[520px]'}>
+  {#if authState === 'authenticated' || (authState === 'logged_out' && isDashboardEntry)}
+    <section class={authState === 'authenticated' ? 'min-w-0 overflow-hidden' : 'w-full max-w-[520px]'}>
       {@render children()}
+    </section>
+  {:else if authState === 'checking'}
+    <section class="studio-panel w-full max-w-md p-6 text-center" aria-live="polite">
+      <p class="font-black">{t(preferences.language, 'common.loading')}</p>
     </section>
   {/if}
 </div>

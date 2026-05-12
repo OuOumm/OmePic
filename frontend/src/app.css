@@ -13,6 +13,7 @@
     --marker-pink: 342 91% 72%;
     --marker-blue: 190 88% 70%;
     --marker-green: 147 68% 62%;
+    --marker-ink: 24 16% 12%;
     --danger: 4 81% 57%;
     --radius: 18px;
   }
@@ -217,18 +218,22 @@
 
   .studio-button[data-tone="primary"] {
     background: hsl(var(--marker-yellow));
+    color: hsl(var(--marker-ink));
   }
 
   .studio-button[data-tone="danger"] {
     background: hsl(var(--marker-pink));
+    color: hsl(var(--marker-ink));
   }
 
   .studio-button[data-tone="blue"] {
     background: hsl(var(--marker-blue));
+    color: hsl(var(--marker-ink));
   }
 
   .studio-button[data-tone="green"] {
     background: hsl(var(--marker-green));
+    color: hsl(var(--marker-ink));
   }
 
   .studio-input {
@@ -275,6 +280,11 @@
     animation: ink-draw 1.1s ease-out both;
   }
 
+  .content-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 260px;
+  }
+
   .tape-label {
     display: inline-block;
     border: 2px solid hsl(var(--ink));
@@ -285,39 +295,6 @@
     font-weight: 950;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-  }
-
-  .upload-source-card {
-    --upload-source-tone: var(--marker-yellow);
-    border: 2px solid hsl(var(--ink));
-    color: hsl(var(--ink));
-    box-shadow: 4px 4px 0 hsl(var(--ink));
-    transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
-  }
-
-  .upload-source-card[data-tone="pink"] {
-    --upload-source-tone: var(--marker-pink);
-  }
-
-  .upload-source-card[data-tone="blue"] {
-    --upload-source-tone: var(--marker-blue);
-  }
-
-  .upload-source-card[data-tone="green"] {
-    --upload-source-tone: var(--marker-green);
-  }
-
-  html.dark .upload-source-card {
-    border-color: hsl(var(--ink) / 0.3);
-    background:
-      radial-gradient(circle at 18% 12%, hsl(var(--upload-source-tone) / 0.34), transparent 6.2rem),
-      linear-gradient(135deg, hsl(var(--upload-source-tone) / 0.34), hsl(var(--paper-deep) / 0.68));
-    color: hsl(var(--ink) / 0.92);
-    box-shadow:
-      0 18px 42px hsl(224 46% 4% / 0.38),
-      0 0 30px hsl(var(--upload-source-tone) / 0.18),
-      2px 2px 0 hsl(var(--ink) / 0.18);
-    backdrop-filter: blur(10px) saturate(1.08);
   }
 
   .paper-strip {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ChevronLeft, ChevronRight, History, Megaphone, X } from 'lucide-svelte';
   import { t } from '@/i18n';
-  import { accessibleDialog } from '@/actions/accessible-dialog';
+  import { attachAccessibleDialog } from '@/actions/accessible-dialog';
   import { formatDate, markdownSummaryText } from '@/utils';
   import MarkdownContent from './MarkdownContent.svelte';
   import type { Announcement, Language } from '@/types';
@@ -18,6 +18,8 @@
   let { language, announcements, open, initialMode = 'detail', onClose, onAcknowledge }: Props = $props();
   let index = $state(0);
   let mode = $state<'detail' | 'history'>('detail');
+  let wasOpen = false;
+  let latestAnnouncementId: number | null = null;
 
   const current = $derived(announcements[index] ?? announcements[0] ?? null);
   const historyTitle = $derived(mode === 'history' ? t(language, 'announcement.allNotices') : current?.title ?? '');
@@ -38,15 +40,22 @@
   }
 
   $effect(() => {
-    if (!open) return;
-    mode = initialMode;
+    const nextLatestAnnouncementId = announcements[0]?.id ?? null;
+    const latestChanged = nextLatestAnnouncementId !== latestAnnouncementId;
+
+    if (open && (!wasOpen || latestChanged)) {
+      mode = initialMode;
+      if (initialMode === 'detail') index = 0;
+    }
     if (index >= announcements.length) index = 0;
+    latestAnnouncementId = nextLatestAnnouncementId;
+    wasOpen = open;
   });
 </script>
 
 {#if open && current}
   <div class="fixed inset-0 z-[85] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.48)] p-2 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()}>
-    <div class="grid max-h-[calc(100dvh-1rem)] w-full max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="announcement-dialog-title" use:accessibleDialog={{ onClose }}>
+    <div class="grid max-h-[calc(100dvh-1rem)] w-full max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="announcement-dialog-title" {@attach attachAccessibleDialog(() => ({ onClose }))}>
       <header class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b-[3px] ink-line p-4">
         <div class="min-w-0 overflow-hidden">
           <span class="tape-label rotate-[-2deg]" style="background:hsl(var(--marker-pink))">{mode === 'history' ? t(language, 'announcement.history') : t(language, 'announcement.notice')}</span>
