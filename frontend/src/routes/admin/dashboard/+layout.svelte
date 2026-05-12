@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { BarChart3, Gauge, Image, LogOut, Megaphone, Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-svelte';
   import { adminGetStatus } from '@/api';
@@ -27,6 +28,7 @@
   ]);
   const isSettingsPage = $derived(page.url.pathname === '/admin/dashboard/settings');
   const isSecurityPage = $derived(page.url.pathname === '/admin/dashboard/security');
+  const isDashboardEntry = $derived(page.url.pathname === '/admin/dashboard');
   const activeSettingsTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const activeSecurityTab = $derived(page.url.searchParams.get('tab') ?? 'abuse');
 
@@ -36,8 +38,14 @@
 
   function logout() {
     clearAdminToken();
-    location.href = '/admin/dashboard';
+    void goto('/admin/dashboard');
   }
+
+  $effect(() => {
+    if (!preferences.adminToken && !isDashboardEntry) {
+      void goto('/admin/dashboard', { replaceState: true });
+    }
+  });
 
   $effect(() => {
     if (!preferences.adminToken) {
@@ -50,7 +58,10 @@
         if (!controller.signal.aborted) status = next;
       })
       .catch((err) => {
-        if (!isAbortError(err)) clearAdminToken();
+        if (!isAbortError(err)) {
+          clearAdminToken();
+          void goto('/admin/dashboard', { replaceState: true });
+        }
       });
     return () => controller.abort();
   });
@@ -109,8 +120,9 @@
     </aside>
   {/if}
 
-  <section class={preferences.adminToken ? 'min-w-0 overflow-hidden' : 'w-full max-w-[520px]'}>
-    {@render children()}
-  </section>
+  {#if preferences.adminToken || isDashboardEntry}
+    <section class={preferences.adminToken ? 'min-w-0 overflow-hidden' : 'w-full max-w-[520px]'}>
+      {@render children()}
+    </section>
+  {/if}
 </div>
-

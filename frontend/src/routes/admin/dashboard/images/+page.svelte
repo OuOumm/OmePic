@@ -124,21 +124,21 @@
 
 <div class="space-y-6">
   <PageTitle eyebrow={t(preferences.language, 'admin.fileDeskEyebrow')} title={t(preferences.language, 'admin.imagesTitle')} subtitle={t(preferences.language, 'admin.imagesDescription')} />
-  <div class="grid gap-3 border-b-[3px] ink-line pb-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+  <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b-[3px] ink-line pb-4 sm:gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
     <label class="relative min-w-0">
       <span class="sr-only">{t(preferences.language, 'common.search')}</span>
       <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2" />
       <input class="studio-input w-full pl-10" bind:value={search} name="admin-image-search" autocomplete="off" placeholder={t(preferences.language, 'admin.imagesSearch')} />
     </label>
-    <label class="flex items-center gap-2 text-sm font-black">
-      <span>{t(preferences.language, 'admin.imagesPageSize')}</span>
-      <select class="studio-input w-24 py-2" value={pageSize} onchange={(event) => setPageSize(event.currentTarget.value)}>
+    <label class="flex items-center gap-1 text-sm font-black sm:gap-2">
+      <span class="whitespace-nowrap">{t(preferences.language, 'admin.imagesPageSize')}</span>
+      <select class="studio-input w-16 py-2 sm:w-24" value={pageSize} aria-label={t(preferences.language, 'admin.imagesPageSize')} onchange={(event) => setPageSize(event.currentTarget.value)}>
         {#each pageSizeOptions as option (option)}
           <option value={option}>{option}</option>
         {/each}
       </select>
     </label>
-    <button class="studio-button w-full justify-center md:w-auto" data-tone="danger" type="button" disabled={selected.size === 0} onclick={() => (deleteTarget = 'selected')}><Trash2 class="size-4" />{t(preferences.language, 'admin.imagesDelete')} ({selected.size})</button>
+    <button class="studio-button col-span-2 w-full justify-center md:col-span-1 md:w-auto" data-tone="danger" type="button" disabled={selected.size === 0} onclick={() => (deleteTarget = 'selected')}><Trash2 class="size-4" />{t(preferences.language, 'admin.imagesDelete')} ({selected.size})</button>
   </div>
   <p class="font-black">{t(preferences.language, 'admin.imagesTotal', { total })}</p>
   <div class="w-full min-w-0 max-w-full overflow-x-auto xl:overflow-x-visible">

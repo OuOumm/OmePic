@@ -6,7 +6,7 @@
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { deleteImageByUid } from '@/api';
   import { copyToClipboard } from '@/clipboard';
-  import { buildUploadHistoryPage, clearUploadHistory, deleteUploadFromHistory, getAllUploads, selectedUploadUidsOnPage } from '@/indexeddb/upload-history';
+  import { buildUploadHistoryPage, clearUploadHistory, deleteUploadFromHistory, getAllUploads } from '@/indexeddb/upload-history';
   import { getClientToken } from '@/client-token';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
@@ -31,8 +31,6 @@
   const pageSizeOptions = [10, 20, 50];
   const hasSearch = $derived(search.trim().length > 0);
   const selectedCount = $derived(selectedUids.length);
-  const selectedOnPage = $derived(selectedUploadUidsOnPage(records, selectedUids));
-  const allSelectableOnPageSelected = $derived(records.length > 0 && selectedOnPage.length === records.length);
   const showingEmptyState = $derived(!loading && count === 0);
   const showingNoMatches = $derived(!loading && count > 0 && filteredCount === 0);
 
@@ -169,41 +167,32 @@
     {/if}
   </div>
 
-  <div class="grid gap-3 border-y-[3px] ink-line py-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+  <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-y-[3px] ink-line py-3 sm:gap-3">
     <label class="relative min-w-0">
       <span class="sr-only">{t(preferences.language, 'history.searchLabel')}</span>
       <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2" aria-hidden="true" />
       <input class="studio-input w-full pl-10" value={search} name="history-search" autocomplete="off" placeholder={t(preferences.language, 'history.searchPlaceholder')} oninput={(event) => setSearch(event.currentTarget.value)} />
     </label>
-    <label class="flex items-center gap-2 text-sm font-black">
-      <span>{t(preferences.language, 'history.pageSize')}</span>
-      <select class="studio-input w-24 py-2" value={pageSize} onchange={(event) => setPageSize(event.currentTarget.value)}>
+    <label class="flex items-center gap-1 text-sm font-black sm:gap-2">
+      <span class="whitespace-nowrap">{t(preferences.language, 'history.pageSize')}</span>
+      <select class="studio-input w-16 py-2 sm:w-24" value={pageSize} aria-label={t(preferences.language, 'history.pageSize')} onchange={(event) => setPageSize(event.currentTarget.value)}>
         {#each pageSizeOptions as option (option)}
           <option value={option}>{option}</option>
         {/each}
       </select>
     </label>
-    <div class="text-sm font-black md:text-right">
+    <div class="whitespace-nowrap text-right text-sm font-black">
       {#if loading}
         {t(preferences.language, 'common.loading')}
-      {:else if hasSearch}
-        {t(preferences.language, 'history.filteredCount', { filtered: filteredCount, total: count })}
       {:else}
-        {t(preferences.language, 'history.count', { count })}
+        {t(preferences.language, 'history.count', { count: hasSearch ? filteredCount : count })}
       {/if}
     </div>
     {#if count > 0}
-      <div class="grid gap-2 border-t-2 border-dashed border-[hsl(var(--ink)/0.28)] pt-3 md:col-span-3 md:flex md:items-center md:justify-between">
-        <div class="flex flex-wrap items-center gap-2 text-sm font-black">
-          <label class="inline-flex items-center gap-2">
-            <input type="checkbox" checked={allSelectableOnPageSelected} disabled={records.length === 0} onchange={(event) => toggleSelectPage(event.currentTarget.checked)} />
-            <span>{t(preferences.language, 'history.selectPage')}</span>
-          </label>
-          <span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-blue))">{t(preferences.language, 'history.selectedCount', { count: selectedCount })}</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+      <div class="col-span-3 grid gap-2 border-t-2 border-dashed border-[hsl(var(--ink)/0.28)] pt-3 md:flex md:justify-end">
+        <div class="grid grid-cols-2 gap-2 md:flex md:justify-end">
           <button class="studio-button justify-center px-3 py-2 text-sm" type="button" disabled={selectedCount === 0} onclick={clearSelected}>{t(preferences.language, 'history.clearSelection')}</button>
-          <button class="studio-button justify-center px-3 py-2 text-sm" data-tone="danger" type="button" disabled={selectedCount === 0} onclick={() => (confirmTarget = 'selected')}><Trash2 class="size-4" />{t(preferences.language, 'history.deleteSelected')}</button>
+          <button class="studio-button justify-center px-3 py-2 text-sm" data-tone="danger" type="button" disabled={selectedCount === 0} onclick={() => (confirmTarget = 'selected')}><Trash2 class="size-4" />{t(preferences.language, 'history.deleteSelected', { count: selectedCount })}</button>
         </div>
       </div>
     {/if}
@@ -255,4 +244,3 @@
     onConfirm={() => confirmTarget === 'clear' ? clearAll() : confirmTarget === 'selected' ? removeSelected() : confirmTarget && remove(confirmTarget)}
   />
 </div>
-
