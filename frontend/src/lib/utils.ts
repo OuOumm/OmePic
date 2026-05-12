@@ -41,9 +41,20 @@ export function getAbsoluteUrl(url: string): string {
   return `${base}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
+export function getApiExampleBaseUrl(runtimePublicBaseUrl?: string | null): string {
+  const runtimeBase = runtimePublicBaseUrl?.trim();
+  if (runtimeBase) return runtimeBase.replace(/\/+$/, '');
+  if (typeof window !== 'undefined') return window.location.origin;
+  return '$ORIGIN';
+}
+
+export function getImagePath(uid: string): string {
+  return `/i/${uid}.avif`;
+}
+
 export function getImageUrl(uid: string): string {
   const base = getApiBaseUrl();
-  return `${base}/i/${uid}.avif`;
+  return `${base}${getImagePath(uid)}`;
 }
 
 export function safeImageUrl(value: string, origin = currentOrigin()): string | null {

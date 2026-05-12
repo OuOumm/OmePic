@@ -114,6 +114,44 @@
     animation: paper-grain 14s steps(10, end) infinite;
   }
 
+  html.dark body {
+    background:
+      radial-gradient(circle at 16% 18%, hsl(var(--marker-blue) / 0.2), transparent 28rem),
+      radial-gradient(circle at 84% 10%, hsl(var(--marker-pink) / 0.14), transparent 26rem),
+      radial-gradient(circle at 50% 108%, hsl(var(--marker-green) / 0.13), transparent 34rem),
+      linear-gradient(135deg, hsl(224 36% 6%), hsl(var(--paper)), hsl(var(--paper-deep)));
+    background-position: 0 0, 100% 0, 50% 100%, 0 0;
+    background-size: 70rem 70rem, 62rem 62rem, 72rem 72rem, auto;
+    animation: dark-wash-breathe 24s ease-in-out infinite alternate;
+  }
+
+  html.dark body::before {
+    opacity: 0.78;
+    background-image:
+      radial-gradient(circle, hsl(var(--marker-blue) / 0.58) 0 0.9px, transparent 1.35px),
+      radial-gradient(circle, hsl(var(--marker-green) / 0.38) 0 0.75px, transparent 1.2px),
+      radial-gradient(circle, hsl(var(--marker-pink) / 0.32) 0 0.65px, transparent 1.1px),
+      linear-gradient(hsl(var(--marker-blue) / 0.075) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--marker-blue) / 0.05) 1px, transparent 1px);
+    background-position: 0 0, 28px 14px, -34px 22px, 0 0, 0 0;
+    background-size: 113px 113px, 79px 79px, 151px 151px, 44px 44px, 44px 44px;
+    filter: drop-shadow(0 0 6px hsl(var(--marker-blue) / 0.18));
+    mix-blend-mode: screen;
+    animation: dark-particle-drift 42s linear infinite;
+  }
+
+  html.dark body::after {
+    opacity: 0.34;
+    background-image:
+      radial-gradient(ellipse at 28% 22%, hsl(var(--marker-blue) / 0.18), transparent 34rem),
+      radial-gradient(ellipse at 74% 76%, hsl(var(--marker-pink) / 0.12), transparent 31rem),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='.48'/%3E%3C/svg%3E");
+    background-position: 0 0, 100% 100%, 0 0;
+    background-size: 66rem 66rem, 58rem 58rem, 220px 220px;
+    mix-blend-mode: screen;
+    animation: dark-aurora-grain 18s ease-in-out infinite alternate;
+  }
+
   button,
   a,
   input,
@@ -287,6 +325,39 @@
   }
   100% {
     background-position: 38px -24px;
+  }
+}
+
+@keyframes dark-wash-breathe {
+  0% {
+    background-position: 0 0, 100% 0, 50% 100%, 0 0;
+  }
+  48% {
+    background-position: 1.8rem -1.2rem, calc(100% - 1.6rem) 1.4rem, calc(50% + 1rem) calc(100% - 1.2rem), 0 0;
+  }
+  100% {
+    background-position: -1.1rem 1.6rem, calc(100% + 1.1rem) -0.9rem, calc(50% - 1.4rem) calc(100% + 0.8rem), 0 0;
+  }
+}
+
+@keyframes dark-particle-drift {
+  0% {
+    background-position: 0 0, 28px 14px, -34px 22px, 0 0, 0 0;
+  }
+  50% {
+    background-position: 57px -38px, -22px 64px, 44px -18px, 18px 28px, -24px 18px;
+  }
+  100% {
+    background-position: 113px -76px, -79px 113px, 151px -44px, 44px 44px, -44px 44px;
+  }
+}
+
+@keyframes dark-aurora-grain {
+  0% {
+    background-position: 0 0, 100% 100%, 0 0;
+  }
+  100% {
+    background-position: 2.4rem -1.6rem, calc(100% - 2rem) calc(100% + 1.4rem), 38px -24px;
   }
 }
 

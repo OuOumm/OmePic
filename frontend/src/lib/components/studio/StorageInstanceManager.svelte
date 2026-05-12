@@ -11,7 +11,7 @@
   import { t } from '@/i18n';
   import PageTitle from './PageTitle.svelte';
   import { preferences } from '@/stores/preferences.svelte';
-  import { toast } from '@/stores/toast.svelte';
+  import { runAsyncAction } from '@/ui-errors';
   import type { AdminConfig, StorageInstance } from '@/types';
 
   type Props = {
@@ -91,48 +91,48 @@
   }
 
   async function save() {
-    if (!preferences.adminToken || !form.storage_key.trim() || !form.name.trim()) return;
-    saving = true;
-    try {
-      const next = editingKey
-        ? await adminUpdateStorageInstance(preferences.adminToken, editingKey, payload())
-        : await adminCreateStorageInstance(preferences.adminToken, payload());
-      onChange(next);
-      toast.success(t(preferences.language, 'common.success'));
-      closeEditor();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      saving = false;
-    }
+    const token = preferences.adminToken;
+    if (!token || !form.name.trim() || (editingKey && !form.storage_key.trim())) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (saving = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => editingKey
+        ? adminUpdateStorageInstance(token, editingKey, payload())
+        : adminCreateStorageInstance(token, payload()),
+      onSuccess: (next) => {
+        onChange(next);
+        closeEditor();
+      },
+    });
   }
 
   async function setDefault(storageKey: string) {
-    if (!preferences.adminToken) return;
-    busyKey = storageKey;
-    try {
-      onChange(await adminSetDefaultStorage(preferences.adminToken, storageKey));
-      toast.success(t(preferences.language, 'common.success'));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      busyKey = '';
-    }
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (busyKey = value ? storageKey : ''),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminSetDefaultStorage(token, storageKey),
+      onSuccess: onChange,
+    });
   }
 
   async function remove(instance: StorageInstance) {
-    if (!preferences.adminToken || instance.is_default) return;
-    busyKey = instance.storage_key;
-    try {
-      onChange(await adminDeleteStorageInstance(preferences.adminToken, instance.storage_key));
-      toast.success(t(preferences.language, 'common.success'));
-      deleteTarget = null;
-      if (editingKey === instance.storage_key) closeEditor();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      busyKey = '';
-    }
+    const token = preferences.adminToken;
+    if (!token || instance.is_default) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (busyKey = value ? instance.storage_key : ''),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminDeleteStorageInstance(token, instance.storage_key),
+      onSuccess: (next) => {
+        onChange(next);
+        deleteTarget = null;
+        if (editingKey === instance.storage_key) closeEditor();
+      },
+    });
   }
 </script>
 
@@ -232,7 +232,7 @@
           <input type="checkbox" bind:checked={form.is_default} />
           {t(preferences.language, 'common.default')}
         </label>
-        <button class="studio-button mt-5 w-full" data-tone="primary" type="submit" disabled={saving || !form.storage_key.trim() || !form.name.trim()}><Save class="size-4" />{t(preferences.language, 'common.save')}</button>
+        <button class="studio-button mt-5 w-full" data-tone="primary" type="submit" disabled={saving || !form.name.trim() || Boolean(editingKey && !form.storage_key.trim())}><Save class="size-4" />{t(preferences.language, 'common.save')}</button>
       </form>
     </div>
   {/if}

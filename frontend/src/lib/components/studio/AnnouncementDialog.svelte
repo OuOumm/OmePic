@@ -22,6 +22,10 @@
   const current = $derived(announcements[index] ?? announcements[0] ?? null);
   const historyTitle = $derived(mode === 'history' ? t(language, 'announcement.allNotices') : current?.title ?? '');
 
+  function priorityLabel(priority: Announcement['priority']) {
+    return t(language, `announcement.priority${priority.charAt(0).toUpperCase()}${priority.slice(1)}`);
+  }
+
   function priorityColor(priority: Announcement['priority']) {
     if (priority === 'urgent') return 'hsl(var(--danger))';
     if (priority === 'important') return 'hsl(var(--marker-yellow))';
@@ -57,7 +61,7 @@
             {#each announcements as item, itemIndex (item.id)}
               <button class="studio-table-row grid gap-2 py-4 text-left" type="button" onclick={() => selectAnnouncement(itemIndex)}>
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
-                  <span class="tape-label rotate-[-1deg]" style={`background:${priorityColor(item.priority)}`}>{item.priority}</span>
+                  <span class="tape-label rotate-[-1deg]" style={`background:${priorityColor(item.priority)}`}>{priorityLabel(item.priority)}</span>
                   <strong class="min-w-0 truncate text-lg font-black">{item.title}</strong>
                 </div>
                 <p class="line-clamp-2 whitespace-pre-wrap text-sm font-semibold text-[hsl(var(--ink-muted))]">{markdownSummaryText(item.content)}</p>
@@ -68,7 +72,7 @@
         {:else}
           <article class="grid gap-4">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="tape-label rotate-[-1deg]" style={`background:${priorityColor(current.priority)}`}>{current.priority}</span>
+              <span class="tape-label rotate-[-1deg]" style={`background:${priorityColor(current.priority)}`}>{priorityLabel(current.priority)}</span>
               <span class="text-xs font-black text-[hsl(var(--ink-muted))]">{index + 1} / {announcements.length}</span>
             </div>
             <MarkdownContent content={current.content} />

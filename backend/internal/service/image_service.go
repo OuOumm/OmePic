@@ -367,6 +367,9 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 			Name:    settings.SiteName,
 			Tagline: settings.SiteTagline,
 		},
+		Access: PublicAccessSettingsView{
+			PublicBaseURL: s.EffectivePublicBaseURL(""),
+		},
 		Upload: PublicUploadSettingsView{
 			MaxUploadSizeMB:           settings.MaxUploadSizeMB,
 			AllowedMIMETypes:          append([]string(nil), settings.AllowedMIMETypes...),

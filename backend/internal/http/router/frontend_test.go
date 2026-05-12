@@ -123,6 +123,11 @@ func TestFrontendFallbackPreservesAPINotFoundBehaviorByMethod(t *testing.T) {
 		{name: "admin config instance api put", method: http.MethodPut, path: "/admin/config/storage-instances/local", status: http.StatusNotFound},
 		{name: "admin config default api post", method: http.MethodPost, path: "/admin/config/default", status: http.StatusNotFound},
 		{name: "admin system settings api put", method: http.MethodPut, path: "/admin/system-settings", status: http.StatusNotFound},
+		{name: "admin announcement api put", method: http.MethodPut, path: "/admin/announcements/42", status: http.StatusNotFound},
+		{name: "admin announcement archive api post", method: http.MethodPost, path: "/admin/announcements/42/archive", status: http.StatusNotFound},
+		{name: "admin announcement detail page get", method: http.MethodGet, path: "/admin/announcements/42", status: http.StatusOK, body: "<!doctype html><title>home</title>"},
+		{name: "admin ip ban api delete", method: http.MethodDelete, path: "/admin/ip-bans/42", status: http.StatusNotFound},
+		{name: "admin ip ban images api delete", method: http.MethodDelete, path: "/admin/ip-bans/42/images", status: http.StatusNotFound},
 	}
 
 	for _, test := range tests {

@@ -54,6 +54,65 @@ func TestGetConfigMasksSecrets(t *testing.T) {
 	}
 }
 
+func TestCreateStorageConfigUsesProvidedKeyAndGeneratesOnlyWhenEmpty(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+
+	customPath := filepath.Join(t.TempDir(), "custom")
+	view, err := adminService.CreateStorageConfig(ctx, AdminStorageConfigCreateInput{
+		StorageKey:       "custom-local",
+		Name:             "Custom Local",
+		Backend:          config.StorageBackendLocal,
+		LocalStoragePath: customPath,
+	})
+	if err != nil {
+		t.Fatalf("CreateStorageConfig returned error: %v", err)
+	}
+
+	var foundCustom bool
+	for _, item := range view.StorageConfigs {
+		if item.StorageKey == "custom-local" {
+			foundCustom = true
+			break
+		}
+	}
+	if !foundCustom {
+		t.Fatalf("expected custom-local to appear in config view")
+	}
+
+	stored, err := repo.GetStorageConfigByKey(ctx, "custom-local")
+	if err != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+	if stored.Name != "Custom Local" || stored.LocalStoragePath != customPath {
+		t.Fatalf("unexpected stored custom config: %+v", stored)
+	}
+
+	generatedPath := filepath.Join(t.TempDir(), "generated")
+	view, err = adminService.CreateStorageConfig(ctx, AdminStorageConfigCreateInput{
+		Name:             "Generated Local",
+		Backend:          config.StorageBackendLocal,
+		LocalStoragePath: generatedPath,
+	})
+	if err != nil {
+		t.Fatalf("CreateStorageConfig with empty key returned error: %v", err)
+	}
+
+	var generatedKey string
+	for _, item := range view.StorageConfigs {
+		if item.Name == "Generated Local" {
+			generatedKey = item.StorageKey
+			break
+		}
+	}
+	if generatedKey == "" || generatedKey == "custom-local" {
+		t.Fatalf("expected generated non-custom storage key, got %q", generatedKey)
+	}
+	if _, err := repo.GetStorageConfigByKey(ctx, generatedKey); err != nil {
+		t.Fatalf("GetStorageConfigByKey for generated key returned error: %v", err)
+	}
+}
+
 func TestDeleteStorageConfigRejectsDefaultAndInUseInstances(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
@@ -156,8 +215,10 @@ func TestUpdateConfigPatchesDefaultStorageInstance(t *testing.T) {
 
 	nextPath := filepath.Join(t.TempDir(), "next-images")
 	view, err := adminService.UpdateConfig(ctx, AdminConfigUpdateInput{
-		Name:             strPtr("Renamed Local"),
-		LocalStoragePath: strPtr(nextPath),
+		RuntimeStorageUpdate: config.RuntimeStorageUpdate{
+			Name:             strPtr("Renamed Local"),
+			LocalStoragePath: strPtr(nextPath),
+		},
 	})
 	if err != nil {
 		t.Fatalf("UpdateConfig returned error: %v", err)
@@ -232,7 +293,9 @@ func TestUpdateConfigRejectsInvalidDefaultBeforePatch(t *testing.T) {
 	_, err = adminService.UpdateConfig(ctx, AdminConfigUpdateInput{
 		StorageKey:        strPtr("local-default"),
 		DefaultStorageKey: strPtr("missing-storage"),
-		Name:              strPtr("Should Not Persist"),
+		RuntimeStorageUpdate: config.RuntimeStorageUpdate{
+			Name: strPtr("Should Not Persist"),
+		},
 	})
 	if err == nil || !containsError(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for missing default storage, got %v", err)
@@ -259,7 +322,9 @@ func TestUpdateConfigRejectsEmptyDefaultBeforePatch(t *testing.T) {
 	_, err = adminService.UpdateConfig(ctx, AdminConfigUpdateInput{
 		StorageKey:        strPtr("local-default"),
 		DefaultStorageKey: strPtr("   "),
-		Name:              strPtr("Should Not Persist"),
+		RuntimeStorageUpdate: config.RuntimeStorageUpdate{
+			Name: strPtr("Should Not Persist"),
+		},
 	})
 	if err == nil || !containsError(err, ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput for empty default storage, got %v", err)

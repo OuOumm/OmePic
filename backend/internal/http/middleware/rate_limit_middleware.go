@@ -2,8 +2,6 @@ package middleware
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"omepic/backend/internal/http/clientip"
+	"omepic/backend/internal/iputil"
 	"omepic/backend/internal/ratelimit"
 	"omepic/backend/internal/response"
 )
@@ -76,6 +75,5 @@ func rateLimitKey(scope string, ip string) string {
 	if normalizedScope == "" {
 		normalizedScope = "api"
 	}
-	sum := sha256.Sum256([]byte(strings.TrimSpace(ip)))
-	return fmt.Sprintf("ratelimit:%s:ip:%s", normalizedScope, hex.EncodeToString(sum[:]))
+	return fmt.Sprintf("ratelimit:%s:ip:%s", normalizedScope, iputil.Hash(ip))
 }

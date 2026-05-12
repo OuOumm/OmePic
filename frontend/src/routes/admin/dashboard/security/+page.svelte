@@ -8,8 +8,8 @@
   import { adminCreateIPBan, adminDeleteIPBan, adminDeleteIPBanImages, adminGetAbuseOverview, adminGetIPBans, adminGetSystemSettings, adminUpdateSystemSettings } from '@/api';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
-  import { toast } from '@/stores/toast.svelte';
   import { formatBytes, isAbortError } from '@/utils';
+  import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { AdminAbuseOverview, AdminIPBan, AdminSystemSettings } from '@/types';
 
   let overview = $state<AdminAbuseOverview | null>(null);
@@ -18,6 +18,7 @@
   let banTarget = $state<{ ip: string; label?: string } | null>(null);
   let confirmTarget = $state<{ action: 'unban' | 'purge'; ban: AdminIPBan } | null>(null);
   let banning = $state(false);
+  let confirmBusy = $state(false);
   let savingRateLimit = $state(false);
 
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'abuse');
@@ -34,7 +35,7 @@
       bans = Array.isArray(nextBans) ? nextBans : [];
     } catch (err) {
       if (isAbortError(err)) return;
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+      toastApiError(err, preferences.language);
     }
   }
 
@@ -45,7 +46,7 @@
       if (!signal?.aborted) system = nextSystem;
     } catch (err) {
       if (isAbortError(err)) return;
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+      toastApiError(err, preferences.language);
     }
   }
 
@@ -67,51 +68,69 @@
   }
 
   async function saveRateLimit() {
-    if (!preferences.adminToken || !system) return;
-    savingRateLimit = true;
-    try {
-      system.runtime.rate_limit_window_minutes = normalizeLimit(system.runtime.rate_limit_window_minutes);
-      system.runtime.rate_limit_max_requests = normalizeLimit(system.runtime.rate_limit_max_requests);
-      system.runtime.upload_rate_limit_window_minutes = normalizeLimit(system.runtime.upload_rate_limit_window_minutes);
-      system.runtime.upload_rate_limit_max_requests = normalizeLimit(system.runtime.upload_rate_limit_max_requests);
-      system = await adminUpdateSystemSettings(preferences.adminToken, system.runtime);
-      toast.success(t(preferences.language, 'common.success'));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      savingRateLimit = false;
-    }
+    const token = preferences.adminToken;
+    if (!token || !system) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (savingRateLimit = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => {
+        if (!system) throw new Error(t(preferences.language, 'common.error'));
+        system.runtime.rate_limit_window_minutes = normalizeLimit(system.runtime.rate_limit_window_minutes);
+        system.runtime.rate_limit_max_requests = normalizeLimit(system.runtime.rate_limit_max_requests);
+        system.runtime.upload_rate_limit_window_minutes = normalizeLimit(system.runtime.upload_rate_limit_window_minutes);
+        system.runtime.upload_rate_limit_max_requests = normalizeLimit(system.runtime.upload_rate_limit_max_requests);
+        return adminUpdateSystemSettings(token, system.runtime);
+      },
+      onSuccess: (nextSystem) => {
+        system = nextSystem;
+      },
+    });
   }
 
   async function banIp(input: { ip: string; reason: string; durationHours: number | null }) {
-    if (!preferences.adminToken) return;
-    banning = true;
-    try {
-      await adminCreateIPBan(preferences.adminToken, { ip_address: input.ip, duration_hours: input.durationHours, reason: input.reason });
-      toast.success(t(preferences.language, 'common.success'));
-      banTarget = null;
-      await loadAbuse();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      banning = false;
-    }
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (banning = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminCreateIPBan(token, { ip_address: input.ip, duration_hours: input.durationHours, reason: input.reason }),
+      onSuccess: async () => {
+        banTarget = null;
+        await loadAbuse();
+      },
+    });
   }
 
   async function unban(id: number) {
-    if (!preferences.adminToken) return;
-    await adminDeleteIPBan(preferences.adminToken, id);
-    confirmTarget = null;
-    toast.success(t(preferences.language, 'common.success'));
-    await loadAbuse();
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (confirmBusy = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminDeleteIPBan(token, id),
+      onSuccess: async () => {
+        confirmTarget = null;
+        await loadAbuse();
+      },
+    });
   }
 
   async function purgeImages(id: number) {
-    if (!preferences.adminToken) return;
-    const result = await adminDeleteIPBanImages(preferences.adminToken, id);
-    confirmTarget = null;
-    toast.success(t(preferences.language, 'admin.securityDeletedImages', { count: result.deleted_count }));
-    await loadAbuse();
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (confirmBusy = value),
+      successMessage: (result) => t(preferences.language, 'admin.securityDeletedImages', { count: result.deleted_count }),
+      action: () => adminDeleteIPBanImages(token, id),
+      onSuccess: async () => {
+        confirmTarget = null;
+        await loadAbuse();
+      },
+    });
   }
 
   $effect(() => {
@@ -258,6 +277,7 @@
     confirmLabel={confirmTarget?.action === 'unban' ? t(preferences.language, 'admin.securityUnban') : t(preferences.language, 'admin.securityPurge')}
     cancelLabel={t(preferences.language, 'common.cancel')}
     tone={confirmTarget?.action === 'unban' ? 'primary' : 'danger'}
+    busy={confirmBusy}
     onClose={() => (confirmTarget = null)}
     onConfirm={() => confirmTarget?.action === 'unban' ? unban(confirmTarget.ban.id) : confirmTarget && purgeImages(confirmTarget.ban.id)}
   />

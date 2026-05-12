@@ -140,7 +140,7 @@ func (c AppConfig) DefaultStorageConfig() RuntimeStorageConfig {
 }
 
 func BootstrapStorageKey(backend string) string {
-	switch normalizeBackend(backend) {
+	switch normalizedStorageBackendOrDefault(backend) {
 	case StorageBackendS3:
 		return "s3-default"
 	case StorageBackendWebDAV:
@@ -151,7 +151,7 @@ func BootstrapStorageKey(backend string) string {
 }
 
 func BootstrapStorageName(backend string) string {
-	switch normalizeBackend(backend) {
+	switch normalizedStorageBackendOrDefault(backend) {
 	case StorageBackendS3:
 		return "Default S3 Storage"
 	case StorageBackendWebDAV:
@@ -161,8 +161,12 @@ func BootstrapStorageName(backend string) string {
 	}
 }
 
-func normalizeBackend(backend string) string {
-	value := strings.TrimSpace(strings.ToLower(backend))
+func NormalizeStorageBackend(backend string) string {
+	return strings.TrimSpace(strings.ToLower(backend))
+}
+
+func normalizedStorageBackendOrDefault(backend string) string {
+	value := NormalizeStorageBackend(backend)
 	if value == "" {
 		return StorageBackendLocal
 	}

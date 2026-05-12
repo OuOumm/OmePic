@@ -140,26 +140,27 @@ func (h *ImageHandler) Serve(c *gin.Context) {
 }
 
 func (h *ImageHandler) mapJSONError(c *gin.Context, err error) {
-	switch {
-	case err == service.ErrMissingToken:
-		response.Error(c, http.StatusUnauthorized, "missing_token", "X-Token is required")
-	case err == service.ErrIPBanned:
-		response.Error(c, http.StatusForbidden, "ip_banned", "current network is not allowed to upload or delete images")
-	case strings.Contains(err.Error(), service.ErrInvalidInput.Error()):
-		response.Error(c, http.StatusBadRequest, "invalid_input", sanitizeMessage(err))
-	case err == service.ErrForbidden:
-		response.Error(c, http.StatusForbidden, "forbidden", "token does not own this image")
-	case err == service.ErrNotFound:
+	if err == service.ErrNotFound {
 		response.Error(c, http.StatusNotFound, "not_found", "image not found")
-	case strings.Contains(err.Error(), service.ErrNotFound.Error()):
-		response.Error(c, http.StatusNotFound, "not_found", sanitizeMessage(err))
-	case strings.Contains(err.Error(), service.ErrDependencyUnavailable.Error()):
-		h.logger.Error("dependency failure", "error", err.Error())
-		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "dependency unavailable")
-	default:
-		h.logger.Error("unexpected image handler error", "error", err.Error())
-		response.Error(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
 	}
+	writeServiceError(c, h.logger, err, "dependency failure", "unexpected image handler error", map[error]serviceErrorMapping{
+		service.ErrMissingToken: {
+			Status:  http.StatusUnauthorized,
+			Code:    "missing_token",
+			Message: "X-Token is required",
+		},
+		service.ErrIPBanned: {
+			Status:  http.StatusForbidden,
+			Code:    "ip_banned",
+			Message: "current network is not allowed to upload or delete images",
+		},
+		service.ErrForbidden: {
+			Status:  http.StatusForbidden,
+			Code:    "forbidden",
+			Message: "token does not own this image",
+		},
+	})
 }
 
 func (h *ImageHandler) requestBaseURL(c *gin.Context) string {
@@ -194,13 +195,4 @@ func detectContentType(filename string) string {
 	default:
 		return "application/octet-stream"
 	}
-}
-
-func sanitizeMessage(err error) string {
-	message := err.Error()
-	parts := strings.SplitN(message, ": ", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	return message
 }

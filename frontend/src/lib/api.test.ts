@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminUpdateSystemSettings } from './api';
+import { adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminUpdateSystemSettings, deleteImageByUid } from './api';
 import type { RuntimeSettings, StorageInstance } from '@/types';
 
 const jsonResponse = (status: number, payload: unknown) =>
@@ -67,6 +67,18 @@ describe('admin API helpers', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ uids: ['uid-1', 'uid-2'] }),
+    });
+  });
+
+  it('uses the shared public image path for user deletion', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
+
+    await deleteImageByUid('uid-1', 'client-token');
+
+    expect(fetch).toHaveBeenCalledWith('http://localhost:8080/i/uid-1.avif', {
+      cache: 'no-store',
+      method: 'DELETE',
+      headers: { 'X-Token': 'client-token' },
     });
   });
 

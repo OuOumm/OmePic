@@ -8,7 +8,7 @@
   import { t } from '@/i18n';
   import { formatMegabytes, isAbortError } from '@/utils';
   import { preferences } from '@/stores/preferences.svelte';
-  import { toast } from '@/stores/toast.svelte';
+  import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { AdminConfig, AdminSystemSettings } from '@/types';
 
   let config = $state<AdminConfig | null>(null);
@@ -32,7 +32,7 @@
       mimeTypesText = runtimeMimeTypesText(system);
     } catch (err) {
       if (isAbortError(err)) return;
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+      toastApiError(err, preferences.language);
     }
   }
 
@@ -44,18 +44,22 @@
   }
 
   async function saveRuntime() {
-    if (!preferences.adminToken || !system) return;
-    savingRuntime = true;
-    try {
-      system.runtime.allowed_mime_types = parseMimeTypes(mimeTypesText);
-      system = await adminUpdateSystemSettings(preferences.adminToken, system.runtime);
-      mimeTypesText = runtimeMimeTypesText(system);
-      toast.success(t(preferences.language, 'common.success'));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      savingRuntime = false;
-    }
+    const token = preferences.adminToken;
+    if (!token || !system) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (savingRuntime = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => {
+        if (!system) throw new Error(t(preferences.language, 'common.error'));
+        system.runtime.allowed_mime_types = parseMimeTypes(mimeTypesText);
+        return adminUpdateSystemSettings(token, system.runtime);
+      },
+      onSuccess: (nextSystem) => {
+        system = nextSystem;
+        mimeTypesText = runtimeMimeTypesText(system);
+      },
+    });
   }
 
   $effect(() => {

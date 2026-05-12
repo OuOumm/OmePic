@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -100,18 +99,13 @@ func (h *AnnouncementHandler) Archive(c *gin.Context) {
 }
 
 func (h *AnnouncementHandler) mapError(c *gin.Context, err error) {
-	switch {
-	case err == service.ErrInvalidInput || strings.Contains(err.Error(), service.ErrInvalidInput.Error()):
-		response.Error(c, http.StatusBadRequest, "invalid_input", sanitizeMessage(err))
-	case err == service.ErrNotFound:
-		response.Error(c, http.StatusNotFound, "not_found", "announcement not found")
-	case strings.Contains(err.Error(), service.ErrDependencyUnavailable.Error()):
-		h.logger.Error("announcement dependency failure", "error", err.Error())
-		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "dependency unavailable")
-	default:
-		h.logger.Error("announcement handler failure", "error", err.Error())
-		response.Error(c, http.StatusInternalServerError, "internal_error", "internal server error")
-	}
+	writeServiceError(c, h.logger, err, "announcement dependency failure", "announcement handler failure", map[error]serviceErrorMapping{
+		service.ErrNotFound: {
+			Status:  http.StatusNotFound,
+			Code:    "not_found",
+			Message: "announcement not found",
+		},
+	})
 }
 
 func parseID(value string) (int64, error) {

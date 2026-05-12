@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./utils";
+import { getApiBaseUrl, getImagePath } from "./utils";
 
 import type {
   ApiResponse,
@@ -147,7 +147,7 @@ export async function getAnnouncements(signal?: AbortSignal): Promise<Announceme
 }
 
 export async function deleteImageByUid(uid: string, token: string): Promise<void> {
-  await apiFetch<Record<string, never> | null>(`/i/${uid}.avif`, {
+  await apiFetch<Record<string, never> | null>(getImagePath(uid), {
     method: "DELETE",
     headers: { "X-Token": token },
   });

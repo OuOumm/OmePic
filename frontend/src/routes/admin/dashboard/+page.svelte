@@ -6,6 +6,7 @@
   import { t } from '@/i18n';
   import { preferences, setAdminToken } from '@/stores/preferences.svelte';
   import { formatBytes, isAbortError } from '@/utils';
+  import { errorMessage } from '@/ui-errors';
   import type { AdminStatus, AdminSystemSettings } from '@/types';
 
   let password = $state('');
@@ -22,7 +23,7 @@
       setAdminToken(token);
       await loadData();
     } catch (err) {
-      error = err instanceof Error ? err.message : t(preferences.language, 'admin.loginError');
+      error = errorMessage(err, preferences.language, 'admin.loginError');
     } finally {
       loading = false;
     }
@@ -38,7 +39,7 @@
       system = nextSystem;
     } catch (err) {
       if (isAbortError(err)) return;
-      error = err instanceof Error ? err.message : t(preferences.language, 'common.error');
+      error = errorMessage(err, preferences.language);
     } finally {
       if (!signal?.aborted) loading = false;
     }

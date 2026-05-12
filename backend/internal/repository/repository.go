@@ -2,27 +2,36 @@ package repository
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 
 	"omepic/backend/internal/config"
+	"omepic/backend/internal/iputil"
 	"omepic/backend/internal/model"
 )
 
 type Repository struct {
 	db *sql.DB
 }
+
+type execContexter interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+const (
+	imageColumns = "id, uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, created_at"
+
+	storageConfigInsertSQL = `INSERT INTO storage_configs(
+		storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass, created_at, updated_at
+	) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+)
 
 func New(databasePath string) (*Repository, error) {
 	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
@@ -286,30 +295,7 @@ func (r *Repository) GetStorageConfigByKey(ctx context.Context, storageKey strin
 }
 
 func (r *Repository) CreateStorageConfig(ctx context.Context, cfg config.RuntimeStorageConfig) error {
-	_, err := r.db.ExecContext(
-		ctx,
-		`INSERT INTO storage_configs(
-			storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass, created_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		cfg.StorageKey,
-		cfg.Name,
-		cfg.Backend,
-		boolInt(cfg.IsDefault),
-		cfg.LocalStoragePath,
-		cfg.S3Endpoint,
-		cfg.S3Region,
-		cfg.S3Bucket,
-		cfg.S3AccessKey,
-		cfg.S3SecretKey,
-		boolString(cfg.S3UseSSL),
-		boolString(cfg.S3ForcePathStyle),
-		cfg.WebDAVURL,
-		cfg.WebDAVUser,
-		cfg.WebDAVPass,
-		time.Now().UTC().Format(time.RFC3339),
-		time.Now().UTC().Format(time.RFC3339),
-	)
-	return err
+	return insertStorageConfig(ctx, r.db, cfg, time.Now().UTC().Format(time.RFC3339))
 }
 
 func (r *Repository) UpdateStorageConfig(ctx context.Context, cfg config.RuntimeStorageConfig) error {
@@ -337,12 +323,8 @@ func (r *Repository) UpdateStorageConfig(ctx context.Context, cfg config.Runtime
 	if err != nil {
 		return err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return err
-	}
-	if rows == 0 {
-		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -352,12 +334,8 @@ func (r *Repository) DeleteStorageConfig(ctx context.Context, storageKey string)
 	if err != nil {
 		return err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return err
-	}
-	if rows == 0 {
-		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -381,12 +359,8 @@ func (r *Repository) SetDefaultStorageConfig(ctx context.Context, storageKey str
 	if err != nil {
 		return err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return err
-	}
-	if rows == 0 {
-		return sql.ErrNoRows
 	}
 
 	return tx.Commit()
@@ -420,7 +394,7 @@ func (r *Repository) InsertImage(ctx context.Context, record model.ImageRecord) 
 }
 
 func (r *Repository) FindByUID(ctx context.Context, uid string) (*model.ImageRecord, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, created_at FROM images WHERE uid = ?`, uid)
+	row := r.db.QueryRowContext(ctx, `SELECT `+imageColumns+` FROM images WHERE uid = ?`, uid)
 	record, err := scanImage(row)
 	if err != nil {
 		return nil, err
@@ -429,7 +403,7 @@ func (r *Repository) FindByUID(ctx context.Context, uid string) (*model.ImageRec
 }
 
 func (r *Repository) FindByMD5(ctx context.Context, md5Hash string) (*model.ImageRecord, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, created_at FROM images WHERE md5_hash = ? ORDER BY id ASC LIMIT 1`, md5Hash)
+	row := r.db.QueryRowContext(ctx, `SELECT `+imageColumns+` FROM images WHERE md5_hash = ? ORDER BY id ASC LIMIT 1`, md5Hash)
 	record, err := scanImage(row)
 	if err != nil {
 		return nil, err
@@ -438,7 +412,7 @@ func (r *Repository) FindByMD5(ctx context.Context, md5Hash string) (*model.Imag
 }
 
 func (r *Repository) FindByMD5AndStorageKey(ctx context.Context, md5Hash string, storageKey string) (*model.ImageRecord, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, created_at FROM images WHERE md5_hash = ? AND storage_key = ? ORDER BY id ASC LIMIT 1`, md5Hash, storageKey)
+	row := r.db.QueryRowContext(ctx, `SELECT `+imageColumns+` FROM images WHERE md5_hash = ? AND storage_key = ? ORDER BY id ASC LIMIT 1`, md5Hash, storageKey)
 	record, err := scanImage(row)
 	if err != nil {
 		return nil, err
@@ -451,12 +425,8 @@ func (r *Repository) DeleteByUID(ctx context.Context, uid string) error {
 	if err != nil {
 		return err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return err
-	}
-	if rows == 0 {
-		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -480,7 +450,7 @@ func (r *Repository) ImageSummaryByIP(ctx context.Context, ipAddress string) (mo
 }
 
 func (r *Repository) ListImagesByIP(ctx context.Context, ipAddress string) ([]model.ImageRecord, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, created_at FROM images WHERE ip_address = ? ORDER BY id ASC`, ipAddress)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+imageColumns+` FROM images WHERE ip_address = ? ORDER BY id ASC`, ipAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +459,7 @@ func (r *Repository) ListImagesByIP(ctx context.Context, ipAddress string) ([]mo
 }
 
 func (r *Repository) ListAllImages(ctx context.Context) ([]model.ImageRecord, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, created_at FROM images ORDER BY id ASC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+imageColumns+` FROM images ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -518,7 +488,7 @@ func (r *Repository) SearchImages(ctx context.Context, page int, pageSize int, s
 
 	rows, err := r.db.QueryContext(
 		ctx,
-		`SELECT id, uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, created_at
+		`SELECT `+imageColumns+`
 		 FROM images `+where+`
 		 ORDER BY id DESC
 		 LIMIT ? OFFSET ?`,
@@ -607,12 +577,8 @@ func (r *Repository) DeleteIPBan(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return err
-	}
-	if rows == 0 {
-		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -862,12 +828,8 @@ func (r *Repository) UpdateAnnouncement(ctx context.Context, announcement model.
 	if err != nil {
 		return model.Announcement{}, err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return model.Announcement{}, err
-	}
-	if rows == 0 {
-		return model.Announcement{}, sql.ErrNoRows
 	}
 	return r.GetAnnouncement(ctx, announcement.ID)
 }
@@ -877,12 +839,8 @@ func (r *Repository) DeleteAnnouncement(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return err
-	}
-	if rows == 0 {
-		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -898,12 +856,8 @@ func (r *Repository) ArchiveAnnouncement(ctx context.Context, id int64) (model.A
 	if err != nil {
 		return model.Announcement{}, err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
+	if err := ensureRowsAffected(result); err != nil {
 		return model.Announcement{}, err
-	}
-	if rows == 0 {
-		return model.Announcement{}, sql.ErrNoRows
 	}
 	return r.GetAnnouncement(ctx, id)
 }
@@ -1072,6 +1026,44 @@ func (r *Repository) ensureImageColumn(ctx context.Context, column string, ddl s
 	return err
 }
 
+func insertStorageConfig(ctx context.Context, execer execContexter, cfg config.RuntimeStorageConfig, timestamp string) error {
+	_, err := execer.ExecContext(ctx, storageConfigInsertSQL, storageConfigInsertArgs(cfg, timestamp)...)
+	return err
+}
+
+func storageConfigInsertArgs(cfg config.RuntimeStorageConfig, timestamp string) []any {
+	return []any{
+		cfg.StorageKey,
+		cfg.Name,
+		cfg.Backend,
+		boolInt(cfg.IsDefault),
+		cfg.LocalStoragePath,
+		cfg.S3Endpoint,
+		cfg.S3Region,
+		cfg.S3Bucket,
+		cfg.S3AccessKey,
+		cfg.S3SecretKey,
+		boolString(cfg.S3UseSSL),
+		boolString(cfg.S3ForcePathStyle),
+		cfg.WebDAVURL,
+		cfg.WebDAVUser,
+		cfg.WebDAVPass,
+		timestamp,
+		timestamp,
+	}
+}
+
+func ensureRowsAffected(result sql.Result) error {
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *Repository) insertStorageConfigs(ctx context.Context, configs []config.RuntimeStorageConfig) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1081,29 +1073,7 @@ func (r *Repository) insertStorageConfigs(ctx context.Context, configs []config.
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, cfg := range configs {
-		if _, err := tx.ExecContext(
-			ctx,
-			`INSERT INTO storage_configs(
-				storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass, created_at, updated_at
-			) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			cfg.StorageKey,
-			cfg.Name,
-			cfg.Backend,
-			boolInt(cfg.IsDefault),
-			cfg.LocalStoragePath,
-			cfg.S3Endpoint,
-			cfg.S3Region,
-			cfg.S3Bucket,
-			cfg.S3AccessKey,
-			cfg.S3SecretKey,
-			boolString(cfg.S3UseSSL),
-			boolString(cfg.S3ForcePathStyle),
-			cfg.WebDAVURL,
-			cfg.WebDAVUser,
-			cfg.WebDAVPass,
-			now,
-			now,
-		); err != nil {
+		if err := insertStorageConfig(ctx, tx, cfg, now); err != nil {
 			return err
 		}
 	}
@@ -1179,9 +1149,9 @@ func initialStorageConfigs(legacy config.RuntimeStorageConfig, envDefault config
 		return []config.RuntimeStorageConfig{normalizeSeedConfig(envDefault)}
 	}
 
-	defaultBackend := strings.TrimSpace(strings.ToLower(legacy.Backend))
+	defaultBackend := config.NormalizeStorageBackend(legacy.Backend)
 	if defaultBackend == "" {
-		defaultBackend = envDefault.Backend
+		defaultBackend = config.NormalizeStorageBackend(envDefault.Backend)
 	}
 	if defaultBackend == "" {
 		defaultBackend = config.StorageBackendLocal
@@ -1337,23 +1307,11 @@ func nullableTimeString(value *time.Time) any {
 }
 
 func ipHashValue(ipAddress string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(ipAddress)))
-	return hex.EncodeToString(sum[:])
+	return iputil.Hash(ipAddress)
 }
 
 func maskIPValue(ipAddress string) string {
-	parsed := net.ParseIP(strings.TrimSpace(ipAddress))
-	if parsed == nil {
-		return ""
-	}
-	if v4 := parsed.To4(); v4 != nil {
-		return strings.Join([]string{strconv.Itoa(int(v4[0])), strconv.Itoa(int(v4[1])), strconv.Itoa(int(v4[2])), "*"}, ".")
-	}
-	parts := strings.Split(parsed.String(), ":")
-	if len(parts) <= 2 {
-		return parsed.String()
-	}
-	return strings.Join(parts[:2], ":") + ":*"
+	return iputil.Mask(ipAddress)
 }
 
 func previewValue(value string, max int) string {

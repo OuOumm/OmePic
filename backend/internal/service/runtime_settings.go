@@ -50,6 +50,7 @@ type RuntimeSettings struct {
 
 type PublicRuntimeSettingsView struct {
 	Site     PublicSiteSettingsView    `json:"site"`
+	Access   PublicAccessSettingsView  `json:"access"`
 	Upload   PublicUploadSettingsView  `json:"upload"`
 	Features PublicFeatureSettingsView `json:"features"`
 	Storage  PublicStorageSettingsView `json:"storage"`
@@ -58,6 +59,10 @@ type PublicRuntimeSettingsView struct {
 type PublicSiteSettingsView struct {
 	Name    string `json:"name"`
 	Tagline string `json:"tagline"`
+}
+
+type PublicAccessSettingsView struct {
+	PublicBaseURL string `json:"public_base_url"`
 }
 
 type PublicUploadSettingsView struct {

@@ -352,7 +352,7 @@ func normalizeConfigs(settings []config.RuntimeStorageConfig) ([]config.RuntimeS
 func normalizeConfig(settings config.RuntimeStorageConfig) config.RuntimeStorageConfig {
 	settings.StorageKey = strings.TrimSpace(settings.StorageKey)
 	settings.Name = strings.TrimSpace(settings.Name)
-	settings.Backend = strings.TrimSpace(strings.ToLower(settings.Backend))
+	settings.Backend = config.NormalizeStorageBackend(settings.Backend)
 	if settings.Backend == "" {
 		settings.Backend = config.StorageBackendLocal
 	}

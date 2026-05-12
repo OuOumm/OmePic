@@ -4,10 +4,11 @@
   import { accessibleDialog } from '@/actions/accessible-dialog';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import ImageSwitchButton from './ImageSwitchButton.svelte';
+  import { copyToClipboard } from '@/clipboard';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
-  import { toast } from '@/stores/toast.svelte';
-  import { formatBytes, formatDate } from '@/utils';
+  import { formatBytes, formatDate, getImagePath } from '@/utils';
+  import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { AdminAbuseIPDetail, AdminImage } from '@/types';
   import BanIPDialog from './BanIPDialog.svelte';
 
@@ -28,7 +29,7 @@
   let imageLoaded = $state(false);
   let loadedIpAddress = $state('');
 
-  const imageUrl = $derived(image ? `/i/${image.uid}.avif` : '');
+  const imageUrl = $derived(image ? getImagePath(image.uid) : '');
   const targetIp = $derived(image?.ip_address ?? '');
   const targetIpLabel = $derived(image?.ip_address_masked ?? '');
   const isIpBanned = $derived(Boolean(ipDetail?.is_banned));
@@ -66,7 +67,7 @@
       if (loadedIpAddress === currentIp) ipDetail = detail;
     } catch (err) {
       if (loadedIpAddress === currentIp) ipDetail = null;
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'admin.ipDetailLoadError'));
+      toastApiError(err, preferences.language, 'admin.ipDetailLoadError');
     } finally {
       if (loadedIpAddress === currentIp) ipDetailLoading = false;
     }
@@ -88,49 +89,50 @@
   });
 
   function copy(value: string) {
-    navigator.clipboard.writeText(value);
-    toast.success(t(preferences.language, 'common.copied'));
+    void copyToClipboard(value, preferences.language);
   }
 
   async function remove() {
-    if (!preferences.adminToken || !image) return;
-    busy = true;
-    try {
-      await adminDeleteImages(preferences.adminToken, [image.uid]);
-      const fallback = nextImage ?? previousImage;
-      deleteOpen = false;
-      toast.success(t(preferences.language, 'common.success'));
-      onDeleted();
-      if (fallback && onNavigate) onNavigate(fallback);
-      else onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      busy = false;
-    }
+    const token = preferences.adminToken;
+    if (!token || !image) return;
+    const uid = image.uid;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (busy = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminDeleteImages(token, [uid]),
+      onSuccess: () => {
+        const fallback = nextImage ?? previousImage;
+        deleteOpen = false;
+        onDeleted();
+        if (fallback && onNavigate) onNavigate(fallback);
+        else onClose();
+      },
+    });
   }
 
   async function banIp(input: { ip: string; reason: string; durationHours: number | null }) {
-    if (!preferences.adminToken || !image || !input.ip || isIpBanned) return;
-    busy = true;
-    try {
-      const result = await adminCreateIPBan(preferences.adminToken, { uid: image.uid, ip_address: input.ip, duration_hours: input.durationHours, reason: input.reason });
-      ipDetail = {
-        ip_address: result.ban.ip_address,
-        ip_address_masked: result.ban.ip_address_masked,
-        upload_count: result.affected_image_count,
-        total_size: result.affected_total_size,
-        is_banned: true,
-        ban: result.ban,
-      };
-      loadedIpAddress = result.ban.ip_address;
-      banTarget = null;
-      toast.success(t(preferences.language, 'common.success'));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      busy = false;
-    }
+    const token = preferences.adminToken;
+    if (!token || !image || !input.ip || isIpBanned) return;
+    const uid = image.uid;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (busy = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminCreateIPBan(token, { uid, ip_address: input.ip, duration_hours: input.durationHours, reason: input.reason }),
+      onSuccess: (result) => {
+        ipDetail = {
+          ip_address: result.ban.ip_address,
+          ip_address_masked: result.ban.ip_address_masked,
+          upload_count: result.affected_image_count,
+          total_size: result.affected_total_size,
+          is_banned: true,
+          ban: result.ban,
+        };
+        loadedIpAddress = result.ban.ip_address;
+        banTarget = null;
+      },
+    });
   }
 </script>
 

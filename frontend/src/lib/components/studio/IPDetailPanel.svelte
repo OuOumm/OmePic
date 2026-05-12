@@ -7,6 +7,7 @@
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import { formatBytes, isAbortError } from '@/utils';
+  import { errorMessage, runAsyncAction } from '@/ui-errors';
   import type { AdminAbuseIPDetail } from '@/types';
 
   type Props = {
@@ -35,7 +36,7 @@
       if (!signal?.aborted) detail = nextDetail;
     } catch (err) {
       if (isAbortError(err)) return;
-      error = err instanceof Error ? err.message : t(preferences.language, 'common.error');
+      error = errorMessage(err, preferences.language);
       toast.error(error);
     } finally {
       if (!signal?.aborted) loading = false;
@@ -48,34 +49,36 @@
   }
 
   async function unban() {
-    if (!preferences.adminToken || !detail?.ban) return;
-    busy = true;
-    try {
-      await adminDeleteIPBan(preferences.adminToken, detail.ban.id);
-      toast.success(t(preferences.language, 'common.success'));
-      await load();
-      onChanged();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      busy = false;
-    }
+    const token = preferences.adminToken;
+    const banId = detail?.ban?.id;
+    if (!token || !banId) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (busy = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminDeleteIPBan(token, banId),
+      onSuccess: async () => {
+        await load();
+        onChanged();
+      },
+    });
   }
 
   async function purgeImages() {
-    if (!preferences.adminToken || !detail?.ban) return;
-    busy = true;
-    try {
-      const result = await adminDeleteIPBanImages(preferences.adminToken, detail.ban.id);
-      purgeOpen = false;
-      toast.success(t(preferences.language, 'admin.securityDeletedImages', { count: result.deleted_count }));
-      await load();
-      onChanged();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      busy = false;
-    }
+    const token = preferences.adminToken;
+    const banId = detail?.ban?.id;
+    if (!token || !banId) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (busy = value),
+      successMessage: (result) => t(preferences.language, 'admin.securityDeletedImages', { count: result.deleted_count }),
+      action: () => adminDeleteIPBanImages(token, banId),
+      onSuccess: async () => {
+        purgeOpen = false;
+        await load();
+        onChanged();
+      },
+    });
   }
 
   $effect(() => {

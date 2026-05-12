@@ -5,6 +5,7 @@
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import { deleteImageByUid } from '@/api';
+  import { copyToClipboard } from '@/clipboard';
   import { buildUploadHistoryPage, clearUploadHistory, deleteUploadFromHistory, getAllUploads, selectedUploadUidsOnPage } from '@/indexeddb/upload-history';
   import { getClientToken } from '@/client-token';
   import { t } from '@/i18n';
@@ -114,8 +115,7 @@
   }
 
   function copy(value: string) {
-    navigator.clipboard.writeText(value);
-    toast.success(t(preferences.language, 'common.copied'));
+    void copyToClipboard(value, preferences.language);
   }
 
   function toggleSelected(record: UploadHistoryRecord) {

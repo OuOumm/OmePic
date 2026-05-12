@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { isAllowedImageMimeType, normalizeDownloadFilename, safeImageUrl } from './utils';
+import { getApiExampleBaseUrl, getImagePath, getImageUrl, isAllowedImageMimeType, normalizeDownloadFilename, safeImageUrl } from './utils';
+
+describe('image URL helpers', () => {
+  it('builds public image paths from canonical UIDs', () => {
+    expect(getImagePath('uid-1')).toBe('/i/uid-1.avif');
+    expect(getImageUrl('uid-1')).toBe('http://localhost:8080/i/uid-1.avif');
+  });
+
+  it('uses custom runtime base URL for API examples before falling back to the current origin', () => {
+    expect(getApiExampleBaseUrl('https://cdn.example.com/')).toBe('https://cdn.example.com');
+    expect(getApiExampleBaseUrl('')).toBe('$ORIGIN');
+  });
+});
 
 describe('safeImageUrl', () => {
   it('allows relative and same-origin image URLs', () => {

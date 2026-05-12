@@ -13,8 +13,8 @@
   import MarkdownContent from './MarkdownContent.svelte';
   import PageTitle from './PageTitle.svelte';
   import { preferences } from '@/stores/preferences.svelte';
-  import { toast } from '@/stores/toast.svelte';
   import { isAbortError, markdownSummaryText } from '@/utils';
+  import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { Announcement, AnnouncementInput } from '@/types';
 
   const blank: AnnouncementInput = {
@@ -59,7 +59,7 @@
       if (!signal?.aborted) announcements = items;
     } catch (err) {
       if (isAbortError(err)) return;
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
+      toastApiError(err, preferences.language);
     } finally {
       if (!signal?.aborted) loading = false;
     }
@@ -92,37 +92,49 @@
   }
 
   async function save() {
-    if (!preferences.adminToken || !form.title.trim() || !form.content.trim()) return;
-    saving = true;
-    try {
-      if (editingId) {
-        await adminUpdateAnnouncement(preferences.adminToken, editingId, form);
-      } else {
-        await adminCreateAnnouncement(preferences.adminToken, form);
-      }
-      toast.success(t(preferences.language, 'common.success'));
-      reset();
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t(preferences.language, 'common.error'));
-    } finally {
-      saving = false;
-    }
+    const token = preferences.adminToken;
+    if (!token || !form.title.trim() || !form.content.trim()) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (saving = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: async () => {
+        if (editingId) {
+          await adminUpdateAnnouncement(token, editingId, form);
+        } else {
+          await adminCreateAnnouncement(token, form);
+        }
+      },
+      onSuccess: async () => {
+        reset();
+        await load();
+      },
+    });
   }
 
   async function remove(item: Announcement) {
-    if (!preferences.adminToken) return;
-    await adminDeleteAnnouncement(preferences.adminToken, item.id);
-    deleteTarget = null;
-    toast.success(t(preferences.language, 'common.success'));
-    await load();
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminDeleteAnnouncement(token, item.id),
+      onSuccess: async () => {
+        deleteTarget = null;
+        await load();
+      },
+    });
   }
 
   async function archive(item: Announcement) {
-    if (!preferences.adminToken) return;
-    await adminArchiveAnnouncement(preferences.adminToken, item.id);
-    toast.success(t(preferences.language, 'common.success'));
-    await load();
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => adminArchiveAnnouncement(token, item.id),
+      onSuccess: () => load(),
+    });
   }
 
   $effect(() => {

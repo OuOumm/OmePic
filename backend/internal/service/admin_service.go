@@ -39,22 +39,11 @@ type AdminConfigView struct {
 type AdminConfigUpdateInput struct {
 	DefaultStorageKey *string `json:"default_storage_key"`
 	StorageKey        *string `json:"storage_key"`
-	Name              *string `json:"name"`
-	Backend           *string `json:"storage_backend"`
-	LocalStoragePath  *string `json:"local_storage_path"`
-	S3Endpoint        *string `json:"s3_endpoint"`
-	S3Region          *string `json:"s3_region"`
-	S3Bucket          *string `json:"s3_bucket"`
-	S3AccessKey       *string `json:"s3_access_key"`
-	S3SecretKey       *string `json:"s3_secret_key"`
-	S3UseSSL          *bool   `json:"s3_use_ssl"`
-	S3ForcePathStyle  *bool   `json:"s3_force_path_style"`
-	WebDAVURL         *string `json:"webdav_url"`
-	WebDAVUser        *string `json:"webdav_user"`
-	WebDAVPass        *string `json:"webdav_pass"`
+	config.RuntimeStorageUpdate
 }
 
 type AdminStorageConfigCreateInput struct {
+	StorageKey       string `json:"storage_key"`
 	Name             string `json:"name"`
 	Backend          string `json:"storage_backend"`
 	LocalStoragePath string `json:"local_storage_path"`
@@ -70,21 +59,7 @@ type AdminStorageConfigCreateInput struct {
 	WebDAVPass       string `json:"webdav_pass"`
 }
 
-type AdminStorageConfigUpdateInput struct {
-	Name             *string `json:"name"`
-	Backend          *string `json:"storage_backend"`
-	LocalStoragePath *string `json:"local_storage_path"`
-	S3Endpoint       *string `json:"s3_endpoint"`
-	S3Region         *string `json:"s3_region"`
-	S3Bucket         *string `json:"s3_bucket"`
-	S3AccessKey      *string `json:"s3_access_key"`
-	S3SecretKey      *string `json:"s3_secret_key"`
-	S3UseSSL         *bool   `json:"s3_use_ssl"`
-	S3ForcePathStyle *bool   `json:"s3_force_path_style"`
-	WebDAVURL        *string `json:"webdav_url"`
-	WebDAVUser       *string `json:"webdav_user"`
-	WebDAVPass       *string `json:"webdav_pass"`
-}
+type AdminStorageConfigUpdateInput = config.RuntimeStorageUpdate
 
 type AdminSetDefaultStorageInput struct {
 	StorageKey string `json:"storage_key"`
@@ -643,17 +618,21 @@ func (s *AdminService) ensureStorageConfigExists(ctx context.Context, storageKey
 }
 
 func buildStorageConfig(input AdminStorageConfigCreateInput) (config.RuntimeStorageConfig, error) {
+	storageKey := strings.TrimSpace(input.StorageKey)
 	name := strings.TrimSpace(input.Name)
-	backend := strings.TrimSpace(strings.ToLower(input.Backend))
+	backend := config.NormalizeStorageBackend(input.Backend)
 	if name == "" {
 		return config.RuntimeStorageConfig{}, fmt.Errorf("%w: storage instance name is required", ErrInvalidInput)
 	}
 	if backend == "" {
 		return config.RuntimeStorageConfig{}, fmt.Errorf("%w: storage backend is required", ErrInvalidInput)
 	}
+	if storageKey == "" {
+		storageKey = newStorageKey(name, backend)
+	}
 
 	return config.RuntimeStorageConfig{
-		StorageKey:       newStorageKey(name, backend),
+		StorageKey:       storageKey,
 		Name:             name,
 		Backend:          backend,
 		LocalStoragePath: input.LocalStoragePath,
@@ -695,7 +674,7 @@ func mergeStorageConfig(target *config.RuntimeStorageConfig, current config.Runt
 		target.Name = strings.TrimSpace(*update.Name)
 	}
 	if update.Backend != nil {
-		target.Backend = strings.TrimSpace(strings.ToLower(*update.Backend))
+		target.Backend = config.NormalizeStorageBackend(*update.Backend)
 	}
 	if update.LocalStoragePath != nil {
 		target.LocalStoragePath = *update.LocalStoragePath
@@ -772,11 +751,7 @@ func slugify(value string) string {
 }
 
 func storageBackendChanged(current string, next string) bool {
-	return normalizeStorageBackend(current) != normalizeStorageBackend(next)
-}
-
-func normalizeStorageBackend(value string) string {
-	return strings.TrimSpace(strings.ToLower(value))
+	return config.NormalizeStorageBackend(current) != config.NormalizeStorageBackend(next)
 }
 
 func hasStorageConfigPatch(input AdminConfigUpdateInput) bool {

@@ -1,20 +1,54 @@
 <script lang="ts">
   import { Copy, KeyRound, Terminal } from 'lucide-svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
+  import { copyToClipboard } from '@/clipboard';
   import { getClientToken } from '@/client-token';
   import { t } from '@/i18n';
-  import { preferences } from '@/stores/preferences.svelte';
-  import { toast } from '@/stores/toast.svelte';
+  import { preferences, setRuntimeSettings } from '@/stores/preferences.svelte';
+  import { getRuntimeSettings } from '@/api';
+  import { getApiExampleBaseUrl, isAbortError } from '@/utils';
 
   const token = typeof window === 'undefined' ? '' : getClientToken();
+  const apiBaseUrl = $derived(getApiExampleBaseUrl(preferences.runtimeSettings?.access.public_base_url));
   const examples = $derived([
     {
       title: t(preferences.language, 'api.exampleUpload'),
-      code: `curl -X POST "$ORIGIN/v1/image" \\\n  -H "X-Token: ${token || '<token>'}" \\\n  -F "file=@image.png"`,
+      code: `curl -X POST "${apiBaseUrl}/v1/image" \\\n  -H "X-Token: ${token || '<token>'}" \\\n  -F "file=@image.png"`,
     },
     {
       title: t(preferences.language, 'api.exampleDelete'),
-      code: `curl -X DELETE "$ORIGIN/i/<uid>.avif" \\\n  -H "X-Token: ${token || '<token>'}"`,
+      code: `curl -X DELETE "${apiBaseUrl}/i/<uid>.avif" \\\n  -H "X-Token: ${token || '<token>'}"`,
+    },
+    {
+      title: t(preferences.language, 'api.exampleStorage'),
+      code: `curl -X GET "${apiBaseUrl}/v1/runtime-settings"`,
+    },
+    {
+      title: t(preferences.language, 'api.exampleStorageResponse'),
+      code: `{
+  "success": true,
+  "data": {
+    "features": {
+      "allow_storage_selection": true
+    },
+    "storage": {
+      "options": [
+        {
+          "storage_key": "local-primary",
+          "name": "Local Primary",
+          "storage_backend": "local",
+          "is_default": true
+        },
+        {
+          "storage_key": "s3-archive",
+          "name": "Archive Bucket",
+          "storage_backend": "s3",
+          "is_default": false
+        }
+      ]
+    }
+  }
+}`,
     },
     {
       title: t(preferences.language, 'api.exampleResponse'),
@@ -29,10 +63,24 @@
     },
   ]);
 
-  function copy(value: string) {
-    navigator.clipboard.writeText(value);
-    toast.success(t(preferences.language, 'common.copied'));
+  async function loadRuntimeSettings(signal?: AbortSignal) {
+    try {
+      const settings = await getRuntimeSettings(signal);
+      if (!signal?.aborted) setRuntimeSettings(settings);
+    } catch (err) {
+      if (!isAbortError(err)) setRuntimeSettings(null);
+    }
   }
+
+  function copy(value: string) {
+    void copyToClipboard(value, preferences.language);
+  }
+
+  $effect(() => {
+    const controller = new AbortController();
+    void loadRuntimeSettings(controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 <svelte:head><title>{t(preferences.language, 'api.title')} · OmePic</title></svelte:head>
@@ -53,17 +101,22 @@
 
     <div class="min-w-0 space-y-6">
       {#each examples as example (example.title)}
-        <section class="min-w-0 border-b-[3px] ink-line pb-6">
-          <div class="mb-3 flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 class="flex min-w-0 items-center gap-2 overflow-wrap-anywhere text-xl font-black sm:text-2xl"><Terminal class="size-5 shrink-0" />{example.title}</h2>
-            <button class="studio-button w-full shrink-0 text-xs sm:w-auto" type="button" onclick={() => copy(example.code)}><Copy class="size-4" />{t(preferences.language, 'common.copy')}</button>
+        <section class="studio-panel rotate-[-0.1deg] p-4 sm:p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <Terminal class="size-4" />
+                <h2 class="text-base font-semibold">{example.title}</h2>
+              </div>
+            </div>
+            <button class="studio-button text-xs" type="button" onclick={() => copy(example.code)}>
+              <Copy class="size-4" />
+              {t(preferences.language, 'common.copy')}
+            </button>
           </div>
-          <div class="max-w-full min-w-0 overflow-hidden border-2 ink-line bg-[hsl(var(--ink))]">
-            <pre class="max-w-full overflow-x-auto p-3 text-xs text-[hsl(var(--paper))] sm:p-4 sm:text-sm"><code class="block min-w-0 whitespace-pre-wrap break-words">{example.code}</code></pre>
-          </div>
+          <pre class="mt-4 overflow-x-auto rounded-lg bg-[hsl(var(--ink-muted))]/10 p-3 text-xs font-mono leading-snug">{example.code}</pre>
         </section>
       {/each}
     </div>
   </section>
 </div>
-

@@ -151,6 +151,9 @@ export interface PublicRuntimeSettings {
     name: string;
     tagline: string;
   };
+  access: {
+    public_base_url: string;
+  };
   upload: {
     max_upload_size_mb: number;
     allowed_mime_types: string[];

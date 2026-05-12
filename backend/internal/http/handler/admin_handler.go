@@ -250,34 +250,18 @@ func (h *AdminHandler) UpdateSystemSettings(c *gin.Context) {
 }
 
 func (h *AdminHandler) mapError(c *gin.Context, err error) {
-	switch {
-	case err == service.ErrInvalidInput || strings.Contains(err.Error(), service.ErrInvalidInput.Error()):
-		response.Error(c, http.StatusBadRequest, "invalid_input", sanitizeAdminMessage(err))
-	case err == service.ErrConflict || strings.Contains(err.Error(), service.ErrConflict.Error()):
-		response.Error(c, http.StatusConflict, "conflict", sanitizeAdminMessage(err))
-	case err == service.ErrNotFound:
-		response.Error(c, http.StatusNotFound, "not_found", "resource not found")
-	case err == service.ErrForbidden:
-		response.Error(c, http.StatusForbidden, "forbidden", "forbidden")
-	case strings.Contains(err.Error(), service.ErrDependencyUnavailable.Error()):
-		h.logger.Error("admin dependency failure", "error", err.Error())
-		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "dependency unavailable")
-	default:
-		h.logger.Error("admin handler failure", "error", err.Error())
-		response.Error(c, http.StatusInternalServerError, "internal_error", "internal server error")
-	}
-}
-
-func sanitizeAdminMessage(err error) string {
-	message := err.Error()
-	parts := strings.SplitN(message, ": ", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	if message == "" {
-		return "invalid request"
-	}
-	return message
+	writeServiceError(c, h.logger, err, "admin dependency failure", "admin handler failure", map[error]serviceErrorMapping{
+		service.ErrNotFound: {
+			Status:  http.StatusNotFound,
+			Code:    "not_found",
+			Message: "resource not found",
+		},
+		service.ErrForbidden: {
+			Status:  http.StatusForbidden,
+			Code:    "forbidden",
+			Message: "forbidden",
+		},
+	})
 }
 
 func parseOptionalTime(value string) (time.Time, error) {

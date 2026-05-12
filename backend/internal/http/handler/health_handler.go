@@ -7,6 +7,7 @@ import (
 
 	"omepic/backend/internal/cache"
 	"omepic/backend/internal/repository"
+	"omepic/backend/internal/response"
 )
 
 type HealthHandler struct {
@@ -20,21 +21,12 @@ func NewHealthHandler(repo *repository.Repository, imageCache cache.ImageCache) 
 
 func (h *HealthHandler) Health(c *gin.Context) {
 	if err := h.repo.Ping(c.Request.Context()); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "dependency_unavailable", "message": "sqlite unavailable"},
-		})
+		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "sqlite unavailable")
 		return
 	}
 	if err := h.cache.Ping(c.Request.Context()); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "dependency_unavailable", "message": "redis unavailable"},
-		})
+		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "redis unavailable")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    gin.H{"status": "ok"},
-	})
+	response.Success(c, http.StatusOK, gin.H{"status": "ok"})
 }

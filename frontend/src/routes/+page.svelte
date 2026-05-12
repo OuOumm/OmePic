@@ -7,6 +7,7 @@
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
   import { ApiError, deleteImageByUid, getAnnouncements, getRuntimeSettings, uploadImageWithProgress } from '@/api';
+  import { copyToClipboard } from '@/clipboard';
   import { getClientToken } from '@/client-token';
   import { saveUploadToHistory, deleteUploadFromHistory, getRecentUploads } from '@/indexeddb/upload-history';
   import { t } from '@/i18n';
@@ -14,6 +15,7 @@
   import { toast } from '@/stores/toast.svelte';
   import type { Announcement, Language, UploadHistoryRecord, UploadResult } from '@/types';
   import { isAbortError, isAllowedImageMimeType, normalizeDownloadFilename } from '@/utils';
+  import { errorMessage } from '@/ui-errors';
   import { createProgressReporter, runWithConcurrency } from '@/upload-queue';
 
   type UploadTask = {
@@ -70,7 +72,7 @@
       }
     } catch (err) {
       if (isAbortError(err)) return;
-      runtimeError = err instanceof Error ? err.message : t(preferences.language, 'common.error');
+      runtimeError = errorMessage(err, preferences.language);
       setRuntimeSettings(null);
     } finally {
       if (!signal?.aborted) runtimeLoading = false;
@@ -240,8 +242,7 @@
   }
 
   function copy(value: string) {
-    navigator.clipboard.writeText(value);
-    toast.success(t(preferences.language, 'common.copied'));
+    void copyToClipboard(value, preferences.language);
   }
 
   async function removeRecent(record: UploadHistoryRecord) {
