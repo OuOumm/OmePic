@@ -1,5 +1,9 @@
 <script lang="ts">
+  import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
   import type { Token, TokensList } from 'marked';
+
+  marked.use({ gfm: true, breaks: true });
 
   type Props = {
     content: string;
@@ -7,24 +11,7 @@
   };
 
   let { content, clamp = false }: Props = $props();
-  let tokens = $state<TokensList | null>(null);
-  let parsedContent = '';
-
-  async function parseMarkdown(nextContent: string) {
-    const [{ marked }, { default: DOMPurify }] = await Promise.all([
-      import('marked'),
-      import('dompurify'),
-    ]);
-    marked.use({ async: false, gfm: true, breaks: true });
-    const nextTokens = marked.lexer(DOMPurify.sanitize(nextContent));
-    if (parsedContent === nextContent) tokens = nextTokens;
-  }
-
-  $effect(() => {
-    parsedContent = content;
-    tokens = null;
-    void parseMarkdown(content);
-  });
+  let tokens = $derived(marked.lexer(DOMPurify.sanitize(content)));
 
   function textFromTokens(items: Token[] | TokensList | undefined) {
     if (!items) return '';
