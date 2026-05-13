@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const adminTokenKey = 'omepic-admin-token';
+const uiPreferencesKey = 'omepic-ui-preferences';
 const storage = new Map<string, string>();
 
 Object.defineProperty(globalThis, 'localStorage', {
@@ -34,10 +35,24 @@ async function loadPreferencesStore() {
   return import('./preferences.svelte');
 }
 
-describe('admin token preferences', () => {
+describe('preferences store', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.lang = '';
+  });
+
+  it('defaults the theme preference to system', async () => {
+    const { preferences } = await loadPreferencesStore();
+
+    expect(preferences.theme).toBe('system');
+  });
+
+  it('normalizes invalid stored themes to system', async () => {
+    localStorage.setItem(uiPreferencesKey, '{"theme":"unknown"}');
+
+    const { preferences } = await loadPreferencesStore();
+
+    expect(preferences.theme).toBe('system');
   });
 
   it('restores the admin token from localStorage when the store loads', async () => {

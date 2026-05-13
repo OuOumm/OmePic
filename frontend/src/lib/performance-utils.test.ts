@@ -2,15 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { getInitialThemeScriptTheme, initialThemeScript, markdownSummaryText } from './utils';
 
 describe('getInitialThemeScriptTheme', () => {
-  it('defaults missing and invalid stored themes to light', () => {
+  it('defaults missing, invalid, and corrupt stored themes to the current system theme', () => {
+    expect(getInitialThemeScriptTheme(null, true)).toBe('dark');
     expect(getInitialThemeScriptTheme(null, false)).toBe('light');
-    expect(getInitialThemeScriptTheme('{"theme":"unknown"}', true)).toBe('light');
-    expect(getInitialThemeScriptTheme('not-json', true)).toBe('light');
+    expect(getInitialThemeScriptTheme('{"theme":"unknown"}', true)).toBe('dark');
+    expect(getInitialThemeScriptTheme('not-json', false)).toBe('light');
   });
 
   it('resolves system theme from the current media query', () => {
     expect(getInitialThemeScriptTheme('{"theme":"system"}', true)).toBe('dark');
     expect(getInitialThemeScriptTheme('{"theme":"system"}', false)).toBe('light');
+  });
+
+  it('keeps explicit light and dark themes independent of the system theme', () => {
+    expect(getInitialThemeScriptTheme('{"theme":"light"}', true)).toBe('light');
+    expect(getInitialThemeScriptTheme('{"theme":"dark"}', false)).toBe('dark');
   });
 });
 

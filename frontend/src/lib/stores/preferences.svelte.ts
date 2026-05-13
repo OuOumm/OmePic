@@ -53,7 +53,7 @@ function syncDocumentLanguage(language: Language) {
   document.documentElement.lang = htmlLang(language);
 }
 
-const uiPrefs = readJSON(PREF_STORAGE_KEY, { language: detectLanguage(), theme: 'light' as Theme });
+const uiPrefs = readJSON(PREF_STORAGE_KEY, { language: detectLanguage(), theme: 'system' as Theme });
 const uploadPrefs = readJSON(UPLOAD_PREF_KEY, { selectedStorageKey: '' });
 const initialLanguage = uiPrefs.language === 'en' || uiPrefs.language === 'zh' ? uiPrefs.language : detectLanguage();
 const initialTheme = normalizeTheme(uiPrefs.theme);

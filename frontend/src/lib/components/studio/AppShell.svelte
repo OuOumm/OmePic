@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Menu, Moon, Sun, Languages, Upload, History, KeyRound, Shield } from 'lucide-svelte';
+  import { Menu, Moon, Sun, Languages, Upload, History, KeyRound, Shield, Monitor } from 'lucide-svelte';
   import ToastViewport from './ToastViewport.svelte';
   import { preferences, setLanguage, setTheme, resolvedTheme } from '@/stores/preferences.svelte';
   import { t } from '@/i18n';
@@ -21,6 +21,7 @@
   let { children } = $props();
 
   const currentTheme = $derived(preferences.theme);
+  const themeButtonLabel = $derived(themeLabel(currentTheme));
   const scriptTag = 'script';
   const themeBootstrapScript = initialThemeScript();
 
@@ -35,8 +36,14 @@
     document.documentElement.classList.toggle('dark', isDark);
   }
 
+  function themeLabel(theme: typeof preferences.theme) {
+    if (theme === 'system') return t(preferences.language, 'common.system');
+    return theme === 'dark' ? t(preferences.language, 'common.dark') : t(preferences.language, 'common.light');
+  }
+
   function toggleTheme() {
-    setTheme(resolvedTheme() === 'dark' ? 'light' : 'dark');
+    const nextTheme = currentTheme === 'system' ? 'light' : currentTheme === 'light' ? 'dark' : 'system';
+    setTheme(nextTheme);
   }
 
   $effect(() => {
@@ -77,9 +84,9 @@
           <Languages class="size-4" />
           {preferences.language === 'zh' ? 'EN' : '中文'}
         </button>
-        <button class="studio-button text-xs" type="button" onclick={toggleTheme}>
-          {#if resolvedTheme() === 'dark'}<Sun class="size-4" />{:else}<Moon class="size-4" />{/if}
-          {resolvedTheme() === 'dark' ? t(preferences.language, 'common.light') : t(preferences.language, 'common.dark')}
+        <button class="studio-button text-xs" type="button" onclick={toggleTheme} aria-label={`${t(preferences.language, 'common.theme')}: ${themeButtonLabel}`} title={`${t(preferences.language, 'common.theme')}: ${themeButtonLabel}`}>
+          {#if currentTheme === 'system'}<Monitor class="size-4" />{:else if currentTheme === 'dark'}<Moon class="size-4" />{:else}<Sun class="size-4" />{/if}
+          {themeButtonLabel}
         </button>
       </div>
 

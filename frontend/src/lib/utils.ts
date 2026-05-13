@@ -136,19 +136,19 @@ export function getInitialThemeScriptTheme(rawPreferences: string | null, system
   try {
     const prefs = rawPreferences ? JSON.parse(rawPreferences) as { theme?: unknown } : {};
     if (prefs.theme === 'dark') return 'dark';
-    if (prefs.theme === 'system') return systemPrefersDark ? 'dark' : 'light';
-    return 'light';
+    if (prefs.theme === 'light') return 'light';
+    return systemPrefersDark ? 'dark' : 'light';
   } catch {
-    return 'light';
+    return systemPrefersDark ? 'dark' : 'light';
   }
 }
 
 export function initialThemeScript(storageKey = 'omepic-ui-preferences'): string {
-  return `(function(){try{var raw=localStorage.getItem(${JSON.stringify(storageKey)});var prefersDark=matchMedia('(prefers-color-scheme: dark)').matches;var prefs=raw?JSON.parse(raw):{};var theme=prefs.theme==='dark'||prefs.theme==='system'&&prefersDark?'dark':'light';document.documentElement.classList.toggle('dark',theme==='dark')}catch{document.documentElement.classList.remove('dark')}})();`;
+  return `(function(){try{var prefersDark=matchMedia('(prefers-color-scheme: dark)').matches;var raw=localStorage.getItem(${JSON.stringify(storageKey)});var prefs=raw?JSON.parse(raw):{};var theme=prefs.theme==='dark'||prefs.theme!=='light'&&prefersDark?'dark':'light';document.documentElement.classList.toggle('dark',theme==='dark')}catch{try{document.documentElement.classList.toggle('dark',matchMedia('(prefers-color-scheme: dark)').matches)}catch{document.documentElement.classList.remove('dark')}}})();`;
 }
 
 export function normalizeTheme(theme: unknown): Theme {
-  return theme === 'light' || theme === 'dark' || theme === 'system' ? theme : 'light';
+  return theme === 'light' || theme === 'dark' || theme === 'system' ? theme : 'system';
 }
 
 export function markdownSummaryText(content: string, maxLength = 180): string {
