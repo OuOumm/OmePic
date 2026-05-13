@@ -6,28 +6,18 @@
   import ImageDataTable from '@/components/studio/ImageDataTable.svelte';
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
-  import { ApiError, deleteImageByUid, getAnnouncements, getRuntimeSettings, uploadImageWithProgress } from '@/api';
+  import { deleteImageByUid, getAnnouncements, getRuntimeSettings } from '@/api';
   import { copyToClipboard } from '@/clipboard';
   import { getClientToken } from '@/client-token';
-  import { saveUploadToHistory, deleteUploadFromHistory, getRecentUploads } from '@/indexeddb/upload-history';
+  import { deleteUploadFromHistory, getRecentUploads } from '@/indexeddb/upload-history';
   import { t } from '@/i18n';
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
-  import type { Announcement, Language, UploadHistoryRecord, UploadResult } from '@/types';
+  import { getActiveTasks, enqueueFiles } from '@/stores/upload-queue.svelte';
+  import type { Announcement, UploadHistoryRecord } from '@/types';
   import { imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAbortError, isAllowedImageMimeType, isBlockedImageMimeType, normalizeDownloadFilename, normalizedImageMimeType } from '@/utils';
   import { errorMessage } from '@/ui-errors';
-  import { createProgressReporter, runWithConcurrency } from '@/upload-queue';
 
-  type UploadTask = {
-    id: string;
-    file: File;
-    progress: number;
-    status: 'pending' | 'uploading' | 'success' | 'error';
-    result?: UploadResult;
-    error?: string;
-  };
-
-  let tasks = $state<UploadTask[]>([]);
   let recentUploads = $state.raw<UploadHistoryRecord[]>([]);
   let runtimeLoading = $state(true);
   let runtimeError = $state<string | null>(null);
@@ -40,9 +30,7 @@
   let previewRecord = $state<UploadHistoryRecord | null>(null);
   let deleteTarget = $state<UploadHistoryRecord | null>(null);
   let deleting = $state(false);
-  let counter = 0;
 
-  const activeTasks = $derived(tasks.filter((task) => task.status === 'pending' || task.status === 'uploading' || task.status === 'error'));
   const siteName = $derived(preferences.runtimeSettings?.site.name || 'OmePic');
   const siteTitle = $derived(preferences.runtimeSettings?.site.tagline ? `${siteName} - ${preferences.runtimeSettings.site.tagline}` : siteName);
   const allowedMimeTypes = $derived(preferences.runtimeSettings?.upload.effective_allowed_mime_types ?? []);
@@ -50,18 +38,8 @@
   const uploadAccept = $derived(imageAcceptFromMimeTypes(allowedMimeTypes));
   const publicImageAllowedOrigins = $derived(imageUrlAllowedOrigins(preferences.runtimeSettings?.access.public_base_url));
   const maintenanceMode = $derived(preferences.runtimeSettings?.features.maintenance_mode ?? false);
+  const activeTasks = $derived(getActiveTasks());
   const uploadDisabled = $derived(runtimeLoading || maintenanceMode || activeTasks.some((task) => task.status === 'pending' || task.status === 'uploading'));
-  const uploadConcurrency = 3;
-
-  function uploadErrorMessage(lang: Language, err: unknown): string {
-    if (err instanceof ApiError && err.code === 'rate_limited') {
-      return typeof err.retryAfter === 'number'
-        ? t(lang, 'upload.rateLimitedWithRetry', { seconds: err.retryAfter })
-        : t(lang, 'upload.rateLimited');
-    }
-    if (err instanceof ApiError && err.code === 'network_error') return t(lang, 'upload.networkError');
-    return err instanceof Error ? err.message : t(lang, 'upload.error');
-  }
 
   async function loadRuntime(showLoading = true, signal?: AbortSignal) {
     if (showLoading) runtimeLoading = true;
@@ -122,78 +100,9 @@
     announcementDialogOpen = true;
   }
 
-  function validateFiles(files: File[]) {
-    const settings = preferences.runtimeSettings;
-    if (!settings) return files;
-    const maxBytes = settings.upload.max_upload_size_mb > 0 ? settings.upload.max_upload_size_mb * 1024 * 1024 : 0;
-    const allowedTypes = settings.upload.effective_allowed_mime_types;
-    return files.filter((file) => {
-      if (maxBytes > 0 && file.size > maxBytes) {
-        toast.error(`${file.name}: ${t(preferences.language, 'upload.error')}`);
-        return false;
-      }
-      if (allowedTypes.length > 0 && !isAllowedImageMimeType(file.type, allowedTypes)) {
-        toast.error(`${file.name}: ${t(preferences.language, 'upload.error')}`);
-        return false;
-      }
-      return true;
-    });
-  }
-
-  function updateTask(id: string, values: Partial<Omit<UploadTask, 'id' | 'file'>>) {
-    const task = tasks.find((item) => item.id === id);
-    if (task) Object.assign(task, values);
-  }
-
-  async function uploadTask(task: UploadTask) {
-    updateTask(task.id, { status: 'uploading', progress: 0 });
-    const token = getClientToken();
-    const reportProgress = createProgressReporter((progress) => {
-      updateTask(task.id, { progress });
-    });
-    try {
-      const result = await uploadImageWithProgress(
-        task.file,
-        token,
-        reportProgress,
-        preferences.selectedStorageKey || undefined,
-      );
-      updateTask(task.id, { status: 'success', progress: 100, result });
-      await saveUploadToHistory({
-        uid: result.uid,
-        url: result.url,
-        mime_type: result.mime_type,
-        size: result.size,
-        created_at: result.created_at,
-        is_duplicate: result.is_duplicate,
-        storage_key: result.storage_key,
-        storage_backend: result.storage_backend,
-        markdown: result.markdown,
-        bbcode: result.bbcode,
-        client_token: token,
-        original_filename: task.file.name,
-        saved_at: new Date().toISOString(),
-      });
-      toast.success(result.is_duplicate ? t(preferences.language, 'upload.duplicate') : t(preferences.language, 'upload.success'));
-      return result;
-    } catch (err) {
-      const message = uploadErrorMessage(preferences.language, err);
-      updateTask(task.id, { status: 'error', error: message });
-      toast.error(`${task.file.name}: ${message}`);
-      return null;
-    }
-  }
-
   async function handleFiles(files: File[]) {
-    if (maintenanceMode) {
-      toast.error(preferences.runtimeSettings?.features.maintenance_message ?? t(preferences.language, 'common.error'));
-      return;
-    }
-    const accepted = validateFiles(files);
-    const next = accepted.map((file) => ({ id: `task-${++counter}`, file, progress: 0, status: 'pending' as const }));
-    tasks = [...next, ...tasks];
-    const results = await runWithConcurrency(next.map((task) => () => uploadTask(task)), uploadConcurrency);
-    if (results.some(Boolean)) await loadRecent();
+    const uploaded = await enqueueFiles(files, maintenanceMode);
+    if (uploaded) await loadRecent();
   }
 
   async function handleUrlUpload() {
