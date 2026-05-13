@@ -236,6 +236,19 @@
     color: hsl(var(--marker-ink));
   }
 
+  /* Toast panel tones — border color matches the tone */
+  .studio-panel[data-tone="success"] {
+    border-color: hsl(var(--marker-green));
+  }
+
+  .studio-panel[data-tone="error"] {
+    border-color: hsl(var(--danger));
+  }
+
+  .studio-panel[data-tone="info"] {
+    border-color: hsl(var(--marker-blue));
+  }
+
   .studio-input {
     width: 100%;
     border: 2px solid hsl(var(--ink));

@@ -90,9 +90,17 @@
         </button>
       </div>
 
-      <button class="studio-button lg:hidden" type="button" onclick={() => (menuOpen = !menuOpen)} aria-label={t(preferences.language, 'nav.menu')} aria-expanded={menuOpen} aria-controls={mobileNavId}>
-        <Menu class="size-4" aria-hidden="true" />
-      </button>
+      <div class="flex items-center gap-1 lg:hidden">
+        <button class="studio-button text-xs font-black" type="button" onclick={() => setLanguage(preferences.language === 'zh' ? 'en' : 'zh')} aria-label={preferences.language === 'zh' ? 'Switch to English' : '切换到中文'}>
+          {preferences.language === 'zh' ? 'EN' : 'ZH'}
+        </button>
+        <button class="studio-button" type="button" onclick={toggleTheme} aria-label={`${t(preferences.language, 'common.theme')}: ${themeButtonLabel}`} title={`${t(preferences.language, 'common.theme')}: ${themeButtonLabel}`}>
+          {#if currentTheme === 'system'}<Monitor class="size-4" />{:else if currentTheme === 'dark'}<Moon class="size-4" />{:else}<Sun class="size-4" />{/if}
+        </button>
+        <button class="studio-button" type="button" onclick={() => (menuOpen = !menuOpen)} aria-label={t(preferences.language, 'nav.menu')} aria-expanded={menuOpen} aria-controls={mobileNavId}>
+          <Menu class="size-4" aria-hidden="true" />
+        </button>
+      </div>
     </div>
 
     {#if menuOpen}
