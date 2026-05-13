@@ -109,7 +109,7 @@
             <label class="grid min-w-0 gap-2 text-sm font-black">
               <span class="flex items-center gap-1">
                 {t(preferences.language, 'admin.runtimeAllowedMimeTypes')}
-                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))]" title={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} aria-label={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} role="img">
+                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} aria-label={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} role="img">
                   <CircleAlert class="size-3" />
                 </span>
               </span>

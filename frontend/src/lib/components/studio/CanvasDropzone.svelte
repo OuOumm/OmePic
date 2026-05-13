@@ -68,13 +68,13 @@
     </div>
 
     <div class="relative hidden min-h-72 lg:block">
-      <div class="absolute left-4 top-2 rotate-[-7deg] border-2 ink-line bg-[hsl(var(--marker-pink))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
+      <div class="absolute left-4 top-2 rotate-[-7deg] border-2 ink-line bg-[hsl(var(--marker-pink))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))] text-[hsl(var(--marker-ink))]">
         <Clipboard class="mb-2 size-7" />{t(language, 'upload.sourcePaste')}
       </div>
-      <div class="absolute right-2 top-24 rotate-[5deg] border-2 ink-line bg-[hsl(var(--marker-blue))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
+      <div class="absolute right-2 top-24 rotate-[5deg] border-2 ink-line bg-[hsl(var(--marker-blue))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))] text-[hsl(var(--marker-ink))]">
         <Link2 class="mb-2 size-7" />URL
       </div>
-      <div class="absolute bottom-3 left-10 rotate-[-2deg] border-2 ink-line bg-[hsl(var(--marker-green))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))]">
+      <div class="absolute bottom-3 left-10 rotate-[-2deg] border-2 ink-line bg-[hsl(var(--marker-green))] px-4 py-3 font-black shadow-[4px_4px_0_hsl(var(--ink))] text-[hsl(var(--marker-ink))]">
         <Zap class="mb-2 size-7" />{t(language, 'upload.sourceHost')}
       </div>
     </div>

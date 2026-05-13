@@ -153,7 +153,7 @@
       <div class="grid gap-4 lg:grid-cols-2">
         <section class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4">
           <div class="flex min-w-0 items-start gap-3">
-            <span class="grid size-10 shrink-0 place-items-center border-2 ink-line bg-[hsl(var(--marker-yellow))]"><Gauge class="size-5" /></span>
+            <span class="grid size-10 shrink-0 place-items-center border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]"><Gauge class="size-5" /></span>
             <div class="min-w-0">
               <span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-yellow))">{t(preferences.language, 'admin.rateLimitApi')}</span>
               <p class="mt-3 overflow-wrap-anywhere text-sm font-bold text-[hsl(var(--ink-muted))]">{limitSummary(system.runtime.rate_limit_window_minutes, system.runtime.rate_limit_max_requests)}</p>
@@ -171,7 +171,7 @@
 
         <section class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4">
           <div class="flex min-w-0 items-start gap-3">
-            <span class="grid size-10 shrink-0 place-items-center border-2 ink-line bg-[hsl(var(--marker-pink))]"><Gauge class="size-5" /></span>
+            <span class="grid size-10 shrink-0 place-items-center border-2 ink-line bg-[hsl(var(--marker-pink))] text-[hsl(var(--marker-ink))]"><Gauge class="size-5" /></span>
             <div class="min-w-0">
               <span class="tape-label rotate-[1deg]" style="background:hsl(var(--marker-pink))">{t(preferences.language, 'admin.rateLimitUpload')}</span>
               <p class="mt-3 overflow-wrap-anywhere text-sm font-bold text-[hsl(var(--ink-muted))]">{limitSummary(system.runtime.upload_rate_limit_window_minutes, system.runtime.upload_rate_limit_max_requests)}</p>

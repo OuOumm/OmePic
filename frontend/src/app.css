@@ -308,6 +308,7 @@
     font-weight: 950;
     letter-spacing: 0.06em;
     text-transform: uppercase;
+    color: hsl(var(--marker-ink));
   }
 
   .paper-strip {
