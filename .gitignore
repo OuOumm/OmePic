@@ -38,18 +38,11 @@ frontend/.next/
 frontend/node_modules/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
+frontend/.svelte-kit/
 
 # Editor/IDE
 # .idea/
 # .vscode/
-.agents/
-.codex/
-.claude/
 .trellis/
-任务.md
 AGENTS.md
-img.html
-start.md
-.trae/
-CODE_WIKI.md
-frontend/.svelte-kit/
+.pi/
