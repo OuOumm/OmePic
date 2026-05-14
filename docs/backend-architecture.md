@@ -318,8 +318,8 @@ type ImageService struct {
     logger       *slog.Logger
     generateUID  UIDGenerator    // func() (string, error)
     validateUID  UIDValidator    // func(string) error
-    transformer  func([]byte) ([]byte, error)  // → AVIF
-    operationMux sync.Mutex      // 串行化上传/删除操作
+    transformer  func([]byte, AVIFConversionSettings) ([]byte, error)  // → AVIF
+    hashLocks    *keyedMutex     // 按 storage+MD5 缩小上传去重临界区
 }
 ```
 
@@ -329,12 +329,11 @@ type ImageService struct {
 |------|------|
 | `Upload(ctx, input)` | 核心上传逻辑：校验 → MD5 去重 → AVIF 转换 → 存储 → 持久化 |
 | `Delete(ctx, uid, token, isAdmin, ip)` | 逻辑删除：验证 Token → 删 SQLite → 删 Redis → 修复 MD5 映射 |
+| `Open(ctx, uid)` | 图片解析并打开底层存储对象，供 HTTP 层流式输出 |
 | `Resolve(ctx, uid)` | 图片解析：优先查 Redis → 回退 SQLite |
 | `Preheat(ctx)` | 启动预热：加载全量数据到 Redis |
 | `PublicRuntimeSettings(ctx)` | 获取公开运行时配置 |
 | `EffectivePublicBaseURL(requestBase)` | 获取有效的公网 BaseURL |
-| `SetUIDGenerator(fn)` | 设置 UID 生成器（注入） |
-| `SetUIDValidator(fn)` | 设置 UID 验证器（注入） |
 
 #### 上传流程详解
 
@@ -442,6 +441,8 @@ storedUID: "abc123"      → 直接验证
 | PublicBaseURL | `""` | 公网基础 URL |
 | MaxUploadSizeMB | `20` | 上传大小上限（MB） |
 | AllowedMIMETypes | `image/jpeg,image/png,...` | 允许的 MIME 类型 |
+| AvifQuality | `60` | AVIF 编码质量，范围 `0..100`，`100` 表示无损 |
+| AvifSpeed | `8` | AVIF 编码速度，范围 `0..10`，数值越低通常越慢但压缩/质量取舍更好 |
 | AllowStorageSelect | `true` | 允许用户选择存储 |
 | MaintenanceMode | `false` | 维护模式 |
 | MaintenanceMessage | `系统维护中，请稍后再试` | 维护提示信息 |
@@ -455,6 +456,7 @@ storedUID: "abc123"      → 直接验证
 - `RuntimeSettingsManager.Load()` 会先把缺失的默认 runtime settings 写入 SQLite `config` 表。
 - 缺失补齐只使用 `INSERT ... ON CONFLICT DO NOTHING`，不会覆盖已有管理员配置。
 - `public_base_url` 只来自 SQLite；未配置时请求处理使用 request host 作为运行时回退。
+- 新上传且未命中去重的图片会使用当前 `avif_quality` / `avif_speed` 转换；重复上传复用已有物理对象，不重新转换。
 
 ### 6.5 错误定义
 

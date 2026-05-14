@@ -20,6 +20,8 @@ const runtimeSettings: RuntimeSettings = {
   public_base_url: '',
   max_upload_size_mb: 20,
   allowed_mime_types: ['image/png'],
+  avif_quality: 60,
+  avif_speed: 8,
   allow_storage_selection: true,
   maintenance_mode: false,
   maintenance_message: '',

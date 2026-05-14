@@ -137,6 +137,8 @@ export interface RuntimeSettings {
   public_base_url: string;
   max_upload_size_mb: number;
   allowed_mime_types: string[];
+  avif_quality: number;
+  avif_speed: number;
   allow_storage_selection: boolean;
   maintenance_mode: boolean;
   maintenance_message: string;

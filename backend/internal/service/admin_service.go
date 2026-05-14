@@ -111,6 +111,11 @@ type AdminIPBanDeleteImagesResult struct {
 	DeletedCount int `json:"deleted_count"`
 }
 
+const (
+	// DefaultAdminPassword is only a first-boot compatibility value; administrators should change it immediately.
+	DefaultAdminPassword = "admin123"
+)
+
 type AdminService struct {
 	repo         *repository.Repository
 	storage      *storage.Manager
@@ -161,7 +166,7 @@ func (s *AdminService) ChangePassword(ctx context.Context, oldPassword string, n
 	}
 	if err := s.verifyAdminPassword(ctx, oldPassword); err != nil {
 		if err == ErrForbidden {
-			return fmt.Errorf("%w: current password is incorrect", ErrForbidden)
+			return WithUserMessage(ErrForbidden, "current password is incorrect")
 		}
 		return err
 	}
@@ -177,10 +182,10 @@ func (s *AdminService) ChangePassword(ctx context.Context, oldPassword string, n
 
 func validateAdminPasswordStrength(password string) error {
 	if strings.TrimSpace(password) == "" {
-		return fmt.Errorf("%w: new password is required", ErrInvalidInput)
+		return WithUserMessage(ErrInvalidInput, "new password is required")
 	}
 	if len([]rune(password)) < 8 {
-		return fmt.Errorf("%w: new password must be at least 8 characters and include uppercase, lowercase, and symbol characters", ErrInvalidInput)
+		return WithUserMessage(ErrInvalidInput, "new password must be at least 8 characters and include uppercase, lowercase, and symbol characters")
 	}
 
 	hasUpper := false
@@ -197,7 +202,7 @@ func validateAdminPasswordStrength(password string) error {
 		}
 	}
 	if !hasUpper || !hasLower || !hasSymbol {
-		return fmt.Errorf("%w: new password must be at least 8 characters and include uppercase, lowercase, and symbol characters", ErrInvalidInput)
+		return WithUserMessage(ErrInvalidInput, "new password must be at least 8 characters and include uppercase, lowercase, and symbol characters")
 	}
 	return nil
 }
@@ -211,8 +216,8 @@ func (s *AdminService) verifyAdminPassword(ctx context.Context, password string)
 		if !repository.IsNotFound(err) {
 			return fmt.Errorf("%w: password lookup failed", ErrDependencyUnavailable)
 		}
-		// First boot: no hash stored yet, hash the default password and persist it.
-		defaultHash, hashErr := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+		// First boot: no hash stored yet, hash the documented compatibility default and persist it.
+		defaultHash, hashErr := bcrypt.GenerateFromPassword([]byte(DefaultAdminPassword), bcrypt.DefaultCost)
 		if hashErr != nil {
 			return fmt.Errorf("%w: password hash failed", ErrDependencyUnavailable)
 		}
@@ -293,7 +298,7 @@ func (s *AdminService) CreateIPBan(ctx context.Context, input AdminIPBanCreateIn
 		ipAddress = strings.TrimSpace(record.IPAddress)
 	}
 	if ipAddress == "" {
-		return AdminIPBanCreateResult{}, fmt.Errorf("%w: uid or ip_address is required", ErrInvalidInput)
+		return AdminIPBanCreateResult{}, WithUserMessage(ErrInvalidInput, "uid or ip_address is required")
 	}
 	reason := strings.TrimSpace(input.Reason)
 	if reason == "" {
@@ -441,7 +446,7 @@ func (s *AdminService) UpdateConfig(ctx context.Context, input AdminConfigUpdate
 	if input.DefaultStorageKey != nil {
 		defaultStorageKey = trimStringPointer(input.DefaultStorageKey)
 		if defaultStorageKey == "" {
-			return AdminConfigView{}, fmt.Errorf("%w: default storage key is required", ErrInvalidInput)
+			return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "default storage key is required")
 		}
 		if err := s.ensureStorageConfigExists(ctx, defaultStorageKey); err != nil {
 			return AdminConfigView{}, err
@@ -461,7 +466,7 @@ func (s *AdminService) UpdateConfig(ctx context.Context, input AdminConfigUpdate
 			targetKey = view.DefaultStorageKey
 		}
 		if targetKey == "" {
-			return AdminConfigView{}, fmt.Errorf("%w: storage key is required", ErrInvalidInput)
+			return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "storage key is required")
 		}
 
 		view, err := s.UpdateStorageConfig(ctx, targetKey, storageUpdateFromConfigPatch(input))
@@ -482,7 +487,7 @@ func (s *AdminService) CreateStorageConfig(ctx context.Context, input AdminStora
 		return AdminConfigView{}, err
 	}
 	if err := storage.ValidateConfig(next); err != nil {
-		return AdminConfigView{}, fmt.Errorf("%w: %s", ErrInvalidInput, err.Error())
+		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, err.Error())
 	}
 	if err := s.repo.CreateStorageConfig(ctx, next); err != nil {
 		return AdminConfigView{}, fmt.Errorf("%w: config save failed", ErrDependencyUnavailable)
@@ -510,14 +515,14 @@ func (s *AdminService) UpdateStorageConfig(ctx context.Context, storageKey strin
 			return AdminConfigView{}, fmt.Errorf("%w: image usage lookup failed", ErrDependencyUnavailable)
 		}
 		if count > 0 {
-			return AdminConfigView{}, fmt.Errorf("%w: storage backend cannot change while images still reference this storage key", ErrConflict)
+			return AdminConfigView{}, WithUserMessage(ErrConflict, "storage backend cannot change while images still reference this storage key")
 		}
 	}
 	if strings.TrimSpace(next.Name) == "" {
-		return AdminConfigView{}, fmt.Errorf("%w: storage instance name is required", ErrInvalidInput)
+		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "storage instance name is required")
 	}
 	if err := storage.ValidateConfig(next); err != nil {
-		return AdminConfigView{}, fmt.Errorf("%w: %s", ErrInvalidInput, err.Error())
+		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, err.Error())
 	}
 	if err := s.repo.UpdateStorageConfig(ctx, next); err != nil {
 		if repository.IsNotFound(err) {
@@ -540,14 +545,14 @@ func (s *AdminService) DeleteStorageConfig(ctx context.Context, storageKey strin
 		return AdminConfigView{}, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
 	}
 	if current.IsDefault {
-		return AdminConfigView{}, fmt.Errorf("%w: default storage instance cannot be deleted", ErrConflict)
+		return AdminConfigView{}, WithUserMessage(ErrConflict, "default storage instance cannot be deleted")
 	}
 	count, err := s.repo.CountImagesByStorageKey(ctx, storageKey)
 	if err != nil {
 		return AdminConfigView{}, fmt.Errorf("%w: image usage lookup failed", ErrDependencyUnavailable)
 	}
 	if count > 0 {
-		return AdminConfigView{}, fmt.Errorf("%w: storage instance is in use by existing images", ErrConflict)
+		return AdminConfigView{}, WithUserMessage(ErrConflict, "storage instance is in use by existing images")
 	}
 	if err := s.repo.DeleteStorageConfig(ctx, storageKey); err != nil {
 		if repository.IsNotFound(err) {
@@ -563,7 +568,7 @@ func (s *AdminService) DeleteStorageConfig(ctx context.Context, storageKey strin
 
 func (s *AdminService) SetDefaultStorageConfig(ctx context.Context, storageKey string) (AdminConfigView, error) {
 	if strings.TrimSpace(storageKey) == "" {
-		return AdminConfigView{}, fmt.Errorf("%w: storage key is required", ErrInvalidInput)
+		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "storage key is required")
 	}
 	if err := s.repo.SetDefaultStorageConfig(ctx, storageKey); err != nil {
 		if repository.IsNotFound(err) {
@@ -702,10 +707,10 @@ func buildStorageConfig(input AdminStorageConfigCreateInput) (config.RuntimeStor
 	name := strings.TrimSpace(input.Name)
 	backend := config.NormalizeStorageBackend(input.Backend)
 	if name == "" {
-		return config.RuntimeStorageConfig{}, fmt.Errorf("%w: storage instance name is required", ErrInvalidInput)
+		return config.RuntimeStorageConfig{}, WithUserMessage(ErrInvalidInput, "storage instance name is required")
 	}
 	if backend == "" {
-		return config.RuntimeStorageConfig{}, fmt.Errorf("%w: storage backend is required", ErrInvalidInput)
+		return config.RuntimeStorageConfig{}, WithUserMessage(ErrInvalidInput, "storage backend is required")
 	}
 	if storageKey == "" {
 		storageKey = newStorageKey(name, backend)

@@ -54,7 +54,7 @@ func TestAdminChangePasswordWeakNewPasswordReturnsInvalidInput(t *testing.T) {
 	handler := NewAdminHandler(newTestAdminService(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPut, "/admin/password", bytes.NewBufferString(`{"old_password":"admin123","new_password":"nosymbol1"}`))
+	request := httptest.NewRequest(http.MethodPut, "/admin/password", bytes.NewBufferString(`{"old_password":"`+service.DefaultAdminPassword+`","new_password":"nosymbol1"}`))
 	request.Header.Set("Content-Type", "application/json")
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = request

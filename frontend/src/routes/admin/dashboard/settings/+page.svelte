@@ -134,6 +134,24 @@
               </span>
               <input class="studio-input min-w-0 font-mono text-sm" bind:value={mimeTypesText} />
             </label>
+            <label class="grid gap-2 text-sm font-black">
+              <span class="flex items-center gap-1">
+                {t(preferences.language, 'admin.runtimeAvifQuality')}
+                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAvifQualityHint')} aria-label={t(preferences.language, 'admin.runtimeAvifQualityHint')} role="img">
+                  <CircleAlert class="size-3" />
+                </span>
+              </span>
+              <input class="studio-input" type="number" min="0" max="100" step="1" inputmode="numeric" bind:value={system.runtime.avif_quality} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              <span class="flex items-center gap-1">
+                {t(preferences.language, 'admin.runtimeAvifSpeed')}
+                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAvifSpeedHint')} aria-label={t(preferences.language, 'admin.runtimeAvifSpeedHint')} role="img">
+                  <CircleAlert class="size-3" />
+                </span>
+              </span>
+              <input class="studio-input" type="number" min="0" max="10" step="1" inputmode="numeric" bind:value={system.runtime.avif_speed} />
+            </label>
             <label class="flex items-center gap-3 border-y-2 ink-line py-3 font-black md:col-span-2">
               <input type="checkbox" bind:checked={system.runtime.allow_storage_selection} />
               {t(preferences.language, 'admin.settingsAllowSelection')}

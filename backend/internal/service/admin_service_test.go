@@ -377,11 +377,38 @@ func TestUpdateStorageConfigRejectsBackendChangeForInUseInstance(t *testing.T) {
 	}
 }
 
+func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+	if _, err := adminService.UpdateSystemSettings(ctx, RuntimeSettingsUpdateInput(defaultRuntimeSettings())); err != nil {
+		t.Fatalf("initial UpdateSystemSettings returned error: %v", err)
+	}
+
+	input := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
+	input.SiteName = "Should Not Persist"
+	input.AvifQuality = 101
+	_, err := adminService.UpdateSystemSettings(ctx, input)
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for invalid avif quality, got %v", err)
+	}
+
+	values, err := repo.GetAllConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetAllConfig returned error: %v", err)
+	}
+	if values["site_name"] == "Should Not Persist" {
+		t.Fatalf("expected invalid avif update to avoid partial site_name save")
+	}
+	if adminService.settings.Current().SiteName == "Should Not Persist" {
+		t.Fatalf("expected invalid avif update to avoid in-memory reconfigure")
+	}
+}
+
 func TestChangePasswordRequiresValidOldPasswordAndStoresBcryptHash(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
 
-	if err := adminService.ChangePassword(ctx, "admin123", "First-secret!"); err != nil {
+	if err := adminService.ChangePassword(ctx, DefaultAdminPassword, "First-secret!"); err != nil {
 		t.Fatalf("first-boot ChangePassword returned error: %v", err)
 	}
 	if _, err := adminService.Login(ctx, "First-secret!"); err != nil {

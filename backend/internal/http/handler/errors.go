@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -26,11 +25,11 @@ func writeServiceError(c *gin.Context, logger *slog.Logger, err error, dependenc
 
 	switch {
 	case errors.Is(err, service.ErrInvalidInput):
-		response.Error(c, http.StatusBadRequest, "invalid_input", sanitizeErrorMessage(err, "invalid request"))
+		response.Error(c, http.StatusBadRequest, "invalid_input", service.UserMessage(err, "invalid request"))
 	case errors.Is(err, service.ErrConflict):
-		response.Error(c, http.StatusConflict, "conflict", sanitizeErrorMessage(err, "conflict"))
+		response.Error(c, http.StatusConflict, "conflict", service.UserMessage(err, "conflict"))
 	case errors.Is(err, service.ErrNotFound):
-		response.Error(c, http.StatusNotFound, "not_found", sanitizeErrorMessage(err, "resource not found"))
+		response.Error(c, http.StatusNotFound, "not_found", service.UserMessage(err, "resource not found"))
 	case errors.Is(err, service.ErrForbidden):
 		response.Error(c, http.StatusForbidden, "forbidden", "forbidden")
 	case errors.Is(err, service.ErrDependencyUnavailable):
@@ -53,16 +52,4 @@ func serviceErrorOverride(err error, overrides map[error]serviceErrorMapping) (s
 		}
 	}
 	return serviceErrorMapping{}, false
-}
-
-func sanitizeErrorMessage(err error, fallback string) string {
-	message := err.Error()
-	parts := strings.SplitN(message, ": ", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	if message == "" {
-		return fallback
-	}
-	return message
 }

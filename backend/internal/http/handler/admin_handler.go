@@ -60,7 +60,7 @@ func (h *AdminHandler) ChangePassword(c *gin.Context) {
 			service.ErrForbidden: {
 				Status:  http.StatusForbidden,
 				Code:    "forbidden",
-				Message: sanitizeErrorMessage(err, "current password is incorrect"),
+				Message: service.UserMessage(err, "current password is incorrect"),
 			},
 		})
 		return

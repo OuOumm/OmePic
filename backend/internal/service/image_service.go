@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -55,19 +57,28 @@ type ImageResolverOutput struct {
 	CacheHit bool
 }
 
+type ImageOpenOutput struct {
+	Reader             io.ReadCloser
+	Size               int64
+	MIMEType           string
+	ContentDisposition string
+	Record             model.ImageRecord
+	CacheHit           bool
+}
+
 type UIDGenerator func() (string, error)
 type UIDValidator func(string) error
 
 type ImageService struct {
-	repo         *repository.Repository
-	cache        cache.ImageCache
-	storage      *storage.Manager
-	settings     *RuntimeSettingsManager
-	logger       *slog.Logger
-	generateUID  UIDGenerator
-	validateUID  UIDValidator
-	transformer  func([]byte) ([]byte, error)
-	operationMux sync.Mutex
+	repo        *repository.Repository
+	cache       cache.ImageCache
+	storage     *storage.Manager
+	settings    *RuntimeSettingsManager
+	logger      *slog.Logger
+	generateUID UIDGenerator
+	validateUID UIDValidator
+	transformer func([]byte, AVIFConversionSettings) ([]byte, error)
+	hashLocks   *keyedMutex
 }
 
 func NewImageService(
@@ -98,19 +109,8 @@ func NewImageService(
 		logger:      logger,
 		generateUID: generateUID,
 		validateUID: validateUID,
-		transformer: convertToAVIF,
-	}
-}
-
-func (s *ImageService) SetUIDGenerator(fn UIDGenerator) {
-	if fn != nil {
-		s.generateUID = fn
-	}
-}
-
-func (s *ImageService) SetUIDValidator(fn UIDValidator) {
-	if fn != nil {
-		s.validateUID = fn
+		transformer: convertToAVIFWithSettings,
+		hashLocks:   newKeyedMutex(),
 	}
 }
 
@@ -123,22 +123,19 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 	}
 	runtimeSettings := s.currentRuntimeSettings()
 	if runtimeSettings.MaintenanceMode {
-		return UploadOutput{}, fmt.Errorf("%w: %s", ErrInvalidInput, runtimeSettings.EffectiveMaintenanceMessage())
+		return UploadOutput{}, WithUserMessage(ErrInvalidInput, runtimeSettings.EffectiveMaintenanceMessage())
 	}
 	maxBytes := runtimeSettings.MaxUploadSizeBytes()
 	if len(input.Bytes) == 0 || (maxBytes > 0 && int64(len(input.Bytes)) > maxBytes) {
 		if maxBytes > 0 {
-			return UploadOutput{}, fmt.Errorf("%w: file size must be between 1 byte and %d MB", ErrInvalidInput, runtimeSettings.MaxUploadSizeMB)
+			return UploadOutput{}, WithUserMessage(ErrInvalidInput, fmt.Sprintf("file size must be between 1 byte and %d MB", runtimeSettings.MaxUploadSizeMB))
 		}
-		return UploadOutput{}, fmt.Errorf("%w: file size must be greater than 0 bytes", ErrInvalidInput)
+		return UploadOutput{}, WithUserMessage(ErrInvalidInput, "file size must be greater than 0 bytes")
 	}
 
 	if !runtimeSettingsAllowsMIME(runtimeSettings, input.MIMEType) {
-		return UploadOutput{}, fmt.Errorf("%w: file MIME type is not allowed", ErrInvalidInput)
+		return UploadOutput{}, WithUserMessage(ErrInvalidInput, "file MIME type is not allowed")
 	}
-
-	s.operationMux.Lock()
-	defer s.operationMux.Unlock()
 
 	resolved, err := s.resolveUploadStorage(input.StorageKey, runtimeSettings.AllowStorageSelect)
 	if err != nil {
@@ -146,6 +143,8 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 	}
 
 	md5Hash := md5Hex(input.Bytes)
+	unlockHash := s.hashLocks.Lock(scopedMD5SeenKey(resolved.Config.StorageKey, md5Hash))
+	defer unlockHash()
 
 	existing, err := s.findExistingByMD5(ctx, resolved.Config.StorageKey, md5Hash)
 	if err != nil {
@@ -181,7 +180,7 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 		return buildUploadOutput(record, input.BaseURL, input.OriginalFilename, true), nil
 	}
 
-	convertedBytes, err := s.transformer(input.Bytes)
+	convertedBytes, err := s.transformer(input.Bytes, avifConversionSettingsFromRuntime(runtimeSettings))
 	if err != nil {
 		return UploadOutput{}, err
 	}
@@ -219,9 +218,6 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 }
 
 func (s *ImageService) Delete(ctx context.Context, uid string, token string, isAdmin bool, ipAddress string) error {
-	s.operationMux.Lock()
-	defer s.operationMux.Unlock()
-
 	if !isAdmin {
 		if err := s.ensureIPAllowed(ctx, ipAddress); err != nil {
 			return err
@@ -277,6 +273,32 @@ func (s *ImageService) Delete(ctx context.Context, uid string, token string, isA
 	}
 
 	return nil
+}
+
+func (s *ImageService) Open(ctx context.Context, uid string) (ImageOpenOutput, error) {
+	result, err := s.Resolve(ctx, uid)
+	if err != nil {
+		return ImageOpenOutput{}, err
+	}
+
+	resolved, err := s.storage.ForKey(result.Record.StorageKey)
+	if err != nil {
+		return ImageOpenOutput{}, fmt.Errorf("%w: storage backend resolution failed", ErrDependencyUnavailable)
+	}
+
+	file, err := resolved.Provider.Open(ctx, result.Record.FilePath)
+	if err != nil {
+		return ImageOpenOutput{}, fmt.Errorf("%w: image open failed", ErrDependencyUnavailable)
+	}
+
+	return ImageOpenOutput{
+		Reader:             file.Reader,
+		Size:               file.Size,
+		MIMEType:           result.Record.MIMEType,
+		ContentDisposition: contentDispositionForPath(result.Record.FilePath),
+		Record:             result.Record,
+		CacheHit:           result.CacheHit,
+	}, nil
 }
 
 func (s *ImageService) Resolve(ctx context.Context, uid string) (ImageResolverOutput, error) {
@@ -468,11 +490,16 @@ func (s *ImageService) resolveUploadStorage(storageKey string, allowStorageSelec
 	resolved, err := s.storage.ForKey(key)
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown storage key") || strings.Contains(err.Error(), "storage key is required") {
-			return storage.ResolvedProvider{}, fmt.Errorf("%w: storage instance not found", ErrNotFound)
+			return storage.ResolvedProvider{}, WithUserMessage(ErrNotFound, "storage instance not found")
 		}
 		return storage.ResolvedProvider{}, fmt.Errorf("%w: selected storage backend is invalid", ErrDependencyUnavailable)
 	}
 	return resolved, nil
+}
+
+func contentDispositionForPath(filePath string) string {
+	filename := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\r", "", "\n", "").Replace(filepath.Base(filePath))
+	return "inline; filename=\"" + filename + "\""
 }
 
 func buildUploadOutput(record model.ImageRecord, baseURL string, originalFilename string, duplicate bool) UploadOutput {
@@ -583,6 +610,42 @@ func scopedMD5CacheKey(storageKey string, md5Hash string) string {
 
 func scopedMD5SeenKey(storageKey string, md5Hash string) string {
 	return strings.TrimSpace(storageKey) + "\x00" + md5Hash
+}
+
+type keyedMutex struct {
+	mu    sync.Mutex
+	locks map[string]*refCountedMutex
+}
+
+type refCountedMutex struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func newKeyedMutex() *keyedMutex {
+	return &keyedMutex{locks: make(map[string]*refCountedMutex)}
+}
+
+func (m *keyedMutex) Lock(key string) func() {
+	m.mu.Lock()
+	lock := m.locks[key]
+	if lock == nil {
+		lock = &refCountedMutex{}
+		m.locks[key] = lock
+	}
+	lock.refs++
+	m.mu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		m.mu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(m.locks, key)
+		}
+		m.mu.Unlock()
+	}
 }
 
 func (s *ImageService) normalizeDeleteUID(rawUID string, isAdmin bool) (string, error) {

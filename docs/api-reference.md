@@ -543,6 +543,8 @@ GET /admin/system-settings
       "public_base_url": "",
       "max_upload_size_mb": 20,
       "allowed_mime_types": ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"],
+      "avif_quality": 60,
+      "avif_speed": 8,
       "allow_storage_selection": true,
       "maintenance_mode": false,
       "maintenance_message": "",
@@ -584,7 +586,7 @@ GET /admin/system-settings
 PUT /admin/system-settings
 ```
 
-**请求体**: 同 `runtime` 字段结构。
+**请求体**: 同 `runtime` 字段结构。`avif_quality` 范围为 `0..100`（`100` 表示无损），`avif_speed` 范围为 `0..10`（数值越低通常越慢但压缩/质量取舍更好）。越界返回 `invalid_input`，不会保存部分配置。
 
 ### 3.9 公告管理
 

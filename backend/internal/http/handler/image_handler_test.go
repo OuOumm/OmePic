@@ -257,7 +257,6 @@ func newImageHandlerTestHarness(t *testing.T) (*ImageHandler, service.UploadOutp
 
 	return NewImageHandler(
 		imageService,
-		manager,
 		slog.New(slog.NewTextHandler(discardWriter{}, nil)),
 		nil,
 	), uploadResult

@@ -78,7 +78,7 @@ func (s *AnnouncementService) CreateAnnouncement(ctx context.Context, input Anno
 
 func (s *AnnouncementService) UpdateAnnouncement(ctx context.Context, id int64, input AnnouncementInput) (AnnouncementView, error) {
 	if id <= 0 {
-		return AnnouncementView{}, fmt.Errorf("%w: announcement id is required", ErrInvalidInput)
+		return AnnouncementView{}, WithUserMessage(ErrInvalidInput, "announcement id is required")
 	}
 	announcement, err := announcementFromInput(input)
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *AnnouncementService) UpdateAnnouncement(ctx context.Context, id int64, 
 
 func (s *AnnouncementService) DeleteAnnouncement(ctx context.Context, id int64) error {
 	if id <= 0 {
-		return fmt.Errorf("%w: announcement id is required", ErrInvalidInput)
+		return WithUserMessage(ErrInvalidInput, "announcement id is required")
 	}
 	if err := s.repo.DeleteAnnouncement(ctx, id); err != nil {
 		if err == sql.ErrNoRows {
@@ -110,7 +110,7 @@ func (s *AnnouncementService) DeleteAnnouncement(ctx context.Context, id int64) 
 
 func (s *AnnouncementService) ArchiveAnnouncement(ctx context.Context, id int64) (AnnouncementView, error) {
 	if id <= 0 {
-		return AnnouncementView{}, fmt.Errorf("%w: announcement id is required", ErrInvalidInput)
+		return AnnouncementView{}, WithUserMessage(ErrInvalidInput, "announcement id is required")
 	}
 	archived, err := s.repo.ArchiveAnnouncement(ctx, id)
 	if err != nil {
@@ -128,10 +128,10 @@ func announcementFromInput(input AnnouncementInput) (model.Announcement, error) 
 	status := normalizeAnnouncementStatus(input.Status)
 	priority := normalizeAnnouncementPriority(input.Priority)
 	if title == "" {
-		return model.Announcement{}, fmt.Errorf("%w: title is required", ErrInvalidInput)
+		return model.Announcement{}, WithUserMessage(ErrInvalidInput, "title is required")
 	}
 	if content == "" {
-		return model.Announcement{}, fmt.Errorf("%w: content is required", ErrInvalidInput)
+		return model.Announcement{}, WithUserMessage(ErrInvalidInput, "content is required")
 	}
 	startsAt, err := parseAnnouncementTime(input.StartsAt)
 	if err != nil {
@@ -142,7 +142,7 @@ func announcementFromInput(input AnnouncementInput) (model.Announcement, error) 
 		return model.Announcement{}, err
 	}
 	if startsAt != nil && endsAt != nil && !endsAt.After(*startsAt) {
-		return model.Announcement{}, fmt.Errorf("%w: end time must be after start time", ErrInvalidInput)
+		return model.Announcement{}, WithUserMessage(ErrInvalidInput, "end time must be after start time")
 	}
 	return model.Announcement{
 		Title:     title,
@@ -189,7 +189,7 @@ func parseAnnouncementTime(value *string) (*time.Time, error) {
 			return &utc, nil
 		}
 	}
-	return nil, fmt.Errorf("%w: announcement time is invalid", ErrInvalidInput)
+	return nil, WithUserMessage(ErrInvalidInput, "announcement time is invalid")
 }
 
 func announcementViews(items []model.Announcement, includeStatus bool) []AnnouncementView {

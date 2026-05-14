@@ -510,7 +510,7 @@ DELETE /admin/images
 - `Preheat(ctx)`：启动时预热 Redis cache。
 - `EffectivePublicBaseURL(requestBase)`：按 SQLite runtime setting 或请求 Host 计算公开 URL base。
 - `ensureIPAllowed(ctx, ipAddress)`：检查 active IP ban。
-- `convertToAVIF(data)`：图片转 AVIF。
+- `convertToAVIFWithSettings(data, settings)`：按 runtime AVIF 质量/速度参数转换图片。
 - `ipHash(ip)`：SHA-256 IP hash。
 - `maskIPAddress(ip)`：IPv4/IPv6 脱敏展示。
 
@@ -576,6 +576,8 @@ DELETE /admin/images
 - `public_base_url`
 - `max_upload_size_mb`
 - `allowed_mime_types`
+- `avif_quality`
+- `avif_speed`
 - `allow_storage_selection`
 - `maintenance_mode`
 - `maintenance_message`
@@ -591,6 +593,8 @@ DELETE /admin/images
 - 维护提示：`系统维护中，请稍后再试`
 - API 限流：1 分钟 120 次
 - 上传限流：10 分钟 20 次
+- AVIF 质量：60（范围 0..100，100 表示无损）
+- AVIF 速度：8（范围 0..10，数值越低通常越慢但压缩/质量取舍更好）
 
 关键函数：
 

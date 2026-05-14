@@ -92,6 +92,7 @@ func main() {
 		UIDEncryptionKey: cfg.UIDEncryptionKey,
 	})
 	announcementService := service.NewAnnouncementService(repo)
+	healthService := service.NewHealthService(repo, imageCache)
 	ipResolver := clientip.NewResolver(nil, "")
 
 	if _, err := imageService.Preheat(ctx); err != nil {
@@ -101,10 +102,10 @@ func main() {
 
 	engine := router.New(router.Dependencies{
 		Logger:              logger,
-		ImageHandler:        handler.NewImageHandler(imageService, storageManager, logger, ipResolver),
+		ImageHandler:        handler.NewImageHandler(imageService, logger, ipResolver),
 		AdminHandler:        handler.NewAdminHandler(adminService, logger),
 		AnnouncementHandler: handler.NewAnnouncementHandler(announcementService, logger),
-		HealthHandler:       handler.NewHealthHandler(repo, imageCache),
+		HealthHandler:       handler.NewHealthHandler(healthService),
 		Settings:            settingsManager,
 		RateLimiter:         rateLimiter,
 		IPResolver:          ipResolver,

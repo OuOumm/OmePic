@@ -20,6 +20,8 @@ const (
 	DefaultRateLimitMaxRequests         = 120
 	DefaultUploadRateLimitWindowMinutes = 10
 	DefaultUploadRateLimitMaxRequests   = 20
+	DefaultAVIFQuality                  = 60
+	DefaultAVIFSpeed                    = 8
 	bytesPerMB                          = 1024 * 1024
 )
 
@@ -39,6 +41,8 @@ type RuntimeSettings struct {
 	PublicBaseURL                string   `json:"public_base_url"`
 	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
+	AvifQuality                  int      `json:"avif_quality"`
+	AvifSpeed                    int      `json:"avif_speed"`
 	AllowStorageSelect           bool     `json:"allow_storage_selection"`
 	MaintenanceMode              bool     `json:"maintenance_mode"`
 	MaintenanceMessage           string   `json:"maintenance_message"`
@@ -129,6 +133,8 @@ type RuntimeSettingsUpdateInput struct {
 	PublicBaseURL                string   `json:"public_base_url"`
 	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
+	AvifQuality                  int      `json:"avif_quality"`
+	AvifSpeed                    int      `json:"avif_speed"`
 	AllowStorageSelect           bool     `json:"allow_storage_selection"`
 	MaintenanceMode              bool     `json:"maintenance_mode"`
 	MaintenanceMessage           string   `json:"maintenance_message"`
@@ -225,6 +231,8 @@ func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSett
 		PublicBaseURL:                strings.TrimSpace(input.PublicBaseURL),
 		MaxUploadSizeMB:              input.MaxUploadSizeMB,
 		AllowedMIMETypes:             input.AllowedMIMETypes,
+		AvifQuality:                  input.AvifQuality,
+		AvifSpeed:                    input.AvifSpeed,
 		AllowStorageSelect:           input.AllowStorageSelect,
 		MaintenanceMode:              input.MaintenanceMode,
 		MaintenanceMessage:           strings.TrimSpace(input.MaintenanceMessage),
@@ -236,14 +244,20 @@ func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSett
 	if settings.PublicBaseURL != "" {
 		parsed, err := url.Parse(settings.PublicBaseURL)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return RuntimeSettings{}, fmt.Errorf("%w: public base url must be an http or https URL", ErrInvalidInput)
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "public base url must be an http or https URL")
 		}
 	}
 	if settings.MaxUploadSizeMB < 0 {
-		return RuntimeSettings{}, fmt.Errorf("%w: max upload size must be zero or greater", ErrInvalidInput)
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "max upload size must be zero or greater")
 	}
 	if settings.RateLimitWindowMinutes < 0 || settings.RateLimitMaxRequests < 0 || settings.UploadRateLimitWindowMinutes < 0 || settings.UploadRateLimitMaxRequests < 0 {
-		return RuntimeSettings{}, fmt.Errorf("%w: rate limit values must be zero or greater", ErrInvalidInput)
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "rate limit values must be zero or greater")
+	}
+	if settings.AvifQuality < 0 || settings.AvifQuality > 100 {
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif quality must be between 0 and 100")
+	}
+	if settings.AvifSpeed < 0 || settings.AvifSpeed > 10 {
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif speed must be between 0 and 10")
 	}
 	allowed, err := normalizeMIMETypes(settings.AllowedMIMETypes)
 	if err != nil {
@@ -261,6 +275,8 @@ func RuntimeSettingsToConfigValues(settings RuntimeSettings) map[string]string {
 		"public_base_url":                  settings.PublicBaseURL,
 		"max_upload_size_mb":               strconv.Itoa(settings.MaxUploadSizeMB),
 		"allowed_mime_types":               strings.Join(settings.AllowedMIMETypes, ","),
+		"avif_quality":                     strconv.Itoa(settings.AvifQuality),
+		"avif_speed":                       strconv.Itoa(settings.AvifSpeed),
 		"allow_storage_selection":          boolStringValue(settings.AllowStorageSelect),
 		"maintenance_mode":                 boolStringValue(settings.MaintenanceMode),
 		"maintenance_message":              settings.MaintenanceMessage,
@@ -285,7 +301,7 @@ func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error
 	if value, ok := values["max_upload_size_mb"]; ok && strings.TrimSpace(value) != "" {
 		parsed, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
-			return RuntimeSettings{}, fmt.Errorf("%w: max upload size is invalid", ErrInvalidInput)
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "max upload size is invalid")
 		}
 		settings.MaxUploadSizeMB = parsed
 	}
@@ -297,6 +313,20 @@ func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error
 		settings.AllowedMIMETypes = allowed
 	} else {
 		values["allowed_mime_types"] = defaultAllowedMIMETypesCSV
+	}
+	if value, ok := values["avif_quality"]; ok && strings.TrimSpace(value) != "" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil {
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif quality is invalid")
+		}
+		settings.AvifQuality = parsed
+	}
+	if value, ok := values["avif_speed"]; ok && strings.TrimSpace(value) != "" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil {
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif speed is invalid")
+		}
+		settings.AvifSpeed = parsed
 	}
 	if value, ok := values["allow_storage_selection"]; ok && strings.TrimSpace(value) != "" {
 		settings.AllowStorageSelect = parseBoolValue(value)
@@ -310,28 +340,28 @@ func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error
 	if value, ok := values["rate_limit_window_minutes"]; ok && strings.TrimSpace(value) != "" {
 		parsed, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
-			return RuntimeSettings{}, fmt.Errorf("%w: rate limit window is invalid", ErrInvalidInput)
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "rate limit window is invalid")
 		}
 		settings.RateLimitWindowMinutes = parsed
 	}
 	if value, ok := values["rate_limit_max_requests"]; ok && strings.TrimSpace(value) != "" {
 		parsed, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
-			return RuntimeSettings{}, fmt.Errorf("%w: rate limit max requests is invalid", ErrInvalidInput)
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "rate limit max requests is invalid")
 		}
 		settings.RateLimitMaxRequests = parsed
 	}
 	if value, ok := values["upload_rate_limit_window_minutes"]; ok && strings.TrimSpace(value) != "" {
 		parsed, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
-			return RuntimeSettings{}, fmt.Errorf("%w: upload rate limit window is invalid", ErrInvalidInput)
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "upload rate limit window is invalid")
 		}
 		settings.UploadRateLimitWindowMinutes = parsed
 	}
 	if value, ok := values["upload_rate_limit_max_requests"]; ok && strings.TrimSpace(value) != "" {
 		parsed, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
-			return RuntimeSettings{}, fmt.Errorf("%w: upload rate limit max requests is invalid", ErrInvalidInput)
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "upload rate limit max requests is invalid")
 		}
 		settings.UploadRateLimitMaxRequests = parsed
 	}
@@ -344,6 +374,8 @@ func defaultRuntimeSettings() RuntimeSettings {
 		SiteTagline:                  DefaultSiteTagline,
 		MaxUploadSizeMB:              20,
 		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
+		AvifQuality:                  DefaultAVIFQuality,
+		AvifSpeed:                    DefaultAVIFSpeed,
 		AllowStorageSelect:           true,
 		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
 		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
@@ -396,10 +428,10 @@ func normalizeMIMETypes(values []string) ([]string, error) {
 			mimeType = "image/jpeg"
 		}
 		if !strings.HasPrefix(mimeType, "image/") || strings.ContainsAny(mimeType, " ;") {
-			return nil, fmt.Errorf("%w: allowed mime types must be image MIME values", ErrInvalidInput)
+			return nil, WithUserMessage(ErrInvalidInput, "allowed mime types must be image MIME values")
 		}
 		if mimeType == "image/svg+xml" {
-			return nil, fmt.Errorf("%w: svg uploads are not allowed", ErrInvalidInput)
+			return nil, WithUserMessage(ErrInvalidInput, "svg uploads are not allowed")
 		}
 		if _, ok := seen[mimeType]; ok {
 			continue

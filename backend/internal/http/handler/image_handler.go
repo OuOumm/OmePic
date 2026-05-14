@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,20 +13,17 @@ import (
 	"omepic/backend/internal/http/clientip"
 	"omepic/backend/internal/response"
 	"omepic/backend/internal/service"
-	"omepic/backend/internal/storage"
 )
 
 type ImageHandler struct {
 	service    *service.ImageService
-	storage    *storage.Manager
 	logger     *slog.Logger
 	ipResolver *clientip.Resolver
 }
 
-func NewImageHandler(imageService *service.ImageService, storageManager *storage.Manager, logger *slog.Logger, ipResolver *clientip.Resolver) *ImageHandler {
+func NewImageHandler(imageService *service.ImageService, logger *slog.Logger, ipResolver *clientip.Resolver) *ImageHandler {
 	return &ImageHandler{
 		service:    imageService,
-		storage:    storageManager,
 		logger:     logger,
 		ipResolver: ipResolver,
 	}
@@ -106,42 +104,28 @@ func (h *ImageHandler) Delete(c *gin.Context) {
 }
 
 func (h *ImageHandler) Serve(c *gin.Context) {
-	result, err := h.service.Resolve(c.Request.Context(), c.Param("uid"))
+	result, err := h.service.Open(c.Request.Context(), c.Param("uid"))
 	if err != nil {
 		switch {
-		case err == service.ErrNotFound:
+		case errors.Is(err, service.ErrNotFound):
 			c.Status(http.StatusNotFound)
 		default:
-			h.logger.Error("image resolve failed", "error", err.Error(), "uid", c.Param("uid"))
+			h.logger.Error("image open failed", "error", err.Error(), "uid", c.Param("uid"))
 			c.Status(http.StatusServiceUnavailable)
 		}
 		return
 	}
+	defer result.Reader.Close()
 
-	resolved, providerErr := h.storage.ForKey(result.Record.StorageKey)
-	if providerErr != nil {
-		h.logger.Error("storage backend resolution failed", "error", providerErr.Error(), "uid", result.Record.UID, "storage_key", result.Record.StorageKey, "storage_backend", result.Record.StorageBackend)
-		c.Status(http.StatusServiceUnavailable)
-		return
-	}
-
-	file, err := resolved.Provider.Open(c.Request.Context(), result.Record.FilePath)
-	if err != nil {
-		h.logger.Error("image open failed", "error", err.Error(), "uid", result.Record.UID, "storage_key", result.Record.StorageKey, "storage_backend", result.Record.StorageBackend)
-		c.Status(http.StatusServiceUnavailable)
-		return
-	}
-	defer file.Reader.Close()
-
-	c.Header("Content-Type", result.Record.MIMEType)
+	c.Header("Content-Type", result.MIMEType)
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
-	c.Header("Content-Disposition", "inline; filename=\""+filepath.Base(result.Record.FilePath)+"\"")
-	c.DataFromReader(http.StatusOK, file.Size, result.Record.MIMEType, file.Reader, nil)
+	c.Header("Content-Disposition", result.ContentDisposition)
+	c.DataFromReader(http.StatusOK, result.Size, result.MIMEType, result.Reader, nil)
 }
 
 func (h *ImageHandler) mapJSONError(c *gin.Context, err error) {
-	if err == service.ErrNotFound {
-		response.Error(c, http.StatusNotFound, "not_found", "image not found")
+	if errors.Is(err, service.ErrNotFound) {
+		response.Error(c, http.StatusNotFound, "not_found", service.UserMessage(err, "image not found"))
 		return
 	}
 	writeServiceError(c, h.logger, err, "dependency failure", "unexpected image handler error", map[error]serviceErrorMapping{

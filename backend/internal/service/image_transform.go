@@ -19,16 +19,28 @@ const (
 	publicImageMIMEType  = "image/avif"
 )
 
-func convertToAVIF(payload []byte) ([]byte, error) {
+type AVIFConversionSettings struct {
+	Quality int
+	Speed   int
+}
+
+func avifConversionSettingsFromRuntime(settings RuntimeSettings) AVIFConversionSettings {
+	return AVIFConversionSettings{
+		Quality: settings.AvifQuality,
+		Speed:   settings.AvifSpeed,
+	}
+}
+
+func convertToAVIFWithSettings(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("%w: file type is not allowed", ErrInvalidInput)
+		return nil, WithUserMessage(ErrInvalidInput, "file type is not allowed")
 	}
 
 	var output bytes.Buffer
 	if err := avif.Encode(&output, img, avif.Options{
-		Quality: 60,
-		Speed:   8,
+		Quality: settings.Quality,
+		Speed:   settings.Speed,
 	}); err != nil {
 		return nil, fmt.Errorf("%w: failed to convert image to avif", ErrDependencyUnavailable)
 	}

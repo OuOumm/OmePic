@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gen2brain/avif"
 
@@ -23,6 +25,7 @@ import (
 )
 
 type fakeCache struct {
+	mu             sync.Mutex
 	images         map[string]model.CachedImage
 	md5ToUID       map[string]string
 	imageSets      int
@@ -39,6 +42,8 @@ func newFakeCache() *fakeCache {
 }
 
 func (c *fakeCache) GetImage(_ context.Context, uid string) (*model.CachedImage, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	value, ok := c.images[uid]
 	if !ok {
 		return nil, nil
@@ -48,12 +53,16 @@ func (c *fakeCache) GetImage(_ context.Context, uid string) (*model.CachedImage,
 }
 
 func (c *fakeCache) SetImage(_ context.Context, record model.ImageRecord) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.images[record.UID] = model.CachedImageFromRecord(record)
 	c.imageSets++
 	return nil
 }
 
 func (c *fakeCache) SetImages(_ context.Context, records []model.ImageRecord) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, record := range records {
 		c.images[record.UID] = model.CachedImageFromRecord(record)
 		c.imageSets++
@@ -63,15 +72,21 @@ func (c *fakeCache) SetImages(_ context.Context, records []model.ImageRecord) er
 }
 
 func (c *fakeCache) DeleteImage(_ context.Context, uid string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	delete(c.images, uid)
 	return nil
 }
 
 func (c *fakeCache) GetMD5(_ context.Context, md5Hash string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.md5ToUID[md5Hash], nil
 }
 
 func (c *fakeCache) SetMD5IfAbsent(_ context.Context, md5Hash string, uid string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if _, ok := c.md5ToUID[md5Hash]; !ok {
 		c.md5ToUID[md5Hash] = uid
 		c.md5Sets++
@@ -80,12 +95,16 @@ func (c *fakeCache) SetMD5IfAbsent(_ context.Context, md5Hash string, uid string
 }
 
 func (c *fakeCache) SetMD5(_ context.Context, md5Hash string, uid string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.md5ToUID[md5Hash] = uid
 	c.md5Sets++
 	return nil
 }
 
 func (c *fakeCache) SetMD5Mappings(_ context.Context, mappings map[string]string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for md5Hash, uid := range mappings {
 		c.md5ToUID[md5Hash] = uid
 		c.md5Sets++
@@ -95,6 +114,8 @@ func (c *fakeCache) SetMD5Mappings(_ context.Context, mappings map[string]string
 }
 
 func (c *fakeCache) DeleteMD5(_ context.Context, md5Hash string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	delete(c.md5ToUID, md5Hash)
 	return nil
 }
@@ -103,7 +124,34 @@ func (c *fakeCache) Ping(_ context.Context) error {
 	return nil
 }
 
+func (c *fakeCache) cachedMD5(key string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	value, ok := c.md5ToUID[key]
+	return value, ok
+}
+
+func (c *fakeCache) setCachedMD5(key string, uid string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.md5ToUID[key] = uid
+}
+
+func (c *fakeCache) hasCachedImage(uid string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.images[uid]
+	return ok
+}
+
+func (c *fakeCache) stats() (imageSets int, md5Sets int, imageBatchSets int, md5BatchSets int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.imageSets, c.md5Sets, c.imageBatchSets, c.md5BatchSets
+}
+
 type fakeUIDCodec struct {
+	mu     sync.Mutex
 	queued []string
 	valid  map[string]struct{}
 }
@@ -115,6 +163,8 @@ func newFakeUIDCodec() *fakeUIDCodec {
 }
 
 func (c *fakeUIDCodec) Queue(ids ...string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.queued = append(c.queued, ids...)
 	for _, id := range ids {
 		c.valid[id] = struct{}{}
@@ -122,12 +172,16 @@ func (c *fakeUIDCodec) Queue(ids ...string) {
 }
 
 func (c *fakeUIDCodec) Add(ids ...string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, id := range ids {
 		c.valid[id] = struct{}{}
 	}
 }
 
 func (c *fakeUIDCodec) Generate() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if len(c.queued) == 0 {
 		return "", errors.New("no queued uid values")
 	}
@@ -138,6 +192,8 @@ func (c *fakeUIDCodec) Generate() (string, error) {
 }
 
 func (c *fakeUIDCodec) Validate(uid string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if _, ok := c.valid[uid]; !ok {
 		return errors.New("invalid uid")
 	}
@@ -498,9 +554,9 @@ func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 
 	sourceBytes := mustPNGBytes(t, color.RGBA{R: 80, G: 160, B: 40, A: 255})
 	conversionCalls := 0
-	service.transformer = func(payload []byte) ([]byte, error) {
+	service.transformer = func(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
 		conversionCalls++
-		return convertToAVIF(payload)
+		return convertToAVIFWithSettings(payload, settings)
 	}
 
 	if _, err := service.Upload(ctx, UploadInput{
@@ -536,6 +592,108 @@ func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 	}
 	if secondRecord.MD5Hash != md5Hex(sourceBytes) {
 		t.Fatalf("expected duplicate record md5 hash to match original upload bytes")
+	}
+}
+
+func TestUploadSerializesSameStorageMD5WithoutGlobalUploadLock(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-a", "uid-b", "uid-c", "uid-d")
+	firstBytes := mustPNGBytes(t, color.RGBA{R: 100, G: 20, B: 40, A: 255})
+	secondBytes := mustPNGBytes(t, color.RGBA{R: 20, G: 100, B: 40, A: 255})
+
+	started := make(chan string, 3)
+	release := make(chan struct{})
+	service.transformer = func(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
+		started <- md5Hex(payload)
+		<-release
+		return convertToAVIFWithSettings(payload, settings)
+	}
+
+	runUpload := func(token string, payload []byte) <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			_, err := service.Upload(ctx, UploadInput{
+				Token:            token,
+				OriginalFilename: "sample.png",
+				MIMEType:         "image/png",
+				Bytes:            payload,
+				BaseURL:          "http://localhost:8080",
+			})
+			done <- err
+		}()
+		return done
+	}
+
+	firstDone := runUpload("token-a", firstBytes)
+	if got := <-started; got != md5Hex(firstBytes) {
+		t.Fatalf("expected first upload to start first transform, got %q", got)
+	}
+
+	secondDone := runUpload("token-b", secondBytes)
+	select {
+	case got := <-started:
+		if got != md5Hex(secondBytes) {
+			t.Fatalf("expected different md5 upload to start while first is blocked, got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("expected different md5 upload to proceed without global upload lock")
+	}
+
+	duplicateDone := runUpload("token-c", firstBytes)
+	select {
+	case got := <-started:
+		t.Fatalf("same storage/md5 upload should not start another transform while first is blocked, got %q", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	for _, done := range []<-chan error{firstDone, secondDone, duplicateDone} {
+		if err := <-done; err != nil {
+			t.Fatalf("Upload returned error: %v", err)
+		}
+	}
+}
+
+func TestUploadUsesConfiguredAVIFConversionSettings(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-1")
+	service.settings.Reconfigure(RuntimeSettings{
+		SiteName:                     DefaultSiteName,
+		SiteTagline:                  DefaultSiteTagline,
+		MaxUploadSizeMB:              20,
+		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
+		AvifQuality:                  42,
+		AvifSpeed:                    3,
+		AllowStorageSelect:           true,
+		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
+		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
+		UploadRateLimitWindowMinutes: DefaultUploadRateLimitWindowMinutes,
+		UploadRateLimitMaxRequests:   DefaultUploadRateLimitMaxRequests,
+	})
+
+	var observed *AVIFConversionSettings
+	service.transformer = func(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
+		copy := settings
+		observed = &copy
+		return convertToAVIFWithSettings(payload, settings)
+	}
+
+	if _, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            mustPNGBytes(t, color.RGBA{R: 120, G: 80, B: 40, A: 255}),
+		BaseURL:          "http://localhost:8080",
+	}); err != nil {
+		t.Fatalf("Upload returned error: %v", err)
+	}
+	if observed == nil {
+		t.Fatalf("expected transformer to observe avif settings")
+	}
+	if observed.Quality != 42 || observed.Speed != 3 {
+		t.Fatalf("expected configured avif settings quality=42 speed=3, got %+v", *observed)
 	}
 }
 
@@ -576,7 +734,7 @@ func TestDeleteRetainsPhysicalFileAfterLastReferenceDeletion(t *testing.T) {
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("expected physical file to remain after first delete: %v", err)
 	}
-	if _, ok := cacheStore.md5ToUID[scopedMD5CacheKey(firstRecord.StorageKey, firstRecord.MD5Hash)]; !ok {
+	if _, ok := cacheStore.cachedMD5(scopedMD5CacheKey(firstRecord.StorageKey, firstRecord.MD5Hash)); !ok {
 		t.Fatalf("expected md5 cache to remain while references exist")
 	}
 
@@ -586,7 +744,7 @@ func TestDeleteRetainsPhysicalFileAfterLastReferenceDeletion(t *testing.T) {
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("expected physical file to remain after last logical delete: %v", err)
 	}
-	if _, ok := cacheStore.md5ToUID[scopedMD5CacheKey(firstRecord.StorageKey, firstRecord.MD5Hash)]; ok {
+	if _, ok := cacheStore.cachedMD5(scopedMD5CacheKey(firstRecord.StorageKey, firstRecord.MD5Hash)); ok {
 		t.Fatalf("expected md5 cache to be removed after last delete")
 	}
 }
@@ -620,7 +778,7 @@ func TestDeleteRepointsMD5CacheToRemainingReference(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByUID returned error: %v", err)
 	}
-	if cacheStore.md5ToUID[scopedMD5CacheKey(record.StorageKey, record.MD5Hash)] != "uid-a" {
+	if got, _ := cacheStore.cachedMD5(scopedMD5CacheKey(record.StorageKey, record.MD5Hash)); got != "uid-a" {
 		t.Fatalf("expected initial md5 cache to point at first uid")
 	}
 
@@ -628,8 +786,8 @@ func TestDeleteRepointsMD5CacheToRemainingReference(t *testing.T) {
 		t.Fatalf("Delete returned error: %v", err)
 	}
 
-	if cacheStore.md5ToUID[scopedMD5CacheKey(record.StorageKey, record.MD5Hash)] != "uid-b" {
-		t.Fatalf("expected md5 cache to repoint to remaining uid, got %q", cacheStore.md5ToUID[scopedMD5CacheKey(record.StorageKey, record.MD5Hash)])
+	if got, _ := cacheStore.cachedMD5(scopedMD5CacheKey(record.StorageKey, record.MD5Hash)); got != "uid-b" {
+		t.Fatalf("expected md5 cache to repoint to remaining uid, got %q", got)
 	}
 }
 
@@ -666,7 +824,7 @@ func TestDeleteRetainsPhysicalFileWhenOnlyCrossBackendReferenceTextMatches(t *te
 	}); err != nil {
 		t.Fatalf("InsertImage returned error: %v", err)
 	}
-	cacheStore.md5ToUID[scopedMD5CacheKey(localRecord.StorageKey, localRecord.MD5Hash)] = "uid-local"
+	cacheStore.setCachedMD5(scopedMD5CacheKey(localRecord.StorageKey, localRecord.MD5Hash), "uid-local")
 
 	storedPath := filepath.Join(rootDir, filepath.FromSlash(localRecord.FilePath))
 	if err := service.Delete(ctx, "uid-local"+publicImageExtension, "token-local", false, ""); err != nil {
@@ -675,7 +833,7 @@ func TestDeleteRetainsPhysicalFileWhenOnlyCrossBackendReferenceTextMatches(t *te
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("expected local file to remain for deferred cleanup, got err=%v", err)
 	}
-	if _, ok := cacheStore.md5ToUID[scopedMD5CacheKey(localRecord.StorageKey, localRecord.MD5Hash)]; ok {
+	if _, ok := cacheStore.cachedMD5(scopedMD5CacheKey(localRecord.StorageKey, localRecord.MD5Hash)); ok {
 		t.Fatalf("expected md5 cache to clear instead of repointing to another storage key")
 	}
 }
@@ -730,7 +888,7 @@ func TestResolveRequiresAVIFURLAndRehydratesCache(t *testing.T) {
 	if result.CacheHit {
 		t.Fatalf("expected repository fallback on first resolve")
 	}
-	if _, ok := cacheStore.images["uid-r"]; !ok {
+	if !cacheStore.hasCachedImage("uid-r") {
 		t.Fatalf("expected resolve fallback to hydrate cache")
 	}
 
@@ -822,11 +980,12 @@ func TestPreheatWarmsUIDAndMD5Keys(t *testing.T) {
 	if count != len(records) {
 		t.Fatalf("expected preheat count %d, got %d", len(records), count)
 	}
-	if cacheStore.imageSets != len(records) || cacheStore.md5Sets != len(records) {
+	imageSets, md5Sets, imageBatchSets, md5BatchSets := cacheStore.stats()
+	if imageSets != len(records) || md5Sets != len(records) {
 		t.Fatalf("expected preheat to populate cache for all records")
 	}
-	if cacheStore.imageBatchSets != 1 || cacheStore.md5BatchSets != 1 {
-		t.Fatalf("expected preheat to use batched redis writes, got image batches %d and md5 batches %d", cacheStore.imageBatchSets, cacheStore.md5BatchSets)
+	if imageBatchSets != 1 || md5BatchSets != 1 {
+		t.Fatalf("expected preheat to use batched redis writes, got image batches %d and md5 batches %d", imageBatchSets, md5BatchSets)
 	}
 }
 
@@ -863,7 +1022,7 @@ func TestPreheatRepairsStaleMD5MappingFromSQLite(t *testing.T) {
 		}
 	}
 
-	cacheStore.md5ToUID[scopedMD5CacheKey("local-primary", "shared-hash")] = "stale-uid"
+	cacheStore.setCachedMD5(scopedMD5CacheKey("local-primary", "shared-hash"), "stale-uid")
 
 	count, err := service.Preheat(ctx)
 	if err != nil {
@@ -872,11 +1031,12 @@ func TestPreheatRepairsStaleMD5MappingFromSQLite(t *testing.T) {
 	if count != len(records) {
 		t.Fatalf("expected preheat count %d, got %d", len(records), count)
 	}
-	if cacheStore.md5ToUID[scopedMD5CacheKey("local-primary", "shared-hash")] != "uid-1" {
-		t.Fatalf("expected preheat to repair md5 cache to first sqlite uid, got %q", cacheStore.md5ToUID[scopedMD5CacheKey("local-primary", "shared-hash")])
+	if got, _ := cacheStore.cachedMD5(scopedMD5CacheKey("local-primary", "shared-hash")); got != "uid-1" {
+		t.Fatalf("expected preheat to repair md5 cache to first sqlite uid, got %q", got)
 	}
-	if cacheStore.md5Sets != 1 {
-		t.Fatalf("expected preheat to write one md5 mapping for duplicate hash, got %d", cacheStore.md5Sets)
+	_, md5Sets, _, _ := cacheStore.stats()
+	if md5Sets != 1 {
+		t.Fatalf("expected preheat to write one md5 mapping for duplicate hash, got %d", md5Sets)
 	}
 }
 

@@ -5,28 +5,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"omepic/backend/internal/cache"
-	"omepic/backend/internal/repository"
 	"omepic/backend/internal/response"
+	"omepic/backend/internal/service"
 )
 
 type HealthHandler struct {
-	repo  *repository.Repository
-	cache cache.ImageCache
+	service *service.HealthService
 }
 
-func NewHealthHandler(repo *repository.Repository, imageCache cache.ImageCache) *HealthHandler {
-	return &HealthHandler{repo: repo, cache: imageCache}
+func NewHealthHandler(healthService *service.HealthService) *HealthHandler {
+	return &HealthHandler{service: healthService}
 }
 
 func (h *HealthHandler) Health(c *gin.Context) {
-	if err := h.repo.Ping(c.Request.Context()); err != nil {
-		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "sqlite unavailable")
+	status, err := h.service.Check(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "dependency unavailable")
 		return
 	}
-	if err := h.cache.Ping(c.Request.Context()); err != nil {
-		response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "redis unavailable")
-		return
-	}
-	response.Success(c, http.StatusOK, gin.H{"status": "ok"})
+	response.Success(c, http.StatusOK, gin.H{"status": status.Status})
 }
