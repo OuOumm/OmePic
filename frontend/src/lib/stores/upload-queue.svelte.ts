@@ -5,7 +5,7 @@ import { saveUploadToHistory } from '@/indexeddb/upload-history';
 import { preferences } from '@/stores/preferences.svelte';
 import { toast } from '@/stores/toast.svelte';
 import type { Language, UploadResult } from '@/types';
-import { isAllowedImageMimeType } from '@/utils';
+import { bbcodeForImageUrl, isAllowedImageMimeType, markdownForImageUrl, uidFromImageUrl } from '@/utils';
 import { createProgressReporter, runWithConcurrency } from '@/upload-queue';
 
 export type UploadTask = {
@@ -73,22 +73,29 @@ async function uploadOneTask(task: UploadTask): Promise<UploadResult | null> {
       preferences.selectedStorageKey || undefined,
     );
     updateTask(task.id, { status: 'success', progress: 100, result });
+    const uid = uidFromImageUrl(result.url);
+    if (!uid) throw new Error(t(preferences.language, 'upload.error'));
+    const createdAt = new Date().toISOString();
+    const selectedKey = preferences.selectedStorageKey.trim();
+    const selectedOption = preferences.runtimeSettings?.storage.options.find((option) => option.storage_key === selectedKey)
+      ?? preferences.runtimeSettings?.storage.options.find((option) => option.is_default)
+      ?? preferences.runtimeSettings?.storage.options[0];
     await saveUploadToHistory({
-      uid: result.uid,
+      uid,
       url: result.url,
-      mime_type: result.mime_type,
-      size: result.size,
-      created_at: result.created_at,
-      is_duplicate: result.is_duplicate,
-      storage_key: result.storage_key,
-      storage_backend: result.storage_backend,
-      markdown: result.markdown,
-      bbcode: result.bbcode,
+      mime_type: 'image/avif',
+      size: task.file.size,
+      created_at: createdAt,
+      is_duplicate: result.duplicate,
+      storage_key: selectedOption?.storage_key ?? selectedKey,
+      storage_backend: selectedOption?.storage_backend ?? 'local',
+      markdown: markdownForImageUrl(result.url, task.file.name),
+      bbcode: bbcodeForImageUrl(result.url),
       client_token: token,
       original_filename: task.file.name,
-      saved_at: new Date().toISOString(),
+      saved_at: createdAt,
     });
-    toast.success(result.is_duplicate ? t(preferences.language, 'upload.duplicate') : t(preferences.language, 'upload.success'));
+    toast.success(result.duplicate ? t(preferences.language, 'upload.duplicate') : t(preferences.language, 'upload.success'));
     return result;
   } catch (err) {
     const message = uploadErrorMessageWithT(preferences.language, err);

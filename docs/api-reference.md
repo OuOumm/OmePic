@@ -152,23 +152,16 @@ POST /v1/image
 {
   "success": true,
   "data": {
-    "uid": "abc123def456",
     "url": "http://localhost:8080/i/abc123def456.avif",
-    "md_url": "![image](http://localhost:8080/i/abc123def456.avif)",
-    "bbcode": "[img]http://localhost:8080/i/abc123def456.avif[/img]",
-    "size": 12345,
-    "mime_type": "image/avif",
-    "created_at": "2025-01-01T00:00:00Z",
-    "duplicate": false,
-    "storage_key": "local-default",
-    "storage_backend": "local"
+    "duplicate": false
   }
 }
 ```
 
 **说明**:
 - 上传的图片会自动转换为 AVIF 格式
-- `duplicate` 为 true 表示 MD5 去重命中，未创建新文件
+- `duplicate` 为 true 表示 MD5 去重命中，未创建新物理文件
+- 前端会基于返回的 `url` 自行推导 `uid` 并拼接 Markdown / BBCode 等分享字段
 - 可通过 `X-Token` 头传递上传者标识（用于后续删除验证）
 
 ### 2.5 获取图片

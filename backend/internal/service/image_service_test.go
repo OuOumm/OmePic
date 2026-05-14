@@ -157,6 +157,17 @@ type fakeUIDCodec struct {
 	valid  map[string]struct{}
 }
 
+type fakeFailingProvider struct {
+	name       string
+	readBytes  int
+	saveErr    error
+	readCalled bool
+}
+
+type fakeUploadStorageResolver struct {
+	resolved storage.ResolvedProvider
+}
+
 func newFakeUIDCodec() *fakeUIDCodec {
 	return &fakeUIDCodec{
 		valid: make(map[string]struct{}),
@@ -201,6 +212,46 @@ func (c *fakeUIDCodec) Validate(uid string) error {
 	return nil
 }
 
+func (p *fakeFailingProvider) Name() string {
+	if p.name != "" {
+		return p.name
+	}
+	return config.StorageBackendLocal
+}
+
+func (p *fakeFailingProvider) Save(_ context.Context, _ string, _ []byte, _ string) (string, error) {
+	return "", p.saveErr
+}
+
+func (p *fakeFailingProvider) SaveStream(_ context.Context, _ string, reader io.Reader, _ int64, _ string) (string, error) {
+	if p.readBytes > 0 {
+		buf := make([]byte, p.readBytes)
+		_, _ = io.ReadFull(reader, buf)
+		p.readCalled = true
+	}
+	return "", p.saveErr
+}
+
+func (p *fakeFailingProvider) Open(_ context.Context, _ string) (storage.OpenResult, error) {
+	return storage.OpenResult{}, errors.New("not implemented")
+}
+
+func (p *fakeFailingProvider) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+func (r fakeUploadStorageResolver) Current() (storage.ResolvedProvider, error) {
+	return r.resolved, nil
+}
+
+func (r fakeUploadStorageResolver) ForKey(string) (storage.ResolvedProvider, error) {
+	return r.resolved, nil
+}
+
+func (r fakeUploadStorageResolver) Reconfigure([]config.RuntimeStorageConfig) error {
+	return nil
+}
+
 func TestUploadConvertsToAVIFAndBuildsAVIFURL(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, rootDir, uidCodec := newImageServiceTestHarness(t)
@@ -217,17 +268,8 @@ func TestUploadConvertsToAVIFAndBuildsAVIFURL(t *testing.T) {
 		t.Fatalf("Upload returned error: %v", err)
 	}
 
-	if result.UID != "uid-1" {
-		t.Fatalf("expected uid uid-1, got %q", result.UID)
-	}
-	if result.MIMEType != publicImageMIMEType {
-		t.Fatalf("expected mime %q, got %q", publicImageMIMEType, result.MIMEType)
-	}
 	if !strings.HasSuffix(result.URL, "/i/uid-1"+publicImageExtension) {
 		t.Fatalf("expected avif url, got %q", result.URL)
-	}
-	if !strings.Contains(result.MDURL, "sample.png") {
-		t.Fatalf("expected markdown output to keep request filename, got %q", result.MDURL)
 	}
 
 	record, err := repo.FindByUID(ctx, "uid-1")
@@ -271,9 +313,6 @@ func TestUploadAcceptsAVIFSourceAndStoresAVIFOutput(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Upload returned error: %v", err)
-	}
-	if result.MIMEType != publicImageMIMEType {
-		t.Fatalf("expected mime %q, got %q", publicImageMIMEType, result.MIMEType)
 	}
 	if !strings.HasSuffix(result.URL, "/i/uid-avif-source"+publicImageExtension) {
 		t.Fatalf("expected avif url, got %q", result.URL)
@@ -364,7 +403,7 @@ func TestUploadUsesSelectedStorageKeyAndReturnsMetadata(t *testing.T) {
 	service, repo, _, primaryRoot, uidCodec := newImageServiceTestHarness(t)
 	uidCodec.Queue("uid-selected")
 
-	result, err := service.Upload(ctx, UploadInput{
+	_, err := service.Upload(ctx, UploadInput{
 		Token:            "token-selected",
 		OriginalFilename: "sample.png",
 		MIMEType:         "image/png",
@@ -375,13 +414,6 @@ func TestUploadUsesSelectedStorageKeyAndReturnsMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Upload returned error: %v", err)
 	}
-	if result.StorageKey != "local-secondary" {
-		t.Fatalf("expected selected storage key in response, got %q", result.StorageKey)
-	}
-	if result.StorageBackend != config.StorageBackendLocal {
-		t.Fatalf("expected selected backend in response, got %q", result.StorageBackend)
-	}
-
 	record, err := repo.FindByUID(ctx, "uid-selected")
 	if err != nil {
 		t.Fatalf("FindByUID returned error: %v", err)
@@ -415,7 +447,7 @@ func TestUploadDefaultFallbackUsesHotReloadedDefaultStorage(t *testing.T) {
 		t.Fatalf("Reconfigure returned error: %v", err)
 	}
 
-	result, err := service.Upload(ctx, UploadInput{
+	_, err = service.Upload(ctx, UploadInput{
 		Token:            "token-default-switch",
 		OriginalFilename: "sample.png",
 		MIMEType:         "image/png",
@@ -425,10 +457,6 @@ func TestUploadDefaultFallbackUsesHotReloadedDefaultStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Upload returned error: %v", err)
 	}
-	if result.StorageKey != "local-secondary" {
-		t.Fatalf("expected hot-reloaded default storage key local-secondary, got %q", result.StorageKey)
-	}
-
 	record, err := repo.FindByUID(ctx, "uid-default-switch")
 	if err != nil {
 		t.Fatalf("FindByUID returned error: %v", err)
@@ -448,7 +476,7 @@ func TestUploadDeduplicatesWithinSelectedStorageOnly(t *testing.T) {
 	uidCodec.Queue("uid-primary", "uid-secondary", "uid-secondary-dup")
 
 	sourceBytes := mustPNGBytes(t, color.RGBA{R: 10, G: 150, B: 220, A: 255})
-	first, err := service.Upload(ctx, UploadInput{
+	_, err := service.Upload(ctx, UploadInput{
 		Token:            "token-primary",
 		OriginalFilename: "sample.png",
 		MIMEType:         "image/png",
@@ -507,10 +535,6 @@ func TestUploadDeduplicatesWithinSelectedStorageOnly(t *testing.T) {
 	if secondRecord.FilePath != thirdRecord.FilePath {
 		t.Fatalf("expected same selected storage duplicate to reuse physical object")
 	}
-	if first.StorageKey != "local-primary" || second.StorageKey != "local-secondary" || third.StorageKey != "local-secondary" {
-		t.Fatalf("unexpected response storage keys: %q %q %q", first.StorageKey, second.StorageKey, third.StorageKey)
-	}
-
 	secondaryRoot := filepath.Join(filepath.Dir(primaryRoot), "images-secondary")
 	if _, err := os.Stat(filepath.Join(primaryRoot, filepath.FromSlash(firstRecord.FilePath))); err != nil {
 		t.Fatalf("expected default storage file to exist: %v", err)
@@ -657,6 +681,85 @@ func TestUploadSerializesSameStorageMD5WithoutGlobalUploadLock(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatalf("Upload returned error: %v", err)
 		}
+	}
+}
+
+func TestUploadReturnsQuicklyWhenSaveStreamFailsImmediately(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-save-fail")
+
+	provider := &fakeFailingProvider{saveErr: errors.New("save failed immediately")}
+	service.storage = fakeUploadStorageResolver{resolved: storage.ResolvedProvider{
+		Config:   config.RuntimeStorageConfig{StorageKey: "local-primary", Backend: config.StorageBackendLocal, IsDefault: true},
+		Provider: provider,
+	}}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Upload(ctx, UploadInput{
+			Token:            "token-a",
+			OriginalFilename: "sample.png",
+			MIMEType:         "image/png",
+			Bytes:            mustPNGBytes(t, color.RGBA{R: 200, G: 100, B: 20, A: 255}),
+			BaseURL:          "http://localhost:8080",
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("expected upload error when SaveStream fails immediately")
+		}
+		if records, listErr := repo.ListAllImages(ctx); listErr != nil {
+			t.Fatalf("ListAllImages returned error: %v", listErr)
+		} else if len(records) != 0 {
+			t.Fatalf("expected no image rows after failed save, got %d", len(records))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Upload hung when SaveStream failed immediately")
+	}
+}
+
+func TestUploadReturnsQuicklyWhenSaveStreamFailsAfterPartialRead(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-save-partial-fail")
+
+	provider := &fakeFailingProvider{readBytes: 1, saveErr: errors.New("save failed after partial read")}
+	service.storage = fakeUploadStorageResolver{resolved: storage.ResolvedProvider{
+		Config:   config.RuntimeStorageConfig{StorageKey: "local-primary", Backend: config.StorageBackendLocal, IsDefault: true},
+		Provider: provider,
+	}}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Upload(ctx, UploadInput{
+			Token:            "token-a",
+			OriginalFilename: "sample.png",
+			MIMEType:         "image/png",
+			Bytes:            mustPNGBytes(t, color.RGBA{R: 20, G: 120, B: 220, A: 255}),
+			BaseURL:          "http://localhost:8080",
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("expected upload error when SaveStream fails after partial read")
+		}
+		if !provider.readCalled {
+			t.Fatalf("expected fake provider to read from stream before failing")
+		}
+		if records, listErr := repo.ListAllImages(ctx); listErr != nil {
+			t.Fatalf("ListAllImages returned error: %v", listErr)
+		} else if len(records) != 0 {
+			t.Fatalf("expected no image rows after failed partial save, got %d", len(records))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Upload hung when SaveStream failed after partial read")
 	}
 }
 

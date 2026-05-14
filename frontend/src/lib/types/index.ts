@@ -3,16 +3,8 @@ export type ApiResponse<T> =
   | { success: false; error: { code?: string; message: string } };
 
 export interface UploadResult {
-  uid: string;
   url: string;
-  mime_type: string;
-  size: number;
-  created_at: string;
-  is_duplicate: boolean;
-  storage_key: string;
-  storage_backend: string;
-  markdown: string;
-  bbcode: string;
+  duplicate: boolean;
 }
 
 export interface StorageOption {

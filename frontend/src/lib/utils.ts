@@ -58,6 +58,27 @@ export function getImageUrl(uid: string): string {
   return `${base}${getImagePath(uid)}`;
 }
 
+export function uidFromImageUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const pathname = trimmed.startsWith('/') ? trimmed : new URL(trimmed, currentOrigin()).pathname;
+    const match = pathname.match(/\/i\/([^/]+)\.avif$/i);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function markdownForImageUrl(url: string, altText: string): string {
+  const trimmedAlt = altText.trim() || 'image';
+  return `![${trimmedAlt}](${url})`;
+}
+
+export function bbcodeForImageUrl(url: string): string {
+  return `[img]${url}[/img]`;
+}
+
 export function safeImageUrl(value: string, origin = currentOrigin(), allowedOrigins: readonly string[] = []): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;

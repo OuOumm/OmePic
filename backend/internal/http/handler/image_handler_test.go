@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gen2brain/avif"
@@ -102,7 +103,7 @@ func TestServeStreamsStoredAVIFByUIDRoute(t *testing.T) {
 	engine.GET("/i/:uid", imageHandler.Serve)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/i/"+uploadResult.UID+".avif", nil)
+	req := httptest.NewRequest("GET", uploadResult.URL, nil)
 	engine.ServeHTTP(recorder, req)
 
 	if recorder.Code != 200 {
@@ -124,7 +125,7 @@ func TestServeRejectsBareUIDRoute(t *testing.T) {
 	engine.GET("/i/:uid", imageHandler.Serve)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/i/"+uploadResult.UID, nil)
+	req := httptest.NewRequest("GET", strings.TrimSuffix(uploadResult.URL, ".avif"), nil)
 	engine.ServeHTTP(recorder, req)
 
 	if recorder.Code != 404 {

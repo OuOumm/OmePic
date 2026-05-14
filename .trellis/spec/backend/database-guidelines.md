@@ -1,6 +1,6 @@
 # Database Guidelines
 
-> SQLite and Redis persistence rules for the current backend implementation.
+> SQLite, Redis, and upload storage pipeline rules for the current backend implementation.
 
 ---
 
@@ -268,6 +268,85 @@ Rules:
 #### Correct
 
 - Keep filenames only in request-local/frontend-local contexts and use UID/token/IP/MD5 for durable SQLite/admin workflows
+
+---
+
+---
+
+## Scenario: AVIF Stream Conversion Contract
+
+### 1. Scope / Trigger
+
+- Trigger: `saveConvertedAVIF` uses concurrent goroutines to encode and persist AVIF in a streaming pipeline.
+- This is a correctness contract: if either side fails, the upload must fail quickly without hanging.
+
+### 2. Signatures
+
+- `ImageService.saveConvertedAVIF(ctx, provider, objectKey, source, settings) (int64, string, error)`
+- `ImageService.encoder` field: `func(io.Reader, io.Writer, AVIFConversionSettings) error` — injectable for testing.
+- `AVIFConversionSettings{Quality int; Speed int}` — conversion options derived from runtime settings.
+
+### 3. Contracts
+
+- AVIF encoding writes to a pipe writer; storage `SaveStream` reads from the pipe reader. Both run in separate goroutines coordinated by channels.
+- The main goroutine waits for `SaveStream` result first. If `SaveStream` fails, it immediately closes the pipe reader and signals the writer with `CloseWithError`, which unblocks the encoding goroutine if it is still writing.
+- After signaling the writer, the main goroutine waits for the encode channel result.
+- If the encoding goroutine fails, it must close the pipe writer with `CloseWithError` so the `SaveStream` reader sees EOF/error and terminates.
+- Error priority: encoding errors take precedence over save errors because a decode/encode failure is a user-facing `invalid_input` while a save failure is `dependency_unavailable`.
+- When both sides fail independently, the encoding error is returned if it is a direct encoding failure; otherwise the save error is wrapped as `dependency_unavailable`.
+- No goroutine may leak or hang after `saveConvertedAVIF` returns. Both goroutines must terminate regardless of which side failed first.
+
+### 4. Validation & Error Matrix
+
+- `SaveStream` fails before reading any data -> pipe closed, encode goroutine sees `ClosedWithError`, returns `dependency_unavailable`.
+- `SaveStream` fails after reading partial data -> same pipe-close sequence, returns `dependency_unavailable`.
+- Encoder fails (bad image data, unsupported format) -> pipe writer closed with `CloseWithError`, `SaveStream` reader sees EOF error, returns `invalid_input`.
+- Both succeed -> returns `(counting.size, storedPath, nil)`.
+
+### 5. Good/Base/Bad Cases
+
+- Good: upload with a valid image -> encode and save both succeed, returns size and stored path.
+- Good: storage backend returns error -> upload returns quickly with `dependency_unavailable`.
+- Good: corrupt image payload -> encode fails with `invalid_input`, pipe signaled, `SaveStream` terminates.
+- Bad: `saveConvertedAVIF` returns after timeout instead of immediately on save failure (indicates a missing pipe-close).
+- Bad: goroutine leak after upload failure (pipe not properly closed on one side).
+
+### 6. Tests Required
+
+- `TestUploadReturnsQuicklyWhenSaveStreamFailsImmediately` — verifies upload returns error within 2s and no image row is persisted when `SaveStream` fails before reading.
+- `TestUploadReturnsQuicklyWhenSaveStreamFailsAfterPartialRead` — verifies upload returns error within 2s and `readCalled` is true when `SaveStream` reads partial data then fails.
+- Both tests assert `select` with a 2-second timeout to detect hangs.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+// SaveStream result waited after encode completes — encode may hang
+// if SaveStream never consumes the pipe.
+go func() {
+    storedPath, err := provider.SaveStream(ctx, objectKey, pipeReader, -1, mime)
+    saveResultCh <- saveResult{storedPath: storedPath, err: err}
+}()
+// No pipe-close on save failure -> encode goroutine blocks forever
+saveResult := <-saveResultCh
+if saveResult.err != nil {
+    return 0, "", saveResult.err
+}
+encodeErr := <-encodeErrCh
+```
+
+#### Correct
+
+```go
+saveResult := <-saveResultCh
+if saveResult.err != nil {
+    _ = pipeReader.Close()
+    _ = pipeWriter.CloseWithError(saveResult.err)
+}
+encodeErr := <-encodeErrCh
+_ = pipeReader.Close()
+```
 
 ---
 

@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { getApiExampleBaseUrl, getImagePath, getImageUrl, imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAllowedImageMimeType, normalizeDownloadFilename, safeImageUrl } from './utils';
+import { bbcodeForImageUrl, getApiExampleBaseUrl, getImagePath, getImageUrl, imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAllowedImageMimeType, markdownForImageUrl, normalizeDownloadFilename, safeImageUrl, uidFromImageUrl } from './utils';
 
 describe('image URL helpers', () => {
   it('builds public image paths from canonical UIDs', () => {
     expect(getImagePath('uid-1')).toBe('/i/uid-1.avif');
     expect(getImageUrl('uid-1')).toBe('http://localhost:8080/i/uid-1.avif');
+  });
+
+  it('extracts UIDs and sharing strings from image URLs', () => {
+    expect(uidFromImageUrl('/i/uid-1.avif')).toBe('uid-1');
+    expect(uidFromImageUrl('https://example.test/i/uid-2.avif')).toBe('uid-2');
+    expect(markdownForImageUrl('https://example.test/i/uid-2.avif', 'sample.png')).toBe('![sample.png](https://example.test/i/uid-2.avif)');
+    expect(bbcodeForImageUrl('https://example.test/i/uid-2.avif')).toBe('[img]https://example.test/i/uid-2.avif[/img]');
   });
 
   it('uses custom runtime base URL for API examples before falling back to the current origin', () => {

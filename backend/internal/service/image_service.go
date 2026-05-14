@@ -54,16 +54,8 @@ func NewUploadInputFromBytes(token string, originalFilename string, mimeType str
 }
 
 type UploadOutput struct {
-	UID            string    `json:"uid"`
-	URL            string    `json:"url"`
-	MDURL          string    `json:"md_url"`
-	BBCode         string    `json:"bbcode"`
-	Size           int64     `json:"size"`
-	MIMEType       string    `json:"mime_type"`
-	CreatedAt      time.Time `json:"created_at"`
-	Duplicate      bool      `json:"duplicate"`
-	StorageKey     string    `json:"storage_key"`
-	StorageBackend string    `json:"storage_backend"`
+	URL       string `json:"url"`
+	Duplicate bool   `json:"duplicate"`
 }
 
 func (in UploadInput) payloadSizeHint() int64 {
@@ -123,10 +115,16 @@ type ImageOpenOutput struct {
 type UIDGenerator func() (string, error)
 type UIDValidator func(string) error
 
+type uploadStorageResolver interface {
+	Current() (storage.ResolvedProvider, error)
+	ForKey(string) (storage.ResolvedProvider, error)
+	Reconfigure([]config.RuntimeStorageConfig) error
+}
+
 type ImageService struct {
 	repo        *repository.Repository
 	cache       cache.ImageCache
-	storage     *storage.Manager
+	storage     uploadStorageResolver
 	settings    *RuntimeSettingsManager
 	logger      *slog.Logger
 	generateUID UIDGenerator
@@ -570,6 +568,11 @@ type countingWriter struct {
 	size   int64
 }
 
+type saveConvertedResult struct {
+	storedPath string
+	err        error
+}
+
 func (w *countingWriter) Write(p []byte) (int, error) {
 	n, err := w.writer.Write(p)
 	w.size += int64(n)
@@ -622,6 +625,8 @@ func (s *ImageService) saveConvertedAVIF(ctx context.Context, provider storage.P
 	pipeReader, pipeWriter := io.Pipe()
 	counting := &countingWriter{writer: pipeWriter}
 	encodeErrCh := make(chan error, 1)
+	saveResultCh := make(chan saveConvertedResult, 1)
+
 	go func() {
 		err := s.encoder(source, counting, settings)
 		if err != nil {
@@ -632,34 +637,36 @@ func (s *ImageService) saveConvertedAVIF(ctx context.Context, provider storage.P
 		encodeErrCh <- pipeWriter.Close()
 	}()
 
-	storedPath, saveErr := provider.SaveStream(ctx, objectKey, pipeReader, -1, publicImageMIMEType)
-	encodeErr := <-encodeErrCh
-	if encodeErr != nil {
-		return 0, "", encodeErr
+	go func() {
+		storedPath, err := provider.SaveStream(ctx, objectKey, pipeReader, -1, publicImageMIMEType)
+		saveResultCh <- saveConvertedResult{storedPath: storedPath, err: err}
+	}()
+
+	saveResult := <-saveResultCh
+	if saveResult.err != nil {
+		_ = pipeReader.Close()
+		_ = pipeWriter.CloseWithError(saveResult.err)
 	}
-	if saveErr != nil {
+
+	encodeErr := <-encodeErrCh
+	_ = pipeReader.Close()
+
+	if encodeErr != nil {
+		if saveResult.err == nil || errors.Is(saveResult.err, encodeErr) {
+			return 0, "", encodeErr
+		}
+	}
+	if saveResult.err != nil {
 		return 0, "", fmt.Errorf("%w: failed to persist file", ErrDependencyUnavailable)
 	}
-	return counting.size, storedPath, nil
+	return counting.size, saveResult.storedPath, nil
 }
 
-func buildUploadOutput(record model.ImageRecord, baseURL string, originalFilename string, duplicate bool) UploadOutput {
+func buildUploadOutput(record model.ImageRecord, baseURL string, _ string, duplicate bool) UploadOutput {
 	url := strings.TrimRight(baseURL, "/") + "/i/" + record.UID + publicImageExtension
-	altText := strings.TrimSpace(originalFilename)
-	if altText == "" {
-		altText = "image"
-	}
 	return UploadOutput{
-		UID:            record.UID,
-		URL:            url,
-		MDURL:          fmt.Sprintf("![%s](%s)", altText, url),
-		BBCode:         fmt.Sprintf("[img]%s[/img]", url),
-		Size:           record.Size,
-		MIMEType:       record.MIMEType,
-		CreatedAt:      record.CreatedAt,
-		Duplicate:      duplicate,
-		StorageKey:     record.StorageKey,
-		StorageBackend: record.StorageBackend,
+		URL:       url,
+		Duplicate: duplicate,
 	}
 }
 

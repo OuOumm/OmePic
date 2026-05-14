@@ -67,7 +67,7 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("image uploaded", "uid", result.UID, "size", result.Size, "mime_type", result.MIMEType, "duplicate", result.Duplicate, "storage_key", result.StorageKey, "storage_backend", result.StorageBackend)
+	h.logger.Info("image uploaded", "url", result.URL, "duplicate", result.Duplicate)
 	response.Success(c, http.StatusOK, result)
 }
 

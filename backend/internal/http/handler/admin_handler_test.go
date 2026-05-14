@@ -79,6 +79,75 @@ func TestAdminChangePasswordWeakNewPasswordReturnsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestAdminUpdateSystemSettingsRejectsInvalidAVIFSettings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewAdminHandler(newTestAdminService(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	for _, raw := range []string{
+		`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/png"],"avif_quality":101,"avif_speed":8,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`,
+		`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/png"],"avif_quality":60,"avif_speed":11,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`,
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPut, "/admin/system-settings", bytes.NewBufferString(raw))
+		request.Header.Set("Content-Type", "application/json")
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = request
+
+		handler.UpdateSystemSettings(ctx)
+
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		}
+		var body struct {
+			Success bool `json:"success"`
+			Error   struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+			t.Fatalf("invalid json response: %v", err)
+		}
+		if body.Success || body.Error.Code != "invalid_input" {
+			t.Fatalf("expected invalid_input error, got %+v", body)
+		}
+	}
+}
+
+func TestAdminUpdateSystemSettingsSuccessIncludesAVIFFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewAdminHandler(newTestAdminService(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/admin/system-settings", bytes.NewBufferString(`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/jpeg","image/png"],"avif_quality":77,"avif_speed":5,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`))
+	request.Header.Set("Content-Type", "application/json")
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = request
+
+	handler.UpdateSystemSettings(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Runtime struct {
+				AvifQuality int `json:"avif_quality"`
+				AvifSpeed   int `json:"avif_speed"`
+			} `json:"runtime"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+	if !body.Success {
+		t.Fatalf("expected success response, got %+v", body)
+	}
+	if body.Data.Runtime.AvifQuality != 77 || body.Data.Runtime.AvifSpeed != 5 {
+		t.Fatalf("expected avif fields in response, got %+v", body.Data.Runtime)
+	}
+}
+
 func newTestAdminService(t *testing.T) *service.AdminService {
 	t.Helper()
 
