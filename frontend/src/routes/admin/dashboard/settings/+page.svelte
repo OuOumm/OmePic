@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { CircleAlert, Save } from 'lucide-svelte';
-  import { adminGetConfig, adminGetSystemSettings, adminUpdateSystemSettings } from '@/api';
+  import { CircleAlert, KeyRound, Save } from 'lucide-svelte';
+  import { adminChangePassword, adminGetConfig, adminGetSystemSettings, adminUpdateSystemSettings } from '@/api';
   import AnnouncementManager from '@/components/studio/AnnouncementManager.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import StorageInstanceManager from '@/components/studio/StorageInstanceManager.svelte';
@@ -14,7 +14,10 @@
   let config = $state.raw<AdminConfig | null>(null);
   let system = $state<AdminSystemSettings | null>(null);
   let savingRuntime = $state(false);
+  let changingPassword = $state(false);
   let mimeTypesText = $state('');
+  let oldPassword = $state('');
+  let newPassword = $state('');
 
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
@@ -58,6 +61,22 @@
       onSuccess: (nextSystem) => {
         system = nextSystem;
         mimeTypesText = runtimeMimeTypesText(system);
+      },
+    });
+  }
+
+  async function changePassword() {
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (changingPassword = value),
+      successMessage: t(preferences.language, 'admin.passwordChanged'),
+      fallbackErrorKey: 'admin.passwordChangeError',
+      action: () => adminChangePassword(token, oldPassword, newPassword),
+      onSuccess: () => {
+        oldPassword = '';
+        newPassword = '';
       },
     });
   }
@@ -144,6 +163,23 @@
               <textarea class="studio-input min-h-24" bind:value={system.runtime.maintenance_message}></textarea>
             </label>
           </div>
+
+          <form class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4 md:grid-cols-2" onsubmit={(event) => { event.preventDefault(); void changePassword(); }}>
+            <div class="md:col-span-2">
+              <span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-yellow))">{t(preferences.language, 'admin.changePassword')}</span>
+            </div>
+            <label class="grid gap-2 text-sm font-black">
+              {t(preferences.language, 'admin.oldPassword')}
+              <input class="studio-input" type="password" autocomplete="current-password" bind:value={oldPassword} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              {t(preferences.language, 'admin.newPassword')}
+              <input class="studio-input" type="password" autocomplete="new-password" bind:value={newPassword} />
+            </label>
+            <div class="md:col-span-2 flex justify-end">
+              <button class="studio-button w-fit" data-tone="blue" type="submit" disabled={changingPassword || !oldPassword || !newPassword}><KeyRound class="size-4" />{t(preferences.language, 'admin.changePassword')}</button>
+            </div>
+          </form>
       </div>
     {/if}
   {:else if activeTab === 'announcements'}

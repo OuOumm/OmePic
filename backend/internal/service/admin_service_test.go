@@ -377,6 +377,48 @@ func TestUpdateStorageConfigRejectsBackendChangeForInUseInstance(t *testing.T) {
 	}
 }
 
+func TestChangePasswordRequiresValidOldPasswordAndStoresBcryptHash(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+
+	if err := adminService.ChangePassword(ctx, "admin123", "First-secret!"); err != nil {
+		t.Fatalf("first-boot ChangePassword returned error: %v", err)
+	}
+	if _, err := adminService.Login(ctx, "First-secret!"); err != nil {
+		t.Fatalf("expected first changed password login to succeed, got %v", err)
+	}
+	if err := adminService.ChangePassword(ctx, "First-secret!", "Admin123!"); err != nil {
+		t.Fatalf("reset ChangePassword returned error: %v", err)
+	}
+
+	if err := adminService.ChangePassword(ctx, "wrong-password", "New-secret!"); err == nil || !containsError(err, ErrForbidden) || !strings.Contains(err.Error(), "current password is incorrect") {
+		t.Fatalf("expected clear ErrForbidden for wrong old password, got %v", err)
+	}
+	weakPasswords := []string{"   ", "Short1!", "lowercase!", "UPPERCASE!", "NoSymbol1"}
+	for _, password := range weakPasswords {
+		if err := adminService.ChangePassword(ctx, "Admin123!", password); err == nil || !containsError(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput for weak new password %q, got %v", password, err)
+		}
+	}
+	if err := adminService.ChangePassword(ctx, "Admin123!", "New-secret!"); err != nil {
+		t.Fatalf("ChangePassword returned error: %v", err)
+	}
+
+	storedHash, err := repo.GetConfigValue(ctx, "admin_password_hash")
+	if err != nil {
+		t.Fatalf("GetConfigValue returned error: %v", err)
+	}
+	if storedHash == "New-secret!" || !strings.HasPrefix(storedHash, "$2") {
+		t.Fatalf("expected stored bcrypt hash, got %q", storedHash)
+	}
+	if _, err := adminService.Login(ctx, "Admin123!"); err == nil || !containsError(err, ErrForbidden) {
+		t.Fatalf("expected old password to fail after change, got %v", err)
+	}
+	if _, err := adminService.Login(ctx, "New-secret!"); err != nil {
+		t.Fatalf("expected new password login to succeed, got %v", err)
+	}
+}
+
 func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Repository) {
 	t.Helper()
 
@@ -411,10 +453,9 @@ func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Reposi
 	}
 
 	logger := slog.New(slog.NewTextHandler(ioDiscard{}, nil))
-	settingsManager := NewRuntimeSettingsManager("")
+	settingsManager := NewRuntimeSettingsManager()
 	imageService := NewImageService(repo, newFakeCache(), manager, settingsManager, nil, nil, logger)
-	appConfig := config.AppConfig{AdminPassword: "admin123", JWTSecret: "secret", UIDEncryptionKey: "uid-secret"}
-	return NewAdminService(repo, manager, settingsManager, imageService, appConfig), repo
+	return NewAdminService(repo, manager, settingsManager, imageService, "secret", AdminEnvMetadata{HTTPAddr: ":8080", DatabasePath: ":memory:", RedisURL: "", UIDEncryptionKey: "uid-secret"}), repo
 }
 
 func modelImageRecord(uid string, storageKey string, backend string) model.ImageRecord {

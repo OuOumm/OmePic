@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from './api';
 import { errorMessage, runAsyncAction, toastApiError } from './ui-errors';
 import { toast } from './stores/toast.svelte';
 
@@ -14,6 +15,11 @@ describe('errorMessage', () => {
   it('uses Error messages before translated fallbacks', () => {
     expect(errorMessage(new Error('from api'), 'en')).toBe('from api');
     expect(errorMessage('unknown', 'zh')).toBe('操作失败');
+  });
+
+  it('localizes known admin password API errors', () => {
+    expect(errorMessage(new ApiError('current password is incorrect', { code: 'forbidden', status: 403 }), 'zh')).toBe('当前密码错误');
+    expect(errorMessage(new ApiError('new password must be at least 8 characters and include uppercase, lowercase, and symbol characters', { code: 'invalid_input', status: 400 }), 'zh')).toBe('新密码至少 8 位，并包含大写字母、小写字母和符号');
   });
 });
 

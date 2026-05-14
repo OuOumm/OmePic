@@ -12,6 +12,7 @@ const (
 	imageUploadRoute           = "/v1/image"
 	imageRoutePrefix           = "/i/"
 	adminLoginRoute            = "/admin/login"
+	adminPasswordRoute         = "/admin/password"
 	adminStatusRoute           = "/admin/status"
 	adminImagesRoute           = "/admin/images"
 	adminIPBansRoute           = "/admin/ip-bans"
@@ -40,6 +41,7 @@ var (
 	imageUploadRouteSpec         = routeSpec{Path: imageUploadRoute, Methods: methods(http.MethodPost)}
 	imageRouteSpec               = routeSpec{Path: imageRoutePrefix + ":uid", Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
 	adminLoginRouteSpec          = routeSpec{Path: adminLoginRoute, Methods: methods(http.MethodPost)}
+	adminPasswordRouteSpec       = routeSpec{Path: adminPasswordRoute, Methods: methods(http.MethodPut)}
 	adminStatusRouteSpec         = routeSpec{Path: adminStatusRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminImagesRouteSpec         = routeSpec{Path: adminImagesRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
 	adminIPBansRouteSpec         = routeSpec{Path: adminIPBansRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
@@ -67,6 +69,7 @@ var publicRouteSpecs = []routeSpec{
 }
 
 var adminRouteSpecs = []routeSpec{
+	adminPasswordRouteSpec,
 	adminStatusRouteSpec,
 	adminImagesRouteSpec,
 	adminIPBansRouteSpec,

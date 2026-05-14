@@ -12,36 +12,12 @@ const (
 )
 
 type AppConfig struct {
-	HTTPAddr          string
-	DatabasePath      string
-	RedisURL          string
-	PublicBaseURL     string
-	UIDPrefix         string
-	UIDEncryptionKey  string
-	StorageBackend    string
-	LocalStoragePath  string
-	AdminPassword     string
-	JWTSecret         string
-	TrustedProxyCIDRs []string
-	RealIPHeader      string
-	S3                S3Config
-	WebDAV            WebDAVConfig
-}
-
-type S3Config struct {
-	Endpoint       string
-	Region         string
-	Bucket         string
-	AccessKey      string
-	SecretKey      string
-	UseSSL         bool
-	ForcePathStyle bool
-}
-
-type WebDAVConfig struct {
-	URL      string
-	Username string
-	Password string
+	HTTPAddr         string
+	DatabasePath     string
+	RedisURL         string
+	UIDPrefix        string
+	UIDEncryptionKey string
+	JWTSecret        string
 }
 
 type RuntimeStorageConfig struct {
@@ -84,58 +60,23 @@ type RuntimeStorageUpdate struct {
 }
 
 func Load() AppConfig {
-	uidEncryptionKey := os.Getenv("UID_ENCRYPTION_KEY")
-	if uidEncryptionKey == "" {
-		uidEncryptionKey = envOrDefault("JWT_SECRET", "change-me")
-	}
-
 	return AppConfig{
-		HTTPAddr:          envOrDefault("HTTP_ADDR", ":8080"),
-		DatabasePath:      envOrDefault("DATABASE_PATH", "data/omepic.db"),
-		RedisURL:          envOrDefault("REDIS_URL", "redis://localhost:6379/0"),
-		PublicBaseURL:     os.Getenv("PUBLIC_BASE_URL"),
-		UIDPrefix:         envOrDefault("UID_PREFIX", "omeo_"),
-		UIDEncryptionKey:  uidEncryptionKey,
-		StorageBackend:    envOrDefault("STORAGE_BACKEND", StorageBackendLocal),
-		LocalStoragePath:  envOrDefault("LOCAL_STORAGE_PATH", "data/images"),
-		AdminPassword:     envOrDefault("ADMIN_PASSWORD", "admin123"),
-		JWTSecret:         envOrDefault("JWT_SECRET", "change-me"),
-		TrustedProxyCIDRs: splitCSV(os.Getenv("TRUSTED_PROXY_CIDRS")),
-		RealIPHeader:      envOrDefault("REAL_IP_HEADER", "X-Forwarded-For"),
-		S3: S3Config{
-			Endpoint:       os.Getenv("S3_ENDPOINT"),
-			Region:         envOrDefault("S3_REGION", "auto"),
-			Bucket:         os.Getenv("S3_BUCKET"),
-			AccessKey:      os.Getenv("S3_ACCESS_KEY"),
-			SecretKey:      os.Getenv("S3_SECRET_KEY"),
-			UseSSL:         envBool("S3_USE_SSL", false),
-			ForcePathStyle: envBool("S3_FORCE_PATH_STYLE", true),
-		},
-		WebDAV: WebDAVConfig{
-			URL:      os.Getenv("WEBDAV_URL"),
-			Username: os.Getenv("WEBDAV_USER"),
-			Password: os.Getenv("WEBDAV_PASS"),
-		},
+		HTTPAddr:         envOrDefault("HTTP_ADDR", ":8080"),
+		DatabasePath:     envOrDefault("DATABASE_PATH", "data/omepic.db"),
+		RedisURL:         envOrDefault("REDIS_URL", "redis://localhost:6379/0"),
+		UIDPrefix:        envOrDefault("UID_PREFIX", "omeo_"),
+		UIDEncryptionKey: envOrDefault("UID_ENCRYPTION_KEY", "change-me-uid-secret"),
+		JWTSecret:        envOrDefault("JWT_SECRET", "change-me-too"),
 	}
 }
 
-func (c AppConfig) DefaultStorageConfig() RuntimeStorageConfig {
+func DefaultStorageConfig() RuntimeStorageConfig {
 	return RuntimeStorageConfig{
-		StorageKey:       BootstrapStorageKey(c.StorageBackend),
-		Name:             BootstrapStorageName(c.StorageBackend),
+		StorageKey:       "local-default",
+		Name:             "Default Local Storage",
 		IsDefault:        true,
-		Backend:          c.StorageBackend,
-		LocalStoragePath: c.LocalStoragePath,
-		S3Endpoint:       c.S3.Endpoint,
-		S3Region:         c.S3.Region,
-		S3Bucket:         c.S3.Bucket,
-		S3AccessKey:      c.S3.AccessKey,
-		S3SecretKey:      c.S3.SecretKey,
-		S3UseSSL:         c.S3.UseSSL,
-		S3ForcePathStyle: c.S3.ForcePathStyle,
-		WebDAVURL:        c.WebDAV.URL,
-		WebDAVUser:       c.WebDAV.Username,
-		WebDAVPass:       c.WebDAV.Password,
+		Backend:          "local",
+		LocalStoragePath: "data/images",
 	}
 }
 
@@ -179,28 +120,4 @@ func envOrDefault(key, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func splitCSV(value string) []string {
-	parts := strings.Split(value, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
-}
-
-func envBool(key string, fallback bool) bool {
-	value := os.Getenv(key)
-	switch value {
-	case "1", "true", "TRUE", "yes", "YES":
-		return true
-	case "0", "false", "FALSE", "no", "NO":
-		return false
-	default:
-		return fallback
-	}
 }

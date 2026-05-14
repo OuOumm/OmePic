@@ -1009,7 +1009,7 @@ func newImageServiceTestHarness(t *testing.T) (*ImageService, *repository.Reposi
 	cacheStore := newFakeCache()
 	uidCodec := newFakeUIDCodec()
 	logger := slog.New(slog.NewTextHandler(ioDiscard{}, nil))
-	settingsManager := NewRuntimeSettingsManager("")
+	settingsManager := NewRuntimeSettingsManager()
 	return NewImageService(repo, cacheStore, manager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger), repo, cacheStore, rootDir, uidCodec
 }
 

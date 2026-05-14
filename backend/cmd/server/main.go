@@ -42,7 +42,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	storageCatalog, err := repo.InitializeStorageCatalog(ctx, cfg.DefaultStorageConfig())
+	storageCatalog, err := repo.InitializeStorageCatalog(ctx, config.DefaultStorageConfig())
 	if err != nil {
 		logger.Error("failed to initialize storage catalog", "error", err.Error())
 		os.Exit(1)
@@ -78,16 +78,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	settingsManager := service.NewRuntimeSettingsManager(cfg.PublicBaseURL)
+	settingsManager := service.NewRuntimeSettingsManager()
 	if err := settingsManager.Load(ctx, repo); err != nil {
 		logger.Error("failed to load runtime settings", "error", err.Error())
 		os.Exit(1)
 	}
 
 	imageService := service.NewImageService(repo, imageCache, storageManager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger)
-	adminService := service.NewAdminService(repo, storageManager, settingsManager, imageService, cfg)
+	adminService := service.NewAdminService(repo, storageManager, settingsManager, imageService, cfg.JWTSecret, service.AdminEnvMetadata{
+		HTTPAddr:         cfg.HTTPAddr,
+		DatabasePath:     cfg.DatabasePath,
+		RedisURL:         cfg.RedisURL,
+		UIDEncryptionKey: cfg.UIDEncryptionKey,
+	})
 	announcementService := service.NewAnnouncementService(repo)
-	ipResolver := clientip.NewResolver(cfg.TrustedProxyCIDRs, cfg.RealIPHeader)
+	ipResolver := clientip.NewResolver(nil, "")
 
 	if _, err := imageService.Preheat(ctx); err != nil {
 		logger.Error("redis preheat failed", "error", err.Error())

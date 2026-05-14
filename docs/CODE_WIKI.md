@@ -166,7 +166,7 @@ main.go
 → config.Load()
 → repository.New(cfg.DatabasePath)
 → repo.Migrate(ctx)
-→ repo.InitializeStorageCatalog(ctx, cfg.DefaultStorageConfig())
+→ repo.InitializeStorageCatalog(ctx, config.DefaultStorageConfig())
 → storage.NewManager(storageCatalog.StorageConfigs)
 → uid.NewCodec(cfg.UIDPrefix, cfg.UIDEncryptionKey)
 → cache.NewClient(cfg.RedisURL)
@@ -177,7 +177,7 @@ main.go
 → NewImageService(...)
 → NewAdminService(...)
 → NewAnnouncementService(...)
-→ clientip.NewResolver(cfg.TrustedProxyCIDRs, cfg.RealIPHeader)
+→ clientip.NewResolver(nil, "")
 → imageService.Preheat(ctx)
 → router.New(router.Dependencies{...})
 → engine.Run(cfg.HTTPAddr)
@@ -288,9 +288,7 @@ DELETE /admin/images
 
 关键类型：
 
-- `AppConfig`：HTTP、SQLite、Redis、公开 URL、UID、存储、Admin、JWT、可信代理配置。
-- `S3Config`：S3 endpoint、region、bucket、access key、secret key、SSL、path-style。
-- `WebDAVConfig`：WebDAV URL、用户名、密码。
+- `AppConfig`：仅 HTTP、SQLite、Redis、UID、JWT 等启动必需环境配置。
 - `RuntimeStorageConfig`：运行时 storage instance 配置。
 - `RuntimeStorageCatalog`：默认 storage key 与 storage configs。
 - `RuntimeStorageUpdate`：storage config patch 输入。
@@ -300,17 +298,11 @@ DELETE /admin/images
 - `HTTPAddr`
 - `DatabasePath`
 - `RedisURL`
-- `PublicBaseURL`
 - `UIDPrefix`
 - `UIDEncryptionKey`
-- `StorageBackend`
-- `LocalStoragePath`
-- `AdminPassword`
 - `JWTSecret`
-- `TrustedProxyCIDRs`
-- `RealIPHeader`
-- `S3`
-- `WebDAV`
+
+公开访问基准 URL、存储配置、上传策略、维护模式、限流和管理员密码均保存在 SQLite，不再通过 `AppConfig` 从环境变量读取。
 
 关键函数：
 
@@ -326,11 +318,9 @@ DELETE /admin/images
 职责：
 
 - 解析可信客户端 IP。
-- 只有 `RemoteAddr` 命中 `TRUSTED_PROXY_CIDRS` 时，才信任配置的真实 IP header。
-- 默认真实 IP header 为 `X-Forwarded-For`。
-- 支持 `X-Forwarded-For` 和 `X-Real-IP`。
-- `X-Forwarded-For` 取第一个合法 IP。
-- 不可信代理或 header 缺失时返回 remote IP。
+- 解析可信客户端 IP。
+- 当前启动配置不读取可信代理环境变量，默认以无可信代理方式创建 resolver。
+- 因没有可信代理，默认不信任 `X-Forwarded-For` / `X-Real-IP`，直接使用 remote IP。
 
 关键类型与函数：
 
@@ -379,6 +369,7 @@ DELETE /admin/images
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| `PUT` | `/admin/password` | 修改管理员密码 |
 | `GET` | `/admin/status` | 管理状态统计 |
 | `GET` | `/admin/images` | 图片列表 |
 | `DELETE` | `/admin/images` | 批量删除图片 |
@@ -517,7 +508,7 @@ DELETE /admin/images
 - `Delete(ctx, uid, token, isAdmin, ipAddress)`：普通用户或管理员删除图片记录。
 - `Resolve(ctx, uid)`：解析公开 UID 图片记录。
 - `Preheat(ctx)`：启动时预热 Redis cache。
-- `EffectivePublicBaseURL(fallback)`：计算公开 URL base。
+- `EffectivePublicBaseURL(requestBase)`：按 SQLite runtime setting 或请求 Host 计算公开 URL base。
 - `ensureIPAllowed(ctx, ipAddress)`：检查 active IP ban。
 - `convertToAVIF(data)`：图片转 AVIF。
 - `ipHash(ip)`：SHA-256 IP hash。
@@ -552,7 +543,8 @@ DELETE /admin/images
 
 关键函数：
 
-- `Login(password)`：校验 `ADMIN_PASSWORD`，生成 24 小时 JWT。
+- `Login(password)`：校验 SQLite 中的 bcrypt 密码哈希，生成 24 小时 JWT。
+- `ChangePassword(ctx, oldPassword, newPassword)`：校验旧密码和新密码强度（至少 8 位，包含大写、小写和符号）后写入新的 bcrypt 哈希。
 - `Status(ctx)`：后台统计。
 - `Images(ctx, page, pageSize, search)`：分页搜索图片。
 - `DeleteImages(ctx, uids)`：管理员批量删除。
@@ -602,11 +594,11 @@ DELETE /admin/images
 
 关键函数：
 
-- `Load(ctx, repo)`：从 SQLite config 加载设置。
+- `Load(ctx, repo)`：先向 SQLite config 补齐缺失的默认 runtime settings，再加载设置。
 - `Current()`：读取当前设置副本。
 - `Reconfigure(settings)`：热更新内存设置。
-- `EffectivePublicBaseURL(requestBase)`：优先 runtime，其次 env，最后 request host。
-- `PublicBaseURLSource()`：返回 `runtime`、`environment` 或 `request_host`。
+- `EffectivePublicBaseURL(requestBase)`：优先 SQLite runtime setting，其次 request host。
+- `PublicBaseURLSource()`：返回 `runtime` 或 `request_host`。
 
 #### `AnnouncementService`
 
@@ -992,6 +984,7 @@ Toast 默认约 3200ms 自动移除。
 管理 API helper：
 
 - `adminLogin(password)`
+- `adminChangePassword(token, oldPassword, newPassword)`
 - `adminGetStatus(token)`
 - `adminGetImages(token, page, pageSize, search?)`
 - `adminDeleteImages(token, uids)`
@@ -1297,26 +1290,11 @@ localStorage
 | `HTTP_ADDR` | `:8080` | 后端监听地址 |
 | `DATABASE_PATH` | `data/omepic.db` | SQLite 文件路径 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 地址 |
-| `PUBLIC_BASE_URL` | 空 | 生成公开图片 URL 的 base |
 | `UID_PREFIX` | `omeo_` | UID 编码前缀 |
-| `UID_ENCRYPTION_KEY` | 回退到 `JWT_SECRET` 或 `change-me` | UID 编码密钥 |
-| `STORAGE_BACKEND` | `local` | 初始默认存储后端 |
-| `LOCAL_STORAGE_PATH` | `data/images` | 本地图片目录 |
-| `ADMIN_PASSWORD` | `admin123` | 管理员密码，生产必须修改 |
-| `JWT_SECRET` | `change-me` | 管理 JWT 签名密钥，生产必须修改 |
-| `TRUSTED_PROXY_CIDRS` | 空 | 可信代理 CIDR 列表，逗号分隔 |
-| `REAL_IP_HEADER` | `X-Forwarded-For` | 可信代理下读取真实 IP 的 header |
-| `S3_ENDPOINT` | 空 | S3 endpoint |
-| `S3_REGION` | `auto` | S3 region |
-| `S3_BUCKET` | 空 | S3 bucket |
-| `S3_ACCESS_KEY` | 空 | S3 access key |
-| `S3_SECRET_KEY` | 空 | S3 secret key |
-| `S3_USE_SSL` | `false` | S3 是否使用 SSL |
-| `S3_FORCE_PATH_STYLE` | `true` | S3 path-style |
-| `WEBDAV_URL` | 空 | WebDAV URL |
-| `WEBDAV_USER` | 空 | WebDAV 用户名 |
-| `WEBDAV_PASS` | 空 | WebDAV 密码 |
-| `VITE_API_BASE_URL` | 空 | 前端 API base URL；生产同源部署时可为空 |
+| `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | UID 编码密钥 |
+| `JWT_SECRET` | `change-me-too` | 管理 JWT 签名密钥，生产必须修改 |
+
+存储配置、公开访问基准 URL、上传策略、维护模式、限流和管理员密码均保存在 SQLite。
 
 ## 10. 项目运行方式
 
@@ -1453,9 +1431,9 @@ Redis 中的 UID 和 MD5 cache 都可从 SQLite 恢复。启动时 `ImageService
 
 相同 MD5 只在同一 storage key 范围内复用，避免跨 local/S3/WebDAV 或跨实例复用不存在对象。
 
-### 13.4 真实 IP 只信任可信代理
+### 13.4 真实 IP 默认不信任转发头
 
-只有 remote IP 命中 `TRUSTED_PROXY_CIDRS` 时才读取 `REAL_IP_HEADER`，避免攻击者直接伪造 `X-Forwarded-For` 绕过限流或封禁。
+当前启动配置不保留可信代理环境变量，服务以无可信代理方式创建 IP resolver，因此默认使用 remote IP，不读取客户端提交的 `X-Forwarded-For` 或 `X-Real-IP`。
 
 ### 13.5 限流 fail-open
 

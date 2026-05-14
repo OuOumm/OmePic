@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminGetStatus, adminUpdateSystemSettings, deleteImageByUid } from './api';
+import { adminChangePassword, adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminGetStatus, adminUpdateSystemSettings, deleteImageByUid } from './api';
 import type { RuntimeSettings, StorageInstance } from '@/types';
 
 const jsonResponse = (status: number, payload: unknown) =>
@@ -51,6 +51,22 @@ describe('admin API helpers', () => {
       message: 'storage instance name is required',
       code: 'invalid_input',
       status: 400,
+    });
+  });
+
+  it('uses the admin password change request contract', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
+
+    await adminChangePassword('admin-token', 'old-secret', 'new-secret');
+
+    expect(fetch).toHaveBeenCalledWith('http://localhost:8080/admin/password', {
+      cache: 'no-store',
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer admin-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ old_password: 'old-secret', new_password: 'new-secret' }),
     });
   });
 
@@ -109,7 +125,6 @@ describe('admin API helpers', () => {
           database_path: 'data/app.db',
           redis_configured: false,
           public_base_url_source: 'request_host',
-          env_public_base_url_set: false,
           runtime_public_base_url_set: false,
         },
         security: {

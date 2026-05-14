@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	DefaultSiteName                  = "OmePic"
-	DefaultSiteTagline               = "上传、分享和管理图片"
-	DefaultMaintenanceMessage        = "系统维护中，请稍后再试"
+	DefaultSiteName                     = "OmePic"
+	DefaultSiteTagline                  = "上传、分享和管理图片"
+	DefaultMaintenanceMessage           = "系统维护中，请稍后再试"
 	DefaultRateLimitWindowMinutes       = 1
 	DefaultRateLimitMaxRequests         = 120
 	DefaultUploadRateLimitWindowMinutes = 10
@@ -98,7 +98,6 @@ type AdminEnvironmentStatus struct {
 	DatabasePath            string `json:"database_path"`
 	RedisConfigured         bool   `json:"redis_configured"`
 	PublicBaseURLSource     string `json:"public_base_url_source"`
-	EnvPublicBaseURLSet     bool   `json:"env_public_base_url_set"`
 	RuntimePublicBaseURLSet bool   `json:"runtime_public_base_url_set"`
 }
 
@@ -140,19 +139,22 @@ type RuntimeSettingsUpdateInput struct {
 }
 
 type RuntimeSettingsManager struct {
-	mu           sync.RWMutex
-	settings     RuntimeSettings
-	envPublicURL string
+	mu       sync.RWMutex
+	settings RuntimeSettings
 }
 
-func NewRuntimeSettingsManager(envPublicURL string) *RuntimeSettingsManager {
+func NewRuntimeSettingsManager() *RuntimeSettingsManager {
 	return &RuntimeSettingsManager{
-		settings:     defaultRuntimeSettings(),
-		envPublicURL: strings.TrimSpace(envPublicURL),
+		settings: defaultRuntimeSettings(),
 	}
 }
 
 func (m *RuntimeSettingsManager) Load(ctx context.Context, repo *repository.Repository) error {
+	defaults := RuntimeSettingsToConfigValues(defaultRuntimeSettings())
+	if err := repo.InsertMissingConfigValues(ctx, defaults); err != nil {
+		return fmt.Errorf("%w: default settings save failed", ErrDependencyUnavailable)
+	}
+
 	values, err := repo.GetAllConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("%w: settings query failed", ErrDependencyUnavailable)
@@ -182,26 +184,15 @@ func (m *RuntimeSettingsManager) EffectivePublicBaseURL(requestBase string) stri
 	if settings.PublicBaseURL != "" {
 		return strings.TrimRight(settings.PublicBaseURL, "/")
 	}
-	if m.envPublicURL != "" {
-		return strings.TrimRight(m.envPublicURL, "/")
-	}
 	return strings.TrimRight(requestBase, "/")
 }
 
 func (m *RuntimeSettingsManager) PublicBaseURLSource() string {
 	settings := m.Current()
-	switch {
-	case settings.PublicBaseURL != "":
+	if settings.PublicBaseURL != "" {
 		return "runtime"
-	case m.envPublicURL != "":
-		return "environment"
-	default:
-		return "request_host"
 	}
-}
-
-func (m *RuntimeSettingsManager) EnvPublicBaseURLSet() bool {
-	return m.envPublicURL != ""
+	return "request_host"
 }
 
 func (s RuntimeSettings) EffectiveMaintenanceMessage() string {
@@ -265,8 +256,8 @@ func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSett
 func RuntimeSettingsToConfigValues(settings RuntimeSettings) map[string]string {
 	settings = normalizeRuntimeSettings(settings)
 	return map[string]string{
-		"site_name":                         settings.SiteName,
-		"site_tagline":                      settings.SiteTagline,
+		"site_name":                        settings.SiteName,
+		"site_tagline":                     settings.SiteTagline,
 		"public_base_url":                  settings.PublicBaseURL,
 		"max_upload_size_mb":               strconv.Itoa(settings.MaxUploadSizeMB),
 		"allowed_mime_types":               strings.Join(settings.AllowedMIMETypes, ","),

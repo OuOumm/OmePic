@@ -71,6 +71,7 @@ func New(deps Dependencies) *gin.Engine {
 	admin := engine.Group("/admin")
 	admin.Use(apiLimiter)
 	admin.Use(middleware.AdminAuth(deps.JWTSecret))
+	admin.PUT(adminPath(adminPasswordRouteSpec.Path), deps.AdminHandler.ChangePassword)
 	admin.GET(adminPath(adminStatusRouteSpec.Path), deps.AdminHandler.Status)
 	admin.GET(adminPath(adminImagesRouteSpec.Path), deps.AdminHandler.Images)
 	admin.DELETE(adminPath(adminImagesRouteSpec.Path), deps.AdminHandler.DeleteImages)

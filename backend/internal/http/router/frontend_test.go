@@ -117,6 +117,8 @@ func TestFrontendFallbackPreservesAPINotFoundBehaviorByMethod(t *testing.T) {
 		{name: "admin login api post", method: http.MethodPost, path: "/admin/login", status: http.StatusNotFound},
 		{name: "admin login page get", method: http.MethodGet, path: "/admin/login", status: http.StatusOK, body: "<!doctype html><title>login</title>"},
 		{name: "health api head", method: http.MethodHead, path: "/health", status: http.StatusNotFound},
+		{name: "admin password api put", method: http.MethodPut, path: "/admin/password", status: http.StatusNotFound},
+		{name: "admin password page get", method: http.MethodGet, path: "/admin/password", status: http.StatusOK, body: "<!doctype html><title>home</title>"},
 		{name: "admin status api head", method: http.MethodHead, path: "/admin/status", status: http.StatusNotFound},
 		{name: "admin config instances api post", method: http.MethodPost, path: "/admin/config/storage-instances", status: http.StatusNotFound},
 		{name: "admin config instances page get", method: http.MethodGet, path: "/admin/config/storage-instances", status: http.StatusOK, body: "<!doctype html><title>home</title>"},

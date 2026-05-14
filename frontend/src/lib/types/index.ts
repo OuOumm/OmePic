@@ -177,7 +177,6 @@ export interface AdminSystemSettings {
       database_path: string;
       redis_configured: boolean;
       public_base_url_source: string;
-      env_public_base_url_set: boolean;
       runtime_public_base_url_set: boolean;
     };
     security: {

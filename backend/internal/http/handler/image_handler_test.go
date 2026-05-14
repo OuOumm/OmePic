@@ -228,7 +228,7 @@ func newImageHandlerTestHarness(t *testing.T) (*ImageHandler, service.UploadOutp
 
 	cacheStore := newHandlerFakeCache()
 	validUID := "uid-handler"
-	settingsManager := service.NewRuntimeSettingsManager("")
+	settingsManager := service.NewRuntimeSettingsManager()
 	imageService := service.NewImageService(
 		repo,
 		cacheStore,

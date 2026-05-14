@@ -36,57 +36,20 @@
 
 **文件**: [.env.example](file:///d:/Works/MyProject/OmePic/.env.example)
 
-### 核心配置
+### 启动环境变量
+
+后端启动环境变量只保留无法在打开 SQLite 前读取或属于启动安全密钥的 6 项：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `HTTP_ADDR` | `:8080` | HTTP 监听地址 |
 | `DATABASE_PATH` | `data/omepic.db` | SQLite 数据库文件路径 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接 URL |
-| `PUBLIC_BASE_URL` | `""` | 公网公开基础 URL（影响图片 URL 生成） |
-| `ADMIN_PASSWORD` | `admin123` | 管理员登录密码 |
-| `JWT_SECRET` | `change-me` | JWT 签名密钥 |
+| `UID_PREFIX` | `omeo_` | UID 明文前缀（尾部下划线会规范化） |
+| `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | UID XOR 加密密钥 |
+| `JWT_SECRET` | `change-me-too` | JWT 签名密钥 |
 
-### UID 配置
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `UID_PREFIX` | `omeo_` | UID 前缀（用于识别来源） |
-| `UID_ENCRYPTION_KEY` | 回退到 `JWT_SECRET` | UID XOR 加密密钥 |
-
-### 本地存储配置
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `STORAGE_BACKEND` | `local` | 默认存储后端 |
-| `LOCAL_STORAGE_PATH` | `data/images` | 本地文件存储路径 |
-
-### S3 存储配置
-
-| 变量 | 说明 |
-|------|------|
-| `S3_ENDPOINT` | S3 端点地址 |
-| `S3_REGION` | 区域（默认 `auto`） |
-| `S3_BUCKET` | 存储桶名称 |
-| `S3_ACCESS_KEY` | 访问密钥 |
-| `S3_SECRET_KEY` | 秘密密钥 |
-| `S3_USE_SSL` | 是否使用 SSL（默认 `false`） |
-| `S3_FORCE_PATH_STYLE` | 是否使用路径风格（默认 `true`） |
-
-### WebDAV 存储配置
-
-| 变量 | 说明 |
-|------|------|
-| `WEBDAV_URL` | WebDAV 服务器 URL |
-| `WEBDAV_USER` | 用户名 |
-| `WEBDAV_PASS` | 密码 |
-
-### 代理与网络配置
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `TRUSTED_PROXY_CIDRS` | `""` | 信任的代理 CIDR（逗号分隔） |
-| `REAL_IP_HEADER` | `X-Forwarded-For` | 真实 IP 请求头 |
+存储配置、公开访问基准 URL、上传策略、维护模式、限流和管理员密码均保存在 SQLite。首次登录或首次修改密码时，如果尚无密码哈希，程序会写入默认 `admin123` 的 bcrypt 哈希；登录后可在管理端设置页修改密码。
 
 ---
 
@@ -99,8 +62,9 @@
 $env:HTTP_ADDR=":8080"
 $env:DATABASE_PATH="data/omepic.db"
 $env:REDIS_URL="redis://localhost:6379/0"
-$env:ADMIN_PASSWORD="admin123"
-$env:JWT_SECRET="dev-secret"
+$env:UID_PREFIX="omeo_"
+$env:UID_ENCRYPTION_KEY="dev-uid-secret"
+$env:JWT_SECRET="dev-jwt-secret"
 
 # 或者从 .env.example 复制并加载
 
@@ -124,7 +88,7 @@ npm install
 npm run dev
 ```
 
-前端将在 `http://localhost:3000` 启动，API 请求代理到 `http://localhost:8080`（如果未设置 `NEXT_PUBLIC_API_BASE_URL`）。
+前端将在 `http://localhost:3000` 启动。开发/构建如需覆盖 API 基准地址，使用当前 Vite 配置约定；生产单端口部署默认走同源相对路径。
 
 ---
 
@@ -238,10 +202,9 @@ services:
       - HTTP_ADDR=:8080
       - DATABASE_PATH=/data/omepic.db
       - REDIS_URL=redis://redis:6379/0
-      - ADMIN_PASSWORD=strong-password
-      - JWT_SECRET=secure-jwt-secret
+      - UID_PREFIX=omeo_
       - UID_ENCRYPTION_KEY=secure-uid-key
-      - PUBLIC_BASE_URL=https://your.domain.com
+      - JWT_SECRET=secure-jwt-secret
     volumes:
       - app-data:/data
       - app-images:/data/images
@@ -334,26 +297,22 @@ server {
 }
 ```
 
-同时配置：
-- `TRUSTED_PROXY_CIDRS`: 添加反向代理的 IP 或 CIDR
-- `REAL_IP_HEADER`: 使用 `X-Forwarded-For`
-- `PUBLIC_BASE_URL`: 设置为 `https://your.domain.com`
+公开访问基准 URL 不再通过环境变量设置。登录管理端后进入运行设置，将 Public URL 设置为 `https://your.domain.com`。当前启动配置不读取可信代理 CIDR 或真实 IP header 环境变量，默认不信任转发头。
 
 ### Q: 如何切换默认存储后端
 
-**方法一**（启动前）：设置环境变量 `STORAGE_BACKEND` 及其对应参数。
-
-**方法二**（运行时）：
 1. 登录管理后台
 2. 进入 Settings → Storage
 3. 创建或选择目标存储实例
 4. 设置为默认存储
 
+存储配置保存在 SQLite `storage_configs`，不再通过环境变量切换。
+
 ### Q: 前端白屏/路由不工作
 
 确保：
 1. 生产模式下 `backend/web/` 目录存在（执行了 `npm run build:backend`）
-2. 开发模式下未设置 `NEXT_PUBLIC_API_BASE_URL` 时 API 请求使用相对路径
+2. 开发模式下确认前端 API 基准地址指向正在运行的后端；生产单端口部署默认使用相对路径
 
 ### Q: 如何备份数据
 

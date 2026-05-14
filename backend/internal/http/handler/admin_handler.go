@@ -30,7 +30,7 @@ func (h *AdminHandler) Login(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "password is required")
 		return
 	}
-	token, err := h.service.Login(payload.Password)
+	token, err := h.service.Login(c.Request.Context(), payload.Password)
 	if err != nil {
 		switch err {
 		case service.ErrInvalidInput:
@@ -44,6 +44,28 @@ func (h *AdminHandler) Login(c *gin.Context) {
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"token": token})
+}
+
+func (h *AdminHandler) ChangePassword(c *gin.Context) {
+	var payload struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid password payload")
+		return
+	}
+	if err := h.service.ChangePassword(c.Request.Context(), payload.OldPassword, payload.NewPassword); err != nil {
+		writeServiceError(c, h.logger, err, "admin password dependency failure", "admin password handler failure", map[error]serviceErrorMapping{
+			service.ErrForbidden: {
+				Status:  http.StatusForbidden,
+				Code:    "forbidden",
+				Message: sanitizeErrorMessage(err, "current password is incorrect"),
+			},
+		})
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{})
 }
 
 func (h *AdminHandler) Status(c *gin.Context) {

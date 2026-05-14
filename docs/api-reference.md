@@ -14,7 +14,7 @@
 ### 基础 URL
 
 - 开发环境: `http://localhost:8080`
-- 可通过 `PUBLIC_BASE_URL` 环境变量自定义
+- 公开访问基准 URL 通过 SQLite runtime setting `public_base_url` 管理；未配置时按请求 Host 推导。
 
 ### 响应格式
 
@@ -225,9 +225,29 @@ POST /admin/login
 { "success": true, "data": { "token": "eyJhbGciOiJIUzI1NiIs..." } }
 ```
 
-JWT 有效期为 24 小时。
+JWT 有效期为 24 小时。首次登录时如果 SQLite 尚无 `admin_password_hash`，后端会写入默认 `admin123` 的 bcrypt 哈希。
 
-### 3.2 获取全局统计
+### 3.2 修改管理员密码
+
+```
+PUT /admin/password
+```
+
+**请求头**: `Authorization: Bearer <jwt>`
+
+**请求体**:
+```json
+{ "old_password": "admin123", "new_password": "New-secret!" }
+```
+
+**响应** (200):
+```json
+{ "success": true, "data": {} }
+```
+
+规则：旧密码必须正确；新密码至少 8 位，并包含大写字母、小写字母和符号。密码仅以 bcrypt 哈希形式保存到 SQLite `config.admin_password_hash`，响应不会返回明文或哈希。弱密码返回 `invalid_input`；旧密码错误返回明确的密码错误消息。
+
+### 3.3 获取全局统计
 
 ```
 GET /admin/status
@@ -537,7 +557,6 @@ GET /admin/system-settings
         "database_path": "data/omepic.db",
         "redis_configured": true,
         "public_base_url_source": "request_host",
-        "env_public_base_url_set": false,
         "runtime_public_base_url_set": false
       },
       "security": {

@@ -36,7 +36,7 @@
 11. ratelimit.NewRedisLimiter() → 创建速率限制器
 12. repo.Ping() + imageCache.Ping() → 双依赖健康检查
 13. service.NewRuntimeSettingsManager() → 运行时配置管理器
-14. settings.Load() → 从数据库加载运行时配置
+14. settings.Load() → 补齐缺失的默认运行时配置并从数据库加载
 15. 创建三个 Service：
     - ImageService（图片上传/删除/解析/预热）
     - AdminService（管理后台逻辑）
@@ -61,7 +61,7 @@ main.go
 ├─ service:
 │  ├─ NewRuntimeSettingsManager() ── Load()
 │  ├─ NewImageService(repo, cache, storage, settings, uid.Generate, uid.Validate)
-│  ├─ NewAdminService(repo, storage, settings, imageService, config)
+│  ├─ NewAdminService(repo, storage, settings, imageService, jwtSecret, adminEnv)
 │  └─ NewAnnouncementService(repo)
 ├─ clientip.NewResolver()
 └─ router.New(handler, middleware, ...)
@@ -75,22 +75,18 @@ main.go
 
 ### AppConfig
 
-核心配置结构，所有字段通过环境变量加载：
+`AppConfig` 只承载启动必需且不能从 SQLite 读取的环境变量：
 
 | 字段 | 环境变量 | 默认值 | 说明 |
 |------|----------|--------|------|
 | HTTPAddr | `HTTP_ADDR` | `:8080` | 监听地址 |
 | DatabasePath | `DATABASE_PATH` | `data/omepic.db` | SQLite 文件路径 |
 | RedisURL | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接 URL |
-| PublicBaseURL | `PUBLIC_BASE_URL` | `""` | 公网基础 URL |
 | UIDPrefix | `UID_PREFIX` | `omeo_` | UID 前缀 |
-| UIDEncryptionKey | `UID_ENCRYPTION_KEY` | 回退到 JWT_SECRET | XOR 加密密钥 |
-| StorageBackend | `STORAGE_BACKEND` | `local` | 默认存储后端 |
-| LocalStoragePath | `LOCAL_STORAGE_PATH` | `data/images` | 本地存储路径 |
-| AdminPassword | `ADMIN_PASSWORD` | `admin123` | 管理员密码 |
-| JWTSecret | `JWT_SECRET` | `change-me` | JWT 签名密钥 |
-| TrustedProxyCIDRs | `TRUSTED_PROXY_CIDRS` | `""` | 信任代理 CIDR 列表（逗号分隔） |
-| RealIPHeader | `REAL_IP_HEADER` | `X-Forwarded-For` | 真实 IP 请求头 |
+| UIDEncryptionKey | `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | XOR 加密密钥 |
+| JWTSecret | `JWT_SECRET` | `change-me-too` | JWT 签名密钥 |
+
+公开访问基准 URL、存储配置、上传策略、维护模式、限流和管理员密码均由 SQLite 管理，不再读取环境变量。
 
 ### 存储后端类型常量
 
@@ -381,7 +377,8 @@ storedUID: "abc123"      → 直接验证
 
 | 方法 | 说明 |
 |------|------|
-| `Login(password)` | 管理员登录，返回 JWT（24h 有效期） |
+| `Login(password)` | 校验 SQLite bcrypt 密码哈希并返回 JWT（24h 有效期） |
+| `ChangePassword(ctx, oldPassword, newPassword)` | 校验旧密码和新密码强度（至少 8 位，包含大写、小写和符号）后写入新的 bcrypt 哈希 |
 | `Status(ctx)` | 获取全局统计 |
 | `Images(ctx, page, pageSize)` | 分页查询图片列表 |
 | `DeleteImages(ctx, uids)` | 批量删除图片 |
@@ -453,11 +450,11 @@ storedUID: "abc123"      → 直接验证
 | UploadRateLimitWindowMinutes | `10` | 上传速率窗口（分钟） |
 | UploadRateLimitMaxRequests | `20` | 上传速率上限 |
 
-#### 值来源优先级
+#### 值来源与持久化
 
-```
-环境变量 < 数据库 config 表 < 运行时 API 更新
-```
+- `RuntimeSettingsManager.Load()` 会先把缺失的默认 runtime settings 写入 SQLite `config` 表。
+- 缺失补齐只使用 `INSERT ... ON CONFLICT DO NOTHING`，不会覆盖已有管理员配置。
+- `public_base_url` 只来自 SQLite；未配置时请求处理使用 request host 作为运行时回退。
 
 ### 6.5 错误定义
 

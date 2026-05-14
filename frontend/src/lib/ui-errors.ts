@@ -1,3 +1,4 @@
+import { ApiError } from '@/api';
 import { t } from '@/i18n';
 import { toast } from '@/stores/toast.svelte';
 import type { Language } from '@/types';
@@ -14,8 +15,22 @@ type RunAsyncActionOptions<T> = {
   onError?: (err: unknown) => void | Promise<void>;
 };
 
+const apiErrorTranslationKeys: Record<string, string> = {
+  'forbidden:current password is incorrect': 'admin.passwordCurrentIncorrect',
+  'invalid_input:new password must be at least 8 characters and include uppercase, lowercase, and symbol characters': 'admin.passwordStrengthError',
+};
+
 export function errorMessage(err: unknown, language: Language, fallbackKey = 'common.error'): string {
+  if (err instanceof ApiError) {
+    const translationKey = apiErrorTranslationKey(err);
+    if (translationKey) return t(language, translationKey);
+  }
   return err instanceof Error ? err.message : t(language, fallbackKey);
+}
+
+function apiErrorTranslationKey(err: ApiError): string | undefined {
+  if (!err.code) return undefined;
+  return apiErrorTranslationKeys[`${err.code}:${err.message}`];
 }
 
 export function toastApiError(err: unknown, language: Language, fallbackKey = 'common.error') {

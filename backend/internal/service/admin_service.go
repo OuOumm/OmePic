@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"omepic/backend/internal/auth"
 	"omepic/backend/internal/config"
@@ -113,35 +116,116 @@ type AdminService struct {
 	storage      *storage.Manager
 	settings     *RuntimeSettingsManager
 	imageService *ImageService
-	appConfig    config.AppConfig
-	adminPass    string
 	jwtSecret    string
+	adminEnv     AdminEnvMetadata
 }
 
-func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, settingsManager *RuntimeSettingsManager, imageService *ImageService, appConfig config.AppConfig) *AdminService {
+type AdminEnvMetadata struct {
+	HTTPAddr         string
+	DatabasePath     string
+	RedisURL         string
+	UIDEncryptionKey string
+}
+
+func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, settingsManager *RuntimeSettingsManager, imageService *ImageService, jwtSecret string, adminEnv AdminEnvMetadata) *AdminService {
 	return &AdminService{
 		repo:         repo,
 		storage:      storageManager,
 		settings:     settingsManager,
 		imageService: imageService,
-		appConfig:    appConfig,
-		adminPass:    appConfig.AdminPassword,
-		jwtSecret:    appConfig.JWTSecret,
+		jwtSecret:    jwtSecret,
+		adminEnv:     adminEnv,
 	}
 }
 
-func (s *AdminService) Login(password string) (string, error) {
-	if strings.TrimSpace(password) == "" {
-		return "", ErrInvalidInput
+func (s *AdminService) isPasswordSet(ctx context.Context) bool {
+	_, err := s.repo.GetConfigValue(ctx, "admin_password_hash")
+	return err == nil
+}
+
+func (s *AdminService) Login(ctx context.Context, password string) (string, error) {
+	if err := s.verifyAdminPassword(ctx, password); err != nil {
+		return "", err
 	}
-	if password != s.adminPass {
-		return "", ErrForbidden
-	}
+
 	token, err := auth.GenerateJWT(s.jwtSecret, 24*time.Hour)
 	if err != nil {
 		return "", fmt.Errorf("%w: jwt sign failed", ErrDependencyUnavailable)
 	}
 	return token, nil
+}
+
+func (s *AdminService) ChangePassword(ctx context.Context, oldPassword string, newPassword string) error {
+	if err := validateAdminPasswordStrength(newPassword); err != nil {
+		return err
+	}
+	if err := s.verifyAdminPassword(ctx, oldPassword); err != nil {
+		if err == ErrForbidden {
+			return fmt.Errorf("%w: current password is incorrect", ErrForbidden)
+		}
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("%w: password hash failed", ErrDependencyUnavailable)
+	}
+	if err := s.repo.SetConfigValue(ctx, "admin_password_hash", string(hash)); err != nil {
+		return fmt.Errorf("%w: password save failed", ErrDependencyUnavailable)
+	}
+	return nil
+}
+
+func validateAdminPasswordStrength(password string) error {
+	if strings.TrimSpace(password) == "" {
+		return fmt.Errorf("%w: new password is required", ErrInvalidInput)
+	}
+	if len([]rune(password)) < 8 {
+		return fmt.Errorf("%w: new password must be at least 8 characters and include uppercase, lowercase, and symbol characters", ErrInvalidInput)
+	}
+
+	hasUpper := false
+	hasLower := false
+	hasSymbol := false
+	for _, r := range password {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSymbol = true
+		}
+	}
+	if !hasUpper || !hasLower || !hasSymbol {
+		return fmt.Errorf("%w: new password must be at least 8 characters and include uppercase, lowercase, and symbol characters", ErrInvalidInput)
+	}
+	return nil
+}
+
+func (s *AdminService) verifyAdminPassword(ctx context.Context, password string) error {
+	if strings.TrimSpace(password) == "" {
+		return ErrInvalidInput
+	}
+	storedHash, err := s.repo.GetConfigValue(ctx, "admin_password_hash")
+	if err != nil {
+		if !repository.IsNotFound(err) {
+			return fmt.Errorf("%w: password lookup failed", ErrDependencyUnavailable)
+		}
+		// First boot: no hash stored yet, hash the default password and persist it.
+		defaultHash, hashErr := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+		if hashErr != nil {
+			return fmt.Errorf("%w: password hash failed", ErrDependencyUnavailable)
+		}
+		if err := s.repo.SetConfigValue(ctx, "admin_password_hash", string(defaultHash)); err != nil {
+			return fmt.Errorf("%w: password save failed", ErrDependencyUnavailable)
+		}
+		storedHash = string(defaultHash)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)); err != nil {
+		return ErrForbidden
+	}
+	return nil
 }
 
 func (s *AdminService) Status(ctx context.Context) (model.AdminStatus, error) {
@@ -563,25 +647,24 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 		Runtime: settings,
 		Readonly: AdminReadonlySettings{
 			Environment: AdminEnvironmentStatus{
-				HTTPAddr:                s.appConfig.HTTPAddr,
-				DatabasePath:            s.appConfig.DatabasePath,
-				RedisConfigured:         strings.TrimSpace(s.appConfig.RedisURL) != "",
+				HTTPAddr:                s.adminEnv.HTTPAddr,
+				DatabasePath:            s.adminEnv.DatabasePath,
+				RedisConfigured:         strings.TrimSpace(s.adminEnv.RedisURL) != "",
 				PublicBaseURLSource:     s.publicBaseURLSource(),
-				EnvPublicBaseURLSet:     s.settings != nil && s.settings.EnvPublicBaseURLSet(),
 				RuntimePublicBaseURLSet: settings.PublicBaseURL != "",
 			},
 			Security: AdminSecurityStatus{
 				JWTSecret: SecretStatus{
-					Configured:   strings.TrimSpace(s.appConfig.JWTSecret) != "",
-					UsingDefault: s.appConfig.JWTSecret == "change-me",
+					Configured:   strings.TrimSpace(s.jwtSecret) != "",
+					UsingDefault: s.jwtSecret == "change-me-too",
 				},
 				AdminPassword: SecretStatus{
-					Configured:   strings.TrimSpace(s.appConfig.AdminPassword) != "",
-					UsingDefault: s.appConfig.AdminPassword == "admin123",
+					Configured:   s.isPasswordSet(ctx),
+					UsingDefault: false,
 				},
 				UIDEncryptionKey: SecretStatus{
-					Configured:   strings.TrimSpace(s.appConfig.UIDEncryptionKey) != "",
-					UsingDefault: s.appConfig.UIDEncryptionKey == "change-me" || s.appConfig.UIDEncryptionKey == s.appConfig.JWTSecret,
+					Configured:   strings.TrimSpace(s.adminEnv.UIDEncryptionKey) != "",
+					UsingDefault: s.adminEnv.UIDEncryptionKey == "change-me-uid-secret",
 				},
 			},
 			Storage: AdminStorageStatus{
@@ -598,13 +681,10 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 }
 
 func (s *AdminService) publicBaseURLSource() string {
-	if s.settings == nil {
-		if strings.TrimSpace(s.appConfig.PublicBaseURL) != "" {
-			return "environment"
-		}
-		return "request_host"
+	if s.settings != nil {
+		return s.settings.PublicBaseURLSource()
 	}
-	return s.settings.PublicBaseURLSource()
+	return "request_host"
 }
 
 func (s *AdminService) ensureStorageConfigExists(ctx context.Context, storageKey string) error {

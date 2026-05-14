@@ -276,6 +276,18 @@ export async function adminLogin(password: string, signal?: AbortSignal): Promis
   return data.token;
 }
 
+export async function adminChangePassword(
+  token: string,
+  oldPassword: string,
+  newPassword: string
+): Promise<void> {
+  await apiFetch<Record<string, never> | null>("/admin/password", {
+    method: "PUT",
+    headers: adminHeaders(token),
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  });
+}
+
 export async function adminGetStatus(token: string, signal?: AbortSignal): Promise<AdminStatus> {
   return apiFetch<AdminStatus>("/admin/status", {
     headers: adminAuthHeaders(token),
