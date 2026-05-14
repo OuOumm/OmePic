@@ -404,6 +404,39 @@ func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *tes
 	}
 }
 
+func TestGetSystemSettingsMarksDefaultSecurityValuesAndPasswordBootstrapState(t *testing.T) {
+	ctx := context.Background()
+	adminService, _ := newAdminServiceTestHarnessWithEnv(t, "change-me-too", "change-me-uid-secret")
+
+	view, err := adminService.GetSystemSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetSystemSettings returned error: %v", err)
+	}
+	if !view.Readonly.Security.JWTSecret.UsingDefault {
+		t.Fatalf("expected jwt_secret.using_default to be true")
+	}
+	if !view.Readonly.Security.UIDEncryptionKey.UsingDefault {
+		t.Fatalf("expected uid_encryption_key.using_default to be true")
+	}
+	if view.Readonly.Security.AdminPassword.Configured {
+		t.Fatalf("expected admin_password.configured to be false before password bootstrap")
+	}
+
+	if _, err := adminService.Login(ctx, DefaultAdminPassword); err != nil {
+		t.Fatalf("expected first-boot default login to succeed, got %v", err)
+	}
+	view, err = adminService.GetSystemSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetSystemSettings after bootstrap returned error: %v", err)
+	}
+	if !view.Readonly.Security.AdminPassword.Configured {
+		t.Fatalf("expected admin_password.configured to be true after password bootstrap")
+	}
+	if view.Readonly.Security.AdminPassword.UsingDefault {
+		t.Fatalf("expected admin_password.using_default to remain false until explicit support exists")
+	}
+}
+
 func TestChangePasswordRequiresValidOldPasswordAndStoresBcryptHash(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
@@ -447,6 +480,10 @@ func TestChangePasswordRequiresValidOldPasswordAndStoresBcryptHash(t *testing.T)
 }
 
 func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Repository) {
+	return newAdminServiceTestHarnessWithEnv(t, "secret", "uid-secret")
+}
+
+func newAdminServiceTestHarnessWithEnv(t *testing.T, jwtSecret string, uidSecret string) (*AdminService, *repository.Repository) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -481,8 +518,11 @@ func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Reposi
 
 	logger := slog.New(slog.NewTextHandler(ioDiscard{}, nil))
 	settingsManager := NewRuntimeSettingsManager()
+	if err := settingsManager.Load(ctx, repo); err != nil {
+		t.Fatalf("settingsManager.Load returned error: %v", err)
+	}
 	imageService := NewImageService(repo, newFakeCache(), manager, settingsManager, nil, nil, logger)
-	return NewAdminService(repo, manager, settingsManager, imageService, "secret", AdminEnvMetadata{HTTPAddr: ":8080", DatabasePath: ":memory:", RedisURL: "", UIDEncryptionKey: "uid-secret"}), repo
+	return NewAdminService(repo, manager, settingsManager, imageService, jwtSecret, AdminEnvMetadata{HTTPAddr: ":8080", DatabasePath: ":memory:", RedisURL: "", UIDEncryptionKey: uidSecret}), repo
 }
 
 func modelImageRecord(uid string, storageKey string, backend string) model.ImageRecord {

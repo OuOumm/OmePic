@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"omepic/backend/internal/service"
 )
 
 func TestFrontendFallbackServesStaticExportPages(t *testing.T) {
@@ -187,6 +189,33 @@ func TestFrontendFallbackDisabledWhenBuildMissing(t *testing.T) {
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+}
+
+func TestCORSConfigAllowsAllOriginsWhenRuntimePublicBaseURLUnset(t *testing.T) {
+	cfg := corsConfig(service.NewRuntimeSettingsManager())
+	if !cfg.AllowAllOrigins {
+		t.Fatalf("expected AllowAllOrigins when runtime public base url is unset")
+	}
+	if len(cfg.AllowOrigins) != 0 {
+		t.Fatalf("expected no explicit AllowOrigins, got %v", cfg.AllowOrigins)
+	}
+}
+
+func TestCORSConfigUsesRuntimePublicBaseURLWhenSet(t *testing.T) {
+	settings := service.NewRuntimeSettingsManager()
+	settings.Reconfigure(service.RuntimeSettings{
+		SiteName:        service.DefaultSiteName,
+		SiteTagline:     service.DefaultSiteTagline,
+		PublicBaseURL:   "https://img.example.com/",
+		MaxUploadSizeMB: 20,
+	})
+	cfg := corsConfig(settings)
+	if cfg.AllowAllOrigins {
+		t.Fatalf("expected AllowAllOrigins to be false when runtime public base url is set")
+	}
+	if len(cfg.AllowOrigins) != 1 || cfg.AllowOrigins[0] != "https://img.example.com" {
+		t.Fatalf("unexpected AllowOrigins: %v", cfg.AllowOrigins)
 	}
 }
 

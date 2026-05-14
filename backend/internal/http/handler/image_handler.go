@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -48,20 +47,6 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 	}
 	defer file.Close()
 
-	readLimit := service.MaxUploadSizeBytes() + 1
-	if limit > 0 {
-		readLimit = limit + 1
-	}
-	payload, err := io.ReadAll(io.LimitReader(file, readLimit))
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_input", "failed to read uploaded file")
-		return
-	}
-	if limit > 0 && int64(len(payload)) > limit {
-		response.Error(c, http.StatusBadRequest, "invalid_input", "file exceeds the configured upload size limit")
-		return
-	}
-
 	contentType := fileHeader.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = detectContentType(fileHeader.Filename)
@@ -72,7 +57,8 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 		OriginalFilename: fileHeader.Filename,
 		MIMEType:         contentType,
 		IPAddress:        h.clientIP(c),
-		Bytes:            payload,
+		Source:           file,
+		DeclaredSize:     fileHeader.Size,
 		BaseURL:          h.service.EffectivePublicBaseURL(h.requestBaseURL(c)),
 		StorageKey:       c.PostForm("storage_key"),
 	})

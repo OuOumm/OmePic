@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -554,9 +555,9 @@ func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 
 	sourceBytes := mustPNGBytes(t, color.RGBA{R: 80, G: 160, B: 40, A: 255})
 	conversionCalls := 0
-	service.transformer = func(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
+	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
 		conversionCalls++
-		return convertToAVIFWithSettings(payload, settings)
+		return encodeAVIFToWriter(source, target, settings)
 	}
 
 	if _, err := service.Upload(ctx, UploadInput{
@@ -604,10 +605,14 @@ func TestUploadSerializesSameStorageMD5WithoutGlobalUploadLock(t *testing.T) {
 
 	started := make(chan string, 3)
 	release := make(chan struct{})
-	service.transformer = func(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
+	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
+		payload, err := io.ReadAll(source)
+		if err != nil {
+			return err
+		}
 		started <- md5Hex(payload)
 		<-release
-		return convertToAVIFWithSettings(payload, settings)
+		return encodeAVIFToWriter(bytes.NewReader(payload), target, settings)
 	}
 
 	runUpload := func(token string, payload []byte) <-chan error {
@@ -655,6 +660,51 @@ func TestUploadSerializesSameStorageMD5WithoutGlobalUploadLock(t *testing.T) {
 	}
 }
 
+func TestPrepareUploadSourceSpoolsReaderToTempFileAndComputesMD5(t *testing.T) {
+	service, _, _, _, _ := newImageServiceTestHarness(t)
+	source := mustPNGBytes(t, color.RGBA{R: 200, G: 20, B: 20, A: 255})
+	prepared, err := service.prepareUploadSource(UploadInput{
+		Source:       bytes.NewReader(source),
+		DeclaredSize: int64(len(source)),
+	}, defaultRuntimeSettings().MaxUploadSizeBytes())
+	if err != nil {
+		t.Fatalf("prepareUploadSource returned error: %v", err)
+	}
+	defer prepared.Cleanup()
+	if prepared.tempPath == "" {
+		t.Fatalf("expected temp file path for reader-backed upload source")
+	}
+	if prepared.size != int64(len(source)) {
+		t.Fatalf("expected size %d, got %d", len(source), prepared.size)
+	}
+	if prepared.originalMD5 != md5Hex(source) {
+		t.Fatalf("expected md5 %q, got %q", md5Hex(source), prepared.originalMD5)
+	}
+	reader, err := prepared.Open()
+	if err != nil {
+		t.Fatalf("prepared.Open returned error: %v", err)
+	}
+	defer reader.Close()
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("io.ReadAll returned error: %v", err)
+	}
+	if !bytes.Equal(payload, source) {
+		t.Fatalf("expected payload bytes to round-trip")
+	}
+}
+
+func TestPrepareUploadSourceRejectsOversizeReader(t *testing.T) {
+	service, _, _, _, _ := newImageServiceTestHarness(t)
+	_, err := service.prepareUploadSource(UploadInput{
+		Source:       strings.NewReader("abcdef"),
+		DeclaredSize: 6,
+	}, 4)
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for oversize upload source, got %v", err)
+	}
+}
+
 func TestUploadUsesConfiguredAVIFConversionSettings(t *testing.T) {
 	ctx := context.Background()
 	service, _, _, _, uidCodec := newImageServiceTestHarness(t)
@@ -674,10 +724,10 @@ func TestUploadUsesConfiguredAVIFConversionSettings(t *testing.T) {
 	})
 
 	var observed *AVIFConversionSettings
-	service.transformer = func(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
+	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
 		copy := settings
 		observed = &copy
-		return convertToAVIFWithSettings(payload, settings)
+		return encodeAVIFToWriter(source, target, settings)
 	}
 
 	if _, err := service.Upload(ctx, UploadInput{
@@ -690,10 +740,53 @@ func TestUploadUsesConfiguredAVIFConversionSettings(t *testing.T) {
 		t.Fatalf("Upload returned error: %v", err)
 	}
 	if observed == nil {
-		t.Fatalf("expected transformer to observe avif settings")
+		t.Fatalf("expected encoder to observe avif settings")
 	}
 	if observed.Quality != 42 || observed.Speed != 3 {
 		t.Fatalf("expected configured avif settings quality=42 speed=3, got %+v", *observed)
+	}
+}
+
+func TestUploadPrefersProvidedOriginalMD5(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-1", "uid-2")
+
+	sourceBytes := mustPNGBytes(t, color.RGBA{R: 90, G: 40, B: 10, A: 255})
+	providedHash := md5Hex(sourceBytes)
+
+	if _, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		OriginalMD5:      strings.ToUpper(providedHash),
+		BaseURL:          "http://localhost:8080",
+	}); err != nil {
+		t.Fatalf("first upload returned error: %v", err)
+	}
+
+	result, err := service.Upload(ctx, UploadInput{
+		Token:            "token-b",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		OriginalMD5:      providedHash,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("second upload returned error: %v", err)
+	}
+	if !result.Duplicate {
+		t.Fatalf("expected second upload to deduplicate using provided original md5")
+	}
+
+	secondRecord, err := repo.FindByUID(ctx, "uid-2")
+	if err != nil {
+		t.Fatalf("FindByUID second failed: %v", err)
+	}
+	if secondRecord.MD5Hash != providedHash {
+		t.Fatalf("expected stored md5 hash %q, got %q", providedHash, secondRecord.MD5Hash)
 	}
 }
 

@@ -22,6 +22,13 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	cfg := config.Load()
 
+	if cfg.JWTSecret == "change-me-too" {
+		logger.Warn("JWT_SECRET is set to the default value 'change-me-too' — set a strong secret in production")
+	}
+	if cfg.UIDEncryptionKey == "change-me-uid-secret" {
+		logger.Warn("UID_ENCRYPTION_KEY is set to the default value 'change-me-uid-secret' — set a strong secret in production")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
@@ -83,6 +90,9 @@ func main() {
 		logger.Error("failed to load runtime settings", "error", err.Error())
 		os.Exit(1)
 	}
+	if usesDefaultAdminPassword(ctx, repo) {
+		logger.Warn("admin password is still using the documented first-boot default 'admin123' — change it immediately in production")
+	}
 
 	imageService := service.NewImageService(repo, imageCache, storageManager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger)
 	adminService := service.NewAdminService(repo, storageManager, settingsManager, imageService, cfg.JWTSecret, service.AdminEnvMetadata{
@@ -118,4 +128,12 @@ func main() {
 		logger.Error("server stopped", "error", err.Error())
 		os.Exit(1)
 	}
+}
+
+func usesDefaultAdminPassword(ctx context.Context, repo *repository.Repository) bool {
+	adminService := service.NewAdminService(repo, nil, nil, nil, "", service.AdminEnvMetadata{})
+	if _, err := adminService.Login(ctx, service.DefaultAdminPassword); err != nil {
+		return false
+	}
+	return true
 }

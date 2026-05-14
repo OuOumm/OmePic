@@ -24,6 +24,7 @@ import (
 type Provider interface {
 	Name() string
 	Save(ctx context.Context, objectKey string, data []byte, contentType string) (string, error)
+	SaveStream(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) (string, error)
 	Open(ctx context.Context, objectKey string) (OpenResult, error)
 	Delete(ctx context.Context, objectKey string) error
 }
@@ -160,12 +161,21 @@ func (p *localProvider) Name() string {
 	return config.StorageBackendLocal
 }
 
-func (p *localProvider) Save(_ context.Context, objectKey string, data []byte, _ string) (string, error) {
+func (p *localProvider) Save(ctx context.Context, objectKey string, data []byte, contentType string) (string, error) {
+	return p.SaveStream(ctx, objectKey, bytes.NewReader(data), int64(len(data)), contentType)
+}
+
+func (p *localProvider) SaveStream(_ context.Context, objectKey string, reader io.Reader, _ int64, _ string) (string, error) {
 	targetPath := filepath.Join(p.root, filepath.FromSlash(objectKey))
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
+	file, err := os.Create(targetPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	if _, err := io.Copy(file, reader); err != nil {
 		return "", err
 	}
 	return objectKey, nil
@@ -207,8 +217,11 @@ func (p *s3Provider) Name() string {
 }
 
 func (p *s3Provider) Save(ctx context.Context, objectKey string, data []byte, contentType string) (string, error) {
-	reader := bytes.NewReader(data)
-	_, err := p.client.PutObject(ctx, p.bucket, objectKey, reader, int64(len(data)), minio.PutObjectOptions{ContentType: contentType})
+	return p.SaveStream(ctx, objectKey, bytes.NewReader(data), int64(len(data)), contentType)
+}
+
+func (p *s3Provider) SaveStream(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) (string, error) {
+	_, err := p.client.PutObject(ctx, p.bucket, objectKey, reader, size, minio.PutObjectOptions{ContentType: contentType})
 	if err != nil {
 		return "", err
 	}
@@ -244,11 +257,21 @@ func (p *webdavProvider) Name() string {
 	return config.StorageBackendWebDAV
 }
 
-func (p *webdavProvider) Save(_ context.Context, objectKey string, data []byte, _ string) (string, error) {
+func (p *webdavProvider) Save(ctx context.Context, objectKey string, data []byte, contentType string) (string, error) {
+	return p.SaveStream(ctx, objectKey, bytes.NewReader(data), int64(len(data)), contentType)
+}
+
+func (p *webdavProvider) SaveStream(_ context.Context, objectKey string, reader io.Reader, size int64, _ string) (string, error) {
 	if err := p.client.MkdirAll(path.Dir(objectKey), 0o755); err != nil {
 		return "", err
 	}
-	if err := p.client.Write(objectKey, data, 0o644); err != nil {
+	var err error
+	if size >= 0 {
+		err = p.client.WriteStreamWithLength(objectKey, reader, size, 0o644)
+	} else {
+		err = p.client.WriteStream(objectKey, reader, 0o644)
+	}
+	if err != nil {
 		return "", err
 	}
 	return objectKey, nil

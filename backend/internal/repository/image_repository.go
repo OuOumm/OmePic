@@ -42,15 +42,6 @@ func (r *Repository) FindByUID(ctx context.Context, uid string) (*model.ImageRec
 	return &record, nil
 }
 
-func (r *Repository) FindByMD5(ctx context.Context, md5Hash string) (*model.ImageRecord, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+imageColumns+` FROM images WHERE md5_hash = ? ORDER BY id ASC LIMIT 1`, md5Hash)
-	record, err := scanImage(row)
-	if err != nil {
-		return nil, err
-	}
-	return &record, nil
-}
-
 func (r *Repository) FindByMD5AndStorageKey(ctx context.Context, md5Hash string, storageKey string) (*model.ImageRecord, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+imageColumns+` FROM images WHERE md5_hash = ? AND storage_key = ? ORDER BY id ASC LIMIT 1`, md5Hash, storageKey)
 	record, err := scanImage(row)

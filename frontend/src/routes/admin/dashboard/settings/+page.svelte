@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { CircleAlert, KeyRound, Save } from 'lucide-svelte';
+  import { CircleAlert, KeyRound, Save, TriangleAlert } from 'lucide-svelte';
   import { adminChangePassword, adminGetConfig, adminGetSystemSettings, adminUpdateSystemSettings } from '@/api';
   import AnnouncementManager from '@/components/studio/AnnouncementManager.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
@@ -21,6 +21,14 @@
 
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
+  const securityWarnings = $derived.by(() => {
+    const warnings: string[] = [];
+    if (!system) return warnings;
+    if (system.readonly.security.jwt_secret.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningJwtDefault'));
+    if (system.readonly.security.uid_encryption_key.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningUidDefault'));
+    if (!system.readonly.security.admin_password.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningAdminPasswordBootstrap'));
+    return warnings;
+  });
 
   function runtimeMimeTypesText(settings: AdminSystemSettings | null) {
     const runtimeTypes = settings?.runtime.allowed_mime_types;
@@ -103,6 +111,19 @@
       </div>
 
       <div class="grid gap-4">
+        {#if securityWarnings.length > 0}
+          <div class="grid gap-2 rounded-none border-2 ink-line bg-[hsl(var(--marker-yellow))] p-4 text-[hsl(var(--marker-ink))]">
+            <div class="flex items-center gap-2 font-black">
+              <TriangleAlert class="size-4" />
+              {t(preferences.language, 'admin.runtimeSecurityWarnings')}
+            </div>
+            <ul class="list-disc space-y-1 pl-5 text-sm font-bold">
+              {#each securityWarnings as warning}
+                <li>{warning}</li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
         <div class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4 md:grid-cols-2">
             <div class="md:col-span-2">
               <span class="tape-label rotate-[1deg]" style="background:hsl(var(--marker-green))">{t(preferences.language, 'admin.runtimeSiteIdentity')}</span>

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,16 +22,35 @@ import (
 	"omepic/backend/internal/storage"
 )
 
-const maxUploadSizeBytes = 20 * 1024 * 1024
+var filenameReplacer = strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\r", "", "\n", "")
 
 type UploadInput struct {
 	Token            string
 	OriginalFilename string
 	MIMEType         string
 	IPAddress        string
-	Bytes            []byte
-	BaseURL          string
-	StorageKey       string
+	// Bytes is a compatibility/testing path. Production request flows should prefer Source + DeclaredSize
+	// so service-layer upload preparation can spool large uploads to a temp file instead of keeping the
+	// original image fully resident in memory.
+	Bytes []byte
+	// Source is the preferred production upload path. Service will read it once, compute original-byte MD5,
+	// and spool to a temp file when needed so later dedup/convert steps can reopen the same original payload.
+	Source       io.Reader
+	DeclaredSize int64
+	OriginalMD5  string
+	BaseURL      string
+	StorageKey   string
+}
+
+func NewUploadInputFromBytes(token string, originalFilename string, mimeType string, payload []byte, baseURL string) UploadInput {
+	return UploadInput{
+		Token:            token,
+		OriginalFilename: originalFilename,
+		MIMEType:         mimeType,
+		Bytes:            payload,
+		DeclaredSize:     int64(len(payload)),
+		BaseURL:          baseURL,
+	}
 }
 
 type UploadOutput struct {
@@ -43,6 +64,39 @@ type UploadOutput struct {
 	Duplicate      bool      `json:"duplicate"`
 	StorageKey     string    `json:"storage_key"`
 	StorageBackend string    `json:"storage_backend"`
+}
+
+func (in UploadInput) payloadSizeHint() int64 {
+	if len(in.Bytes) > 0 {
+		return int64(len(in.Bytes))
+	}
+	if in.DeclaredSize > 0 {
+		return in.DeclaredSize
+	}
+	return 0
+}
+
+type preparedUploadSource struct {
+	bytes       []byte
+	tempPath    string
+	size        int64
+	originalMD5 string
+}
+
+func (src preparedUploadSource) Open() (io.ReadCloser, error) {
+	if len(src.bytes) > 0 {
+		return io.NopCloser(bytes.NewReader(src.bytes)), nil
+	}
+	if strings.TrimSpace(src.tempPath) == "" {
+		return nil, errors.New("upload source is empty")
+	}
+	return os.Open(src.tempPath)
+}
+
+func (src preparedUploadSource) Cleanup() {
+	if strings.TrimSpace(src.tempPath) != "" {
+		_ = os.Remove(src.tempPath)
+	}
 }
 
 type PublicStorageOption struct {
@@ -77,7 +131,7 @@ type ImageService struct {
 	logger      *slog.Logger
 	generateUID UIDGenerator
 	validateUID UIDValidator
-	transformer func([]byte, AVIFConversionSettings) ([]byte, error)
+	encoder     func(io.Reader, io.Writer, AVIFConversionSettings) error
 	hashLocks   *keyedMutex
 }
 
@@ -109,7 +163,7 @@ func NewImageService(
 		logger:      logger,
 		generateUID: generateUID,
 		validateUID: validateUID,
-		transformer: convertToAVIFWithSettings,
+		encoder:     encodeAVIFToWriter,
 		hashLocks:   newKeyedMutex(),
 	}
 }
@@ -125,9 +179,14 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 	if runtimeSettings.MaintenanceMode {
 		return UploadOutput{}, WithUserMessage(ErrInvalidInput, runtimeSettings.EffectiveMaintenanceMessage())
 	}
-	maxBytes := runtimeSettings.MaxUploadSizeBytes()
-	if len(input.Bytes) == 0 || (maxBytes > 0 && int64(len(input.Bytes)) > maxBytes) {
-		if maxBytes > 0 {
+	prepared, err := s.prepareUploadSource(input, runtimeSettings.MaxUploadSizeBytes())
+	if err != nil {
+		return UploadOutput{}, err
+	}
+	defer prepared.Cleanup()
+
+	if prepared.size == 0 {
+		if runtimeSettings.MaxUploadSizeBytes() > 0 {
 			return UploadOutput{}, WithUserMessage(ErrInvalidInput, fmt.Sprintf("file size must be between 1 byte and %d MB", runtimeSettings.MaxUploadSizeMB))
 		}
 		return UploadOutput{}, WithUserMessage(ErrInvalidInput, "file size must be greater than 0 bytes")
@@ -142,7 +201,10 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 		return UploadOutput{}, err
 	}
 
-	md5Hash := md5Hex(input.Bytes)
+	md5Hash := strings.TrimSpace(strings.ToLower(prepared.originalMD5))
+	if md5Hash == "" {
+		return UploadOutput{}, fmt.Errorf("%w: original md5 is required after upload source preparation", ErrDependencyUnavailable)
+	}
 	unlockHash := s.hashLocks.Lock(scopedMD5SeenKey(resolved.Config.StorageKey, md5Hash))
 	defer unlockHash()
 
@@ -180,15 +242,16 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 		return buildUploadOutput(record, input.BaseURL, input.OriginalFilename, true), nil
 	}
 
-	convertedBytes, err := s.transformer(input.Bytes, avifConversionSettingsFromRuntime(runtimeSettings))
+	sourceReader, err := prepared.Open()
 	if err != nil {
-		return UploadOutput{}, err
+		return UploadOutput{}, fmt.Errorf("%w: failed to open upload source", ErrDependencyUnavailable)
 	}
+	defer sourceReader.Close()
 
 	objectKey := storage.BuildObjectKey(uid, publicImageExtension)
-	storedPath, err := resolved.Provider.Save(ctx, objectKey, convertedBytes, publicImageMIMEType)
+	convertedSize, storedPath, err := s.saveConvertedAVIF(ctx, resolved.Provider, objectKey, sourceReader, avifConversionSettingsFromRuntime(runtimeSettings))
 	if err != nil {
-		return UploadOutput{}, fmt.Errorf("%w: failed to persist file", ErrDependencyUnavailable)
+		return UploadOutput{}, err
 	}
 
 	record = model.ImageRecord{
@@ -198,7 +261,7 @@ func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOut
 		StorageBackend: resolved.Config.Backend,
 		FilePath:       storedPath,
 		MIMEType:       publicImageMIMEType,
-		Size:           int64(len(convertedBytes)),
+		Size:           convertedSize,
 		MD5Hash:        md5Hash,
 		IPAddress:      input.IPAddress,
 		CreatedAt:      now,
@@ -498,8 +561,86 @@ func (s *ImageService) resolveUploadStorage(storageKey string, allowStorageSelec
 }
 
 func contentDispositionForPath(filePath string) string {
-	filename := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\r", "", "\n", "").Replace(filepath.Base(filePath))
+	filename := filenameReplacer.Replace(filepath.Base(filePath))
 	return "inline; filename=\"" + filename + "\""
+}
+
+type countingWriter struct {
+	writer io.Writer
+	size   int64
+}
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	w.size += int64(n)
+	return n, err
+}
+
+func (s *ImageService) prepareUploadSource(input UploadInput, maxBytes int64) (preparedUploadSource, error) {
+	if len(input.Bytes) > 0 {
+		size := int64(len(input.Bytes))
+		if maxBytes > 0 && size > maxBytes {
+			return preparedUploadSource{}, WithUserMessage(ErrInvalidInput, fmt.Sprintf("file size must be between 1 byte and %d MB", maxBytes/(1024*1024)))
+		}
+		md5Hash := strings.TrimSpace(strings.ToLower(input.OriginalMD5))
+		if md5Hash == "" {
+			md5Hash = md5Hex(input.Bytes)
+		}
+		return preparedUploadSource{bytes: input.Bytes, size: size, originalMD5: md5Hash}, nil
+	}
+	if input.Source == nil {
+		return preparedUploadSource{}, WithUserMessage(ErrInvalidInput, "file size must be greater than 0 bytes")
+	}
+
+	readLimit := MaxUploadSizeBytes() + 1
+	if maxBytes > 0 {
+		readLimit = maxBytes + 1
+	}
+	tempFile, err := os.CreateTemp("", "omepic-upload-*.img")
+	if err != nil {
+		return preparedUploadSource{}, fmt.Errorf("%w: failed to create temporary upload file", ErrDependencyUnavailable)
+	}
+	defer func() {
+		_ = tempFile.Close()
+	}()
+
+	hasher := md5.New()
+	writer := io.MultiWriter(tempFile, hasher)
+	size, err := io.Copy(writer, io.LimitReader(input.Source, readLimit))
+	if err != nil {
+		_ = os.Remove(tempFile.Name())
+		return preparedUploadSource{}, fmt.Errorf("%w: failed to read upload source", ErrDependencyUnavailable)
+	}
+	if maxBytes > 0 && size > maxBytes {
+		_ = os.Remove(tempFile.Name())
+		return preparedUploadSource{}, WithUserMessage(ErrInvalidInput, fmt.Sprintf("file size must be between 1 byte and %d MB", maxBytes/(1024*1024)))
+	}
+	return preparedUploadSource{tempPath: tempFile.Name(), size: size, originalMD5: hex.EncodeToString(hasher.Sum(nil))}, nil
+}
+
+func (s *ImageService) saveConvertedAVIF(ctx context.Context, provider storage.Provider, objectKey string, source io.Reader, settings AVIFConversionSettings) (int64, string, error) {
+	pipeReader, pipeWriter := io.Pipe()
+	counting := &countingWriter{writer: pipeWriter}
+	encodeErrCh := make(chan error, 1)
+	go func() {
+		err := s.encoder(source, counting, settings)
+		if err != nil {
+			_ = pipeWriter.CloseWithError(err)
+			encodeErrCh <- err
+			return
+		}
+		encodeErrCh <- pipeWriter.Close()
+	}()
+
+	storedPath, saveErr := provider.SaveStream(ctx, objectKey, pipeReader, -1, publicImageMIMEType)
+	encodeErr := <-encodeErrCh
+	if encodeErr != nil {
+		return 0, "", encodeErr
+	}
+	if saveErr != nil {
+		return 0, "", fmt.Errorf("%w: failed to persist file", ErrDependencyUnavailable)
+	}
+	return counting.size, storedPath, nil
 }
 
 func buildUploadOutput(record model.ImageRecord, baseURL string, originalFilename string, duplicate bool) UploadOutput {
@@ -530,7 +671,7 @@ func mapRepoError(err error) error {
 }
 
 func MaxUploadSizeBytes() int64 {
-	return maxUploadSizeBytes
+	return defaultRuntimeSettings().MaxUploadSizeBytes()
 }
 
 func (s *ImageService) MaxUploadSizeBytes() int64 {
@@ -538,7 +679,7 @@ func (s *ImageService) MaxUploadSizeBytes() int64 {
 	if value := settings.MaxUploadSizeBytes(); value > 0 {
 		return value
 	}
-	return maxUploadSizeBytes
+	return defaultRuntimeSettings().MaxUploadSizeBytes()
 }
 
 func (s *ImageService) EffectivePublicBaseURL(requestBase string) string {

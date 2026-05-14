@@ -2,6 +2,7 @@ package router
 
 import (
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -30,12 +31,7 @@ type Dependencies struct {
 func New(deps Dependencies) *gin.Engine {
 	engine := gin.New()
 	engine.Use(gin.Recovery())
-	engine.Use(cors.New(cors.Config{
-		AllowAllOrigins: true,
-		AllowMethods:    []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:    []string{"Authorization", "Content-Type", "X-Token"},
-		ExposeHeaders:   []string{"Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining"},
-	}))
+	engine.Use(cors.New(corsConfig(deps.Settings)))
 	engine.Use(middleware.RequestLogger(deps.Logger))
 	apiLimiter := middleware.RateLimit(deps.RateLimiter, deps.Logger, middleware.RateLimitPolicy{
 		Scope:      "api",
@@ -98,4 +94,22 @@ func New(deps Dependencies) *gin.Engine {
 	registerFrontendRoutes(engine, deps.FrontendDir, deps.Logger)
 
 	return engine
+}
+
+func corsConfig(settings *service.RuntimeSettingsManager) cors.Config {
+	cfg := cors.Config{
+		AllowMethods:  []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:  []string{"Authorization", "Content-Type", "X-Token"},
+		ExposeHeaders: []string{"Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining"},
+	}
+	publicBaseURL := ""
+	if settings != nil {
+		publicBaseURL = strings.TrimSpace(settings.Current().PublicBaseURL)
+	}
+	if publicBaseURL != "" {
+		cfg.AllowOrigins = []string{strings.TrimRight(publicBaseURL, "/")}
+		return cfg
+	}
+	cfg.AllowAllOrigins = true
+	return cfg
 }

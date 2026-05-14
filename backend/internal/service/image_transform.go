@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"io"
 
 	"github.com/gen2brain/avif"
 
@@ -32,18 +33,23 @@ func avifConversionSettingsFromRuntime(settings RuntimeSettings) AVIFConversionS
 }
 
 func convertToAVIFWithSettings(payload []byte, settings AVIFConversionSettings) ([]byte, error) {
-	img, _, err := image.Decode(bytes.NewReader(payload))
-	if err != nil {
-		return nil, WithUserMessage(ErrInvalidInput, "file type is not allowed")
-	}
-
 	var output bytes.Buffer
-	if err := avif.Encode(&output, img, avif.Options{
+	if err := encodeAVIFToWriter(bytes.NewReader(payload), &output, settings); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func encodeAVIFToWriter(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
+	img, _, err := image.Decode(source)
+	if err != nil {
+		return WithUserMessage(ErrInvalidInput, "file type is not allowed")
+	}
+	if err := avif.Encode(target, img, avif.Options{
 		Quality: settings.Quality,
 		Speed:   settings.Speed,
 	}); err != nil {
-		return nil, fmt.Errorf("%w: failed to convert image to avif", ErrDependencyUnavailable)
+		return fmt.Errorf("%w: failed to convert image to avif", ErrDependencyUnavailable)
 	}
-
-	return output.Bytes(), nil
+	return nil
 }
