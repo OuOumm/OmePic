@@ -55,9 +55,8 @@
       code: `{
   "success": true,
   "data": {
-    "uid": "abc123",
-    "url": "https://example.com/i/abc123.avif",
-    "markdown": "![](https://example.com/i/abc123.avif)"
+    "url": "${apiBaseUrl}/i/abc123.avif",
+    "duplicate": false
   }
 }`,
     },

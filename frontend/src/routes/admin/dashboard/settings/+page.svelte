@@ -8,7 +8,9 @@
   import { t } from '@/i18n';
   import { formatMegabytes, isAbortError } from '@/utils';
   import { preferences } from '@/stores/preferences.svelte';
+  import { toast } from '@/stores/toast.svelte';
   import { runAsyncAction, toastApiError } from '@/ui-errors';
+  import { isValidAdminPasswordStrength } from '@/password-policy';
   import type { AdminConfig, AdminSystemSettings } from '@/types';
 
   let config = $state.raw<AdminConfig | null>(null);
@@ -76,6 +78,10 @@
   async function changePassword() {
     const token = preferences.adminToken;
     if (!token) return;
+    if (!isValidAdminPasswordStrength(newPassword)) {
+      toast.error(t(preferences.language, 'admin.passwordStrengthError'));
+      return;
+    }
     await runAsyncAction({
       language: preferences.language,
       setBusy: (value) => (changingPassword = value),
@@ -118,7 +124,7 @@
               {t(preferences.language, 'admin.runtimeSecurityWarnings')}
             </div>
             <ul class="list-disc space-y-1 pl-5 text-sm font-bold">
-              {#each securityWarnings as warning}
+              {#each securityWarnings as warning (warning)}
                 <li>{warning}</li>
               {/each}
             </ul>
