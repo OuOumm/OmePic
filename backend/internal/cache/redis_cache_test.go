@@ -3,6 +3,8 @@ package cache
 import (
 	"testing"
 	"time"
+
+	"omepic/backend/internal/model"
 )
 
 func TestNewClientAppliesRedisTimeoutAndPoolDefaults(t *testing.T) {
@@ -33,6 +35,13 @@ func TestNewClientAppliesRedisTimeoutAndPoolDefaults(t *testing.T) {
 	}
 	if !options.ContextTimeoutEnabled {
 		t.Fatal("expected context timeout support to be enabled")
+	}
+}
+
+func TestMD5RedisKeyKeepsExistingScopedShape(t *testing.T) {
+	key := model.NewMD5MappingKey("local-primary", "abcdef")
+	if got := md5Key(key); got != "md5:local-primary:abcdef" {
+		t.Fatalf("expected Redis md5 key shape to remain compatible, got %q", got)
 	}
 }
 

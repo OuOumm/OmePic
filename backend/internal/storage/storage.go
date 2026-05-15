@@ -112,14 +112,9 @@ func (m *Manager) ForKey(storageKey string) (ResolvedProvider, error) {
 }
 
 func (m *Manager) Reconfigure(settings []config.RuntimeStorageConfig) error {
-	normalized, defaultKey, err := normalizeConfigs(settings)
+	normalized, defaultKey, err := ValidateCatalog(settings)
 	if err != nil {
 		return err
-	}
-	for _, cfg := range normalized {
-		if err := ValidateConfig(cfg); err != nil {
-			return err
-		}
 	}
 
 	configs := make(map[string]config.RuntimeStorageConfig, len(normalized))
@@ -138,6 +133,19 @@ func (m *Manager) Reconfigure(settings []config.RuntimeStorageConfig) error {
 func ValidateConfig(settings config.RuntimeStorageConfig) error {
 	_, err := buildProvider(normalizeConfig(settings))
 	return err
+}
+
+func ValidateCatalog(settings []config.RuntimeStorageConfig) ([]config.RuntimeStorageConfig, string, error) {
+	normalized, defaultKey, err := normalizeConfigs(settings)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, cfg := range normalized {
+		if err := ValidateConfig(cfg); err != nil {
+			return nil, "", err
+		}
+	}
+	return normalized, defaultKey, nil
 }
 
 func BuildObjectKey(uid string, extension string) string {

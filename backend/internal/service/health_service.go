@@ -14,10 +14,10 @@ type HealthStatus struct {
 
 type HealthService struct {
 	repo  *repository.Repository
-	cache cache.ImageCache
+	cache cache.HealthCache
 }
 
-func NewHealthService(repo *repository.Repository, imageCache cache.ImageCache) *HealthService {
+func NewHealthService(repo *repository.Repository, imageCache cache.HealthCache) *HealthService {
 	return &HealthService{repo: repo, cache: imageCache}
 }
 

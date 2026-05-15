@@ -67,10 +67,6 @@ func (r *Repository) DeleteIPBan(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *Repository) FindActiveIPBanByIP(ctx context.Context, ipAddress string) (model.IPBan, error) {
-	return r.FindActiveIPBanByHash(ctx, ipHashValue(ipAddress))
-}
-
 func (r *Repository) ActiveIPBansByHash(ctx context.Context) (map[string]model.IPBan, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	rows, err := r.db.QueryContext(ctx, `SELECT id, ip_hash, ip_address, ip_address_masked, reason, expires_at, created_at, updated_at FROM ip_bans WHERE expires_at IS NULL OR expires_at = '' OR expires_at > ? ORDER BY id DESC`, now)
@@ -103,16 +99,12 @@ func (r *Repository) AbuseOverviewTotals(ctx context.Context, from time.Time, to
 	return count, totalSize, err
 }
 
-func (r *Repository) TopAbuseIPs(ctx context.Context, from time.Time, to time.Time, limit int) ([]model.AbuseIPRankItem, error) {
+func (r *Repository) TopAbuseIPAggregates(ctx context.Context, from time.Time, to time.Time, limit int) ([]model.AbuseIPAggregate, error) {
 	if limit < 1 {
 		limit = 10
 	}
 	if limit > 50 {
 		limit = 50
-	}
-	activeBans, err := r.ActiveIPBansByHash(ctx)
-	if err != nil {
-		return nil, err
 	}
 	rows, err := r.db.QueryContext(
 		ctx,
@@ -130,25 +122,20 @@ func (r *Repository) TopAbuseIPs(ctx context.Context, from time.Time, to time.Ti
 		return nil, err
 	}
 	defer rows.Close()
-	items := make([]model.AbuseIPRankItem, 0)
+	items := make([]model.AbuseIPAggregate, 0)
 	for rows.Next() {
-		var item model.AbuseIPRankItem
+		var item model.AbuseIPAggregate
 		var latest string
 		if err := rows.Scan(&item.IPAddress, &item.UploadCount, &item.TotalSize, &latest); err != nil {
 			return nil, err
 		}
-		item.IPAddressMasked = maskIPValue(item.IPAddress)
 		item.LatestUploadAt = parseTime(latest)
-		if ban, exists := activeBans[ipHashValue(item.IPAddress)]; exists {
-			item.IsBanned = true
-			item.BanID = ban.ID
-		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
 }
 
-func (r *Repository) TopAbuseTokens(ctx context.Context, from time.Time, to time.Time, limit int) ([]model.AbuseTokenRankItem, error) {
+func (r *Repository) TopAbuseTokenAggregates(ctx context.Context, from time.Time, to time.Time, limit int) ([]model.AbuseTokenAggregate, error) {
 	if limit < 1 {
 		limit = 10
 	}
@@ -171,41 +158,17 @@ func (r *Repository) TopAbuseTokens(ctx context.Context, from time.Time, to time
 		return nil, err
 	}
 	defer rows.Close()
-	items := make([]model.AbuseTokenRankItem, 0)
+	items := make([]model.AbuseTokenAggregate, 0)
 	for rows.Next() {
-		var item model.AbuseTokenRankItem
+		var item model.AbuseTokenAggregate
 		var latest string
 		if err := rows.Scan(&item.Token, &item.UploadCount, &item.TotalSize, &latest); err != nil {
 			return nil, err
 		}
-		item.TokenPreview = previewValue(item.Token, 8)
 		item.LatestUploadAt = parseTime(latest)
 		items = append(items, item)
 	}
 	return items, rows.Err()
-}
-
-func (r *Repository) IPDetail(ctx context.Context, ipAddress string) (model.AbuseIPDetail, error) {
-	summary, err := r.ImageSummaryByIP(ctx, ipAddress)
-	if err != nil {
-		return model.AbuseIPDetail{}, err
-	}
-	detail := model.AbuseIPDetail{
-		IPAddress:       ipAddress,
-		IPAddressMasked: maskIPValue(ipAddress),
-		UploadCount:     summary.Count,
-		TotalSize:       summary.TotalSize,
-	}
-	ban, err := r.FindActiveIPBanByIP(ctx, ipAddress)
-	if err == nil {
-		detail.IsBanned = true
-		detail.Ban = &ban
-		return detail, nil
-	}
-	if IsNotFound(err) {
-		return detail, nil
-	}
-	return model.AbuseIPDetail{}, err
 }
 
 func scanIPBan(scanner interface{ Scan(dest ...any) error }) (model.IPBan, error) {

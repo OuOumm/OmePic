@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -168,6 +169,7 @@ func TestUpdateStorageConfigPreservesMaskedSecretsAndReloadsManager(t *testing.T
 	view, err := adminService.UpdateStorageConfig(ctx, "s3-secondary", AdminStorageConfigUpdateInput{
 		Name:        strPtr("S3 Renamed"),
 		S3Bucket:    strPtr("bucket-updated"),
+		S3AccessKey: strPtr(maskSecret("access-b")),
 		S3SecretKey: strPtr(maskSecret("secret-b")),
 	})
 	if err != nil {
@@ -192,6 +194,9 @@ func TestUpdateStorageConfigPreservesMaskedSecretsAndReloadsManager(t *testing.T
 	stored, err := repo.GetStorageConfigByKey(ctx, "s3-secondary")
 	if err != nil {
 		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+	if stored.S3AccessKey != "access-b" {
+		t.Fatalf("expected access key to remain unchanged, got %q", stored.S3AccessKey)
 	}
 	if stored.S3SecretKey != "secret-b" {
 		t.Fatalf("expected secret key to remain unchanged, got %q", stored.S3SecretKey)
@@ -339,6 +344,148 @@ func TestUpdateConfigRejectsEmptyDefaultBeforePatch(t *testing.T) {
 	}
 }
 
+func TestUpdateStorageConfigSurfacesReloadFailureAfterSQLiteSave(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+
+	originalManager := adminService.storage
+	adminService.storage = failingAdminStorageManager{
+		delegate: originalManager,
+		err:      errors.New("reload failed"),
+	}
+
+	nextPath := filepath.Join(t.TempDir(), "reload-fails")
+	_, err := adminService.UpdateStorageConfig(ctx, "local-default", AdminStorageConfigUpdateInput{
+		Name:             strPtr("Saved Before Reload Failure"),
+		LocalStoragePath: strPtr(nextPath),
+	})
+	if err == nil || !containsError(err, ErrDependencyUnavailable) {
+		t.Fatalf("expected ErrDependencyUnavailable for reload failure, got %v", err)
+	}
+
+	stored, err := repo.GetStorageConfigByKey(ctx, "local-default")
+	if err != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+	if stored.Name != "Saved Before Reload Failure" || stored.LocalStoragePath != nextPath {
+		t.Fatalf("expected SQLite to remain source of truth after reload failure, got %+v", stored)
+	}
+	resolved, err := originalManager.ForKey("local-default")
+	if err != nil {
+		t.Fatalf("ForKey returned error: %v", err)
+	}
+	if resolved.Config.LocalStoragePath == nextPath {
+		t.Fatalf("expected failed reload to leave in-memory manager unchanged")
+	}
+}
+
+func TestUpdateStorageConfigRejectsInvalidReloadBeforeSaving(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+
+	original, err := repo.GetStorageConfigByKey(ctx, "local-default")
+	if err != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+
+	_, err = adminService.UpdateStorageConfig(ctx, "local-default", AdminStorageConfigUpdateInput{
+		Name:    strPtr("Should Not Persist"),
+		Backend: strPtr(config.StorageBackendS3),
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for invalid reload catalog, got %v", err)
+	}
+
+	stored, err := repo.GetStorageConfigByKey(ctx, "local-default")
+	if err != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+	if stored.Name != original.Name || stored.Backend != original.Backend {
+		t.Fatalf("expected invalid reload catalog to avoid partial save, got %+v", stored)
+	}
+}
+
+func TestUpdateConfigPatchAndDefaultSwitchRejectsInvalidReloadBeforeSaving(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+
+	if err := repo.CreateStorageConfig(ctx, config.RuntimeStorageConfig{
+		StorageKey:       "local-secondary",
+		Name:             "Local Secondary",
+		Backend:          config.StorageBackendLocal,
+		LocalStoragePath: filepath.Join(t.TempDir(), "secondary"),
+	}); err != nil {
+		t.Fatalf("CreateStorageConfig returned error: %v", err)
+	}
+	if err := adminService.reloadStorageManager(ctx); err != nil {
+		t.Fatalf("reloadStorageManager returned error: %v", err)
+	}
+
+	original, err := repo.GetStorageConfigByKey(ctx, "local-default")
+	if err != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+
+	_, err = adminService.UpdateConfig(ctx, AdminConfigUpdateInput{
+		StorageKey:        strPtr("local-default"),
+		DefaultStorageKey: strPtr("local-secondary"),
+		RuntimeStorageUpdate: config.RuntimeStorageUpdate{
+			Name:    strPtr("Should Not Persist"),
+			Backend: strPtr(config.StorageBackendS3),
+		},
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for invalid combined catalog, got %v", err)
+	}
+
+	stored, err := repo.GetStorageConfigByKey(ctx, "local-default")
+	if err != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+	if stored.Name != original.Name || stored.Backend != original.Backend {
+		t.Fatalf("expected invalid combined catalog to avoid patch save, got %+v", stored)
+	}
+	if current := adminService.storage.CurrentKey(); current != "local-default" {
+		t.Fatalf("expected manager default to remain local-default, got %q", current)
+	}
+	view, err := adminService.GetConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetConfig returned error: %v", err)
+	}
+	if view.DefaultStorageKey != "local-default" {
+		t.Fatalf("expected sqlite default to remain local-default, got %q", view.DefaultStorageKey)
+	}
+}
+
+func TestSetDefaultStorageConfigRejectsInvalidReloadBeforeSaving(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+
+	if err := repo.CreateStorageConfig(ctx, config.RuntimeStorageConfig{
+		StorageKey: "broken-s3",
+		Name:       "Broken S3",
+		Backend:    config.StorageBackendS3,
+	}); err != nil {
+		t.Fatalf("CreateStorageConfig returned error: %v", err)
+	}
+
+	_, err := adminService.SetDefaultStorageConfig(ctx, "broken-s3")
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for invalid target catalog, got %v", err)
+	}
+
+	view, err := adminService.GetConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetConfig returned error: %v", err)
+	}
+	if view.DefaultStorageKey != "local-default" {
+		t.Fatalf("expected default switch to avoid partial save, got %q", view.DefaultStorageKey)
+	}
+	if current := adminService.storage.CurrentKey(); current != "local-default" {
+		t.Fatalf("expected manager default to remain local-default, got %q", current)
+	}
+}
+
 func TestUpdateStorageConfigRejectsBackendChangeForInUseInstance(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
@@ -477,6 +624,23 @@ func TestChangePasswordRequiresValidOldPasswordAndStoresBcryptHash(t *testing.T)
 	if _, err := adminService.Login(ctx, "New-secret!"); err != nil {
 		t.Fatalf("expected new password login to succeed, got %v", err)
 	}
+}
+
+type failingAdminStorageManager struct {
+	delegate adminStorageManager
+	err      error
+}
+
+func (m failingAdminStorageManager) Reconfigure([]config.RuntimeStorageConfig) error {
+	return m.err
+}
+
+func (m failingAdminStorageManager) ForKey(storageKey string) (storage.ResolvedProvider, error) {
+	return m.delegate.ForKey(storageKey)
+}
+
+func (m failingAdminStorageManager) CurrentKey() string {
+	return m.delegate.CurrentKey()
 }
 
 func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Repository) {

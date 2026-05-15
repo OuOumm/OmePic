@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"omepic/backend/internal/cache"
 	"omepic/backend/internal/config"
@@ -123,7 +122,10 @@ type uploadStorageResolver interface {
 
 type ImageService struct {
 	repo        *repository.Repository
-	cache       cache.ImageCache
+	imageCache  cache.ImageLookupCache
+	preheat     cache.ImagePreheatCache
+	md5Cache    cache.MD5MappingCache
+	md5Preheat  cache.MD5MappingPreheatCache
 	storage     uploadStorageResolver
 	settings    *RuntimeSettingsManager
 	logger      *slog.Logger
@@ -142,6 +144,21 @@ func NewImageService(
 	validateUID UIDValidator,
 	logger *slog.Logger,
 ) *ImageService {
+	return NewImageServiceWithCaches(repo, imageCache, imageCache, imageCache, imageCache, storageManager, settingsManager, generateUID, validateUID, logger)
+}
+
+func NewImageServiceWithCaches(
+	repo *repository.Repository,
+	imageCache cache.ImageLookupCache,
+	preheatCache cache.ImagePreheatCache,
+	md5Cache cache.MD5MappingCache,
+	md5PreheatCache cache.MD5MappingPreheatCache,
+	storageManager uploadStorageResolver,
+	settingsManager *RuntimeSettingsManager,
+	generateUID UIDGenerator,
+	validateUID UIDValidator,
+	logger *slog.Logger,
+) *ImageService {
 	if generateUID == nil {
 		generateUID = func() (string, error) {
 			return "", errors.New("uid generator is not configured")
@@ -155,7 +172,10 @@ func NewImageService(
 
 	return &ImageService{
 		repo:        repo,
-		cache:       imageCache,
+		imageCache:  imageCache,
+		preheat:     preheatCache,
+		md5Cache:    md5Cache,
+		md5Preheat:  md5PreheatCache,
 		storage:     storageManager,
 		settings:    settingsManager,
 		logger:      logger,
@@ -167,115 +187,7 @@ func NewImageService(
 }
 
 func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOutput, error) {
-	if strings.TrimSpace(input.Token) == "" {
-		return UploadOutput{}, ErrMissingToken
-	}
-	if err := s.ensureIPAllowed(ctx, input.IPAddress); err != nil {
-		return UploadOutput{}, err
-	}
-	runtimeSettings := s.currentRuntimeSettings()
-	if runtimeSettings.MaintenanceMode {
-		return UploadOutput{}, WithUserMessage(ErrInvalidInput, runtimeSettings.EffectiveMaintenanceMessage())
-	}
-	prepared, err := s.prepareUploadSource(input, runtimeSettings.MaxUploadSizeBytes())
-	if err != nil {
-		return UploadOutput{}, err
-	}
-	defer prepared.Cleanup()
-
-	if prepared.size == 0 {
-		if runtimeSettings.MaxUploadSizeBytes() > 0 {
-			return UploadOutput{}, WithUserMessage(ErrInvalidInput, fmt.Sprintf("file size must be between 1 byte and %d MB", runtimeSettings.MaxUploadSizeMB))
-		}
-		return UploadOutput{}, WithUserMessage(ErrInvalidInput, "file size must be greater than 0 bytes")
-	}
-
-	if !runtimeSettingsAllowsMIME(runtimeSettings, input.MIMEType) {
-		return UploadOutput{}, WithUserMessage(ErrInvalidInput, "file MIME type is not allowed")
-	}
-
-	resolved, err := s.resolveUploadStorage(input.StorageKey, runtimeSettings.AllowStorageSelect)
-	if err != nil {
-		return UploadOutput{}, err
-	}
-
-	md5Hash := strings.TrimSpace(strings.ToLower(prepared.originalMD5))
-	if md5Hash == "" {
-		return UploadOutput{}, fmt.Errorf("%w: original md5 is required after upload source preparation", ErrDependencyUnavailable)
-	}
-	unlockHash := s.hashLocks.Lock(scopedMD5SeenKey(resolved.Config.StorageKey, md5Hash))
-	defer unlockHash()
-
-	existing, err := s.findExistingByMD5(ctx, resolved.Config.StorageKey, md5Hash)
-	if err != nil {
-		return UploadOutput{}, err
-	}
-
-	now := time.Now().UTC()
-	uid, err := s.generateUID()
-	if err != nil {
-		return UploadOutput{}, fmt.Errorf("%w: uid generation failed", ErrDependencyUnavailable)
-	}
-	var record model.ImageRecord
-
-	if existing != nil {
-		record = model.ImageRecord{
-			UID:            uid,
-			Token:          input.Token,
-			StorageKey:     existing.StorageKey,
-			StorageBackend: existing.StorageBackend,
-			FilePath:       existing.FilePath,
-			MIMEType:       existing.MIMEType,
-			Size:           existing.Size,
-			MD5Hash:        existing.MD5Hash,
-			IPAddress:      input.IPAddress,
-			CreatedAt:      now,
-		}
-		if err := s.repo.InsertImage(ctx, record); err != nil {
-			return UploadOutput{}, mapRepoError(err)
-		}
-		if err := s.cache.SetImage(ctx, record); err != nil {
-			return UploadOutput{}, fmt.Errorf("%w: redis uid write failed", ErrDependencyUnavailable)
-		}
-		return buildUploadOutput(record, input.BaseURL, input.OriginalFilename, true), nil
-	}
-
-	sourceReader, err := prepared.Open()
-	if err != nil {
-		return UploadOutput{}, fmt.Errorf("%w: failed to open upload source", ErrDependencyUnavailable)
-	}
-	defer sourceReader.Close()
-
-	objectKey := storage.BuildObjectKey(uid, publicImageExtension)
-	convertedSize, storedPath, err := s.saveConvertedAVIF(ctx, resolved.Provider, objectKey, sourceReader, avifConversionSettingsFromRuntime(runtimeSettings))
-	if err != nil {
-		return UploadOutput{}, err
-	}
-
-	record = model.ImageRecord{
-		UID:            uid,
-		Token:          input.Token,
-		StorageKey:     resolved.Config.StorageKey,
-		StorageBackend: resolved.Config.Backend,
-		FilePath:       storedPath,
-		MIMEType:       publicImageMIMEType,
-		Size:           convertedSize,
-		MD5Hash:        md5Hash,
-		IPAddress:      input.IPAddress,
-		CreatedAt:      now,
-	}
-
-	if err := s.repo.InsertImage(ctx, record); err != nil {
-		_ = resolved.Provider.Delete(ctx, storedPath)
-		return UploadOutput{}, mapRepoError(err)
-	}
-	if err := s.cache.SetImage(ctx, record); err != nil {
-		return UploadOutput{}, fmt.Errorf("%w: redis uid write failed", ErrDependencyUnavailable)
-	}
-	if err := s.cache.SetMD5IfAbsent(ctx, scopedMD5CacheKey(record.StorageKey, md5Hash), uid); err != nil {
-		return UploadOutput{}, fmt.Errorf("%w: redis md5 write failed", ErrDependencyUnavailable)
-	}
-	return buildUploadOutput(record, input.BaseURL, input.OriginalFilename, false), nil
+	return s.newUploadFlow(ctx, input).Run()
 }
 
 func (s *ImageService) Delete(ctx context.Context, uid string, token string, isAdmin bool, ipAddress string) error {
@@ -314,22 +226,11 @@ func (s *ImageService) Delete(ctx context.Context, uid string, token string, isA
 		return fmt.Errorf("%w: delete record failed", ErrDependencyUnavailable)
 	}
 
-	if err := s.cache.DeleteImage(ctx, normalizedUID); err != nil {
+	if err := s.imageCache.DeleteImage(ctx, normalizedUID); err != nil {
 		return fmt.Errorf("%w: redis uid delete failed", ErrDependencyUnavailable)
 	}
 
-	md5Count, err := s.repo.CountByMD5AndStorageKey(ctx, record.MD5Hash, record.StorageKey)
-	if err != nil {
-		return fmt.Errorf("%w: md5 count failed", ErrDependencyUnavailable)
-	}
-	if md5Count == 0 {
-		if err := s.cache.DeleteMD5(ctx, scopedMD5CacheKey(record.StorageKey, record.MD5Hash)); err != nil {
-			return fmt.Errorf("%w: redis md5 delete failed", ErrDependencyUnavailable)
-		}
-		return nil
-	}
-
-	if err := s.repairMD5Mapping(ctx, record.StorageKey, record.MD5Hash, record.UID); err != nil {
+	if err := s.md5Mappings().RepairAfterDelete(ctx, md5MappingKeyForRecord(*record), record.UID); err != nil {
 		return err
 	}
 
@@ -368,7 +269,7 @@ func (s *ImageService) Resolve(ctx context.Context, uid string) (ImageResolverOu
 		return ImageResolverOutput{}, err
 	}
 
-	cached, err := s.cache.GetImage(ctx, normalizedUID)
+	cached, err := s.imageCache.GetImage(ctx, normalizedUID)
 	if err != nil {
 		return ImageResolverOutput{}, fmt.Errorf("%w: redis uid lookup failed", ErrDependencyUnavailable)
 	}
@@ -397,11 +298,11 @@ func (s *ImageService) Resolve(ctx context.Context, uid string) (ImageResolverOu
 		return ImageResolverOutput{}, fmt.Errorf("%w: sqlite uid lookup failed", ErrDependencyUnavailable)
 	}
 
-	if err := s.cache.SetImage(ctx, *record); err != nil {
+	if err := s.imageCache.SetImage(ctx, *record); err != nil {
 		return ImageResolverOutput{}, fmt.Errorf("%w: redis uid repopulate failed", ErrDependencyUnavailable)
 	}
-	if err := s.cache.SetMD5IfAbsent(ctx, scopedMD5CacheKey(record.StorageKey, record.MD5Hash), record.UID); err != nil {
-		return ImageResolverOutput{}, fmt.Errorf("%w: redis md5 repopulate failed", ErrDependencyUnavailable)
+	if err := s.md5Mappings().BackfillFromRecord(ctx, *record); err != nil {
+		return ImageResolverOutput{}, err
 	}
 
 	return ImageResolverOutput{Record: *record, CacheHit: false}, nil
@@ -413,26 +314,15 @@ func (s *ImageService) Preheat(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("%w: list images failed", ErrDependencyUnavailable)
 	}
 
-	count := 0
-	seenMD5 := make(map[string]struct{}, len(records))
-	mappings := make(map[string]string, len(records))
-	for _, record := range records {
-		seenKey := scopedMD5SeenKey(record.StorageKey, record.MD5Hash)
-		if _, ok := seenMD5[seenKey]; !ok {
-			seenMD5[seenKey] = struct{}{}
-			mappings[scopedMD5CacheKey(record.StorageKey, record.MD5Hash)] = record.UID
-		}
-		count++
-	}
-
-	if err := s.cache.SetImages(ctx, records); err != nil {
+	if err := s.preheat.SetImages(ctx, records); err != nil {
 		return 0, fmt.Errorf("%w: redis uid preheat failed", ErrDependencyUnavailable)
 	}
 
-	if err := s.cache.SetMD5Mappings(ctx, mappings); err != nil {
-		return 0, fmt.Errorf("%w: redis md5 preheat failed", ErrDependencyUnavailable)
+	if err := s.md5Mappings().Preheat(ctx, records); err != nil {
+		return 0, err
 	}
 
+	count := len(records)
 	s.logger.Info("redis cache preheated", "records", count)
 	return count, nil
 }
@@ -469,75 +359,6 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 	}, nil
 }
 
-func (s *ImageService) findExistingByMD5(ctx context.Context, storageKey string, md5Hash string) (*model.ImageRecord, error) {
-	cacheKey := scopedMD5CacheKey(storageKey, md5Hash)
-	cachedUID, err := s.cache.GetMD5(ctx, cacheKey)
-	if err != nil {
-		return nil, fmt.Errorf("%w: redis md5 lookup failed", ErrDependencyUnavailable)
-	}
-	if cachedUID != "" {
-		record, err := s.repo.FindByUID(ctx, cachedUID)
-		switch {
-		case err == nil && record.StorageKey == storageKey:
-			return record, nil
-		case err == nil:
-		case repository.IsNotFound(err):
-		default:
-			return nil, fmt.Errorf("%w: sqlite uid lookup failed", ErrDependencyUnavailable)
-		}
-	}
-
-	record, err := s.repo.FindByMD5AndStorageKey(ctx, md5Hash, storageKey)
-	if err != nil {
-		if repository.IsNotFound(err) {
-			if cachedUID != "" {
-				if err := s.cache.DeleteMD5(ctx, cacheKey); err != nil {
-					return nil, fmt.Errorf("%w: redis md5 stale delete failed", ErrDependencyUnavailable)
-				}
-			}
-			return nil, nil
-		}
-		return nil, fmt.Errorf("%w: sqlite md5 lookup failed", ErrDependencyUnavailable)
-	}
-	if cachedUID != record.UID {
-		if err := s.cache.SetMD5(ctx, cacheKey, record.UID); err != nil {
-			return nil, fmt.Errorf("%w: redis md5 repair failed", ErrDependencyUnavailable)
-		}
-	}
-	return record, nil
-}
-
-func (s *ImageService) repairMD5Mapping(ctx context.Context, storageKey string, md5Hash string, deletedUID string) error {
-	cacheKey := scopedMD5CacheKey(storageKey, md5Hash)
-	cachedUID, err := s.cache.GetMD5(ctx, cacheKey)
-	if err != nil {
-		return fmt.Errorf("%w: redis md5 lookup failed", ErrDependencyUnavailable)
-	}
-	if cachedUID != "" && cachedUID != deletedUID {
-		record, err := s.repo.FindByUID(ctx, cachedUID)
-		switch {
-		case err == nil && record.StorageKey == storageKey:
-			return nil
-		case err == nil:
-		case repository.IsNotFound(err):
-		default:
-			return fmt.Errorf("%w: sqlite uid lookup failed", ErrDependencyUnavailable)
-		}
-	}
-
-	replacement, err := s.repo.FindByMD5AndStorageKey(ctx, md5Hash, storageKey)
-	if err != nil {
-		if repository.IsNotFound(err) {
-			return nil
-		}
-		return fmt.Errorf("%w: sqlite md5 lookup failed", ErrDependencyUnavailable)
-	}
-	if err := s.cache.SetMD5(ctx, cacheKey, replacement.UID); err != nil {
-		return fmt.Errorf("%w: redis md5 repair failed", ErrDependencyUnavailable)
-	}
-	return nil
-}
-
 func (s *ImageService) resolveUploadStorage(storageKey string, allowStorageSelection bool) (storage.ResolvedProvider, error) {
 	key := strings.TrimSpace(storageKey)
 	if key == "" || !allowStorageSelection {
@@ -566,11 +387,6 @@ func contentDispositionForPath(filePath string) string {
 type countingWriter struct {
 	writer io.Writer
 	size   int64
-}
-
-type saveConvertedResult struct {
-	storedPath string
-	err        error
 }
 
 func (w *countingWriter) Write(p []byte) (int, error) {
@@ -622,44 +438,11 @@ func (s *ImageService) prepareUploadSource(input UploadInput, maxBytes int64) (p
 }
 
 func (s *ImageService) saveConvertedAVIF(ctx context.Context, provider storage.Provider, objectKey string, source io.Reader, settings AVIFConversionSettings) (int64, string, error) {
-	pipeReader, pipeWriter := io.Pipe()
-	counting := &countingWriter{writer: pipeWriter}
-	encodeErrCh := make(chan error, 1)
-	saveResultCh := make(chan saveConvertedResult, 1)
-
-	go func() {
-		err := s.encoder(source, counting, settings)
-		if err != nil {
-			_ = pipeWriter.CloseWithError(err)
-			encodeErrCh <- err
-			return
-		}
-		encodeErrCh <- pipeWriter.Close()
-	}()
-
-	go func() {
-		storedPath, err := provider.SaveStream(ctx, objectKey, pipeReader, -1, publicImageMIMEType)
-		saveResultCh <- saveConvertedResult{storedPath: storedPath, err: err}
-	}()
-
-	saveResult := <-saveResultCh
-	if saveResult.err != nil {
-		_ = pipeReader.Close()
-		_ = pipeWriter.CloseWithError(saveResult.err)
-	}
-
-	encodeErr := <-encodeErrCh
-	_ = pipeReader.Close()
-
-	if encodeErr != nil {
-		if saveResult.err == nil || errors.Is(saveResult.err, encodeErr) {
-			return 0, "", encodeErr
-		}
-	}
-	if saveResult.err != nil {
-		return 0, "", fmt.Errorf("%w: failed to persist file", ErrDependencyUnavailable)
-	}
-	return counting.size, saveResult.storedPath, nil
+	return avifStreamConversion{
+		encoder:  s.encoder,
+		provider: provider,
+		settings: settings,
+	}.save(ctx, objectKey, source)
 }
 
 func buildUploadOutput(record model.ImageRecord, baseURL string, _ string, duplicate bool) UploadOutput {
@@ -750,14 +533,6 @@ func publicStorageOptionsFromConfigs(configs []config.RuntimeStorageConfig, allo
 func md5Hex(payload []byte) string {
 	hash := md5.Sum(payload)
 	return hex.EncodeToString(hash[:])
-}
-
-func scopedMD5CacheKey(storageKey string, md5Hash string) string {
-	return strings.TrimSpace(storageKey) + ":" + md5Hash
-}
-
-func scopedMD5SeenKey(storageKey string, md5Hash string) string {
-	return strings.TrimSpace(storageKey) + "\x00" + md5Hash
 }
 
 type keyedMutex struct {

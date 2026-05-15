@@ -6,8 +6,6 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"omepic/backend/internal/iputil"
 )
 
 func (r *Repository) countByQuery(ctx context.Context, query string, args ...any) (int64, error) {
@@ -58,22 +56,6 @@ func nullableTimeString(value *time.Time) any {
 		return nil
 	}
 	return value.UTC().Format(time.RFC3339)
-}
-
-func ipHashValue(ipAddress string) string {
-	return iputil.Hash(ipAddress)
-}
-
-func maskIPValue(ipAddress string) string {
-	return iputil.Mask(ipAddress)
-}
-
-func previewValue(value string, max int) string {
-	trimmed := strings.TrimSpace(value)
-	if max < 1 || len(trimmed) <= max {
-		return trimmed
-	}
-	return trimmed[:max] + "..."
 }
 
 func boolString(value bool) string {

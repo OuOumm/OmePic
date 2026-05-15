@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -26,14 +25,12 @@ const (
 )
 
 var defaultAllowedMIMETypes = []string{
+	"image/avif",
+	"image/gif",
 	"image/jpeg",
 	"image/png",
-	"image/gif",
 	"image/webp",
-	"image/avif",
 }
-
-var defaultAllowedMIMETypesCSV = strings.Join(defaultAllowedMIMETypes, ",")
 
 type RuntimeSettings struct {
 	SiteName                     string   `json:"site_name"`
@@ -156,8 +153,7 @@ func NewRuntimeSettingsManager() *RuntimeSettingsManager {
 }
 
 func (m *RuntimeSettingsManager) Load(ctx context.Context, repo *repository.Repository) error {
-	defaults := RuntimeSettingsToConfigValues(defaultRuntimeSettings())
-	if err := repo.InsertMissingConfigValues(ctx, defaults); err != nil {
+	if err := repo.InsertMissingConfigValues(ctx, runtimeConfigDefaultValues()); err != nil {
 		return fmt.Errorf("%w: default settings save failed", ErrDependencyUnavailable)
 	}
 
@@ -269,119 +265,44 @@ func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSett
 
 func RuntimeSettingsToConfigValues(settings RuntimeSettings) map[string]string {
 	settings = normalizeRuntimeSettings(settings)
-	return map[string]string{
-		"site_name":                        settings.SiteName,
-		"site_tagline":                     settings.SiteTagline,
-		"public_base_url":                  settings.PublicBaseURL,
-		"max_upload_size_mb":               strconv.Itoa(settings.MaxUploadSizeMB),
-		"allowed_mime_types":               strings.Join(settings.AllowedMIMETypes, ","),
-		"avif_quality":                     strconv.Itoa(settings.AvifQuality),
-		"avif_speed":                       strconv.Itoa(settings.AvifSpeed),
-		"allow_storage_selection":          boolStringValue(settings.AllowStorageSelect),
-		"maintenance_mode":                 boolStringValue(settings.MaintenanceMode),
-		"maintenance_message":              settings.MaintenanceMessage,
-		"rate_limit_window_minutes":        strconv.Itoa(settings.RateLimitWindowMinutes),
-		"rate_limit_max_requests":          strconv.Itoa(settings.RateLimitMaxRequests),
-		"upload_rate_limit_window_minutes": strconv.Itoa(settings.UploadRateLimitWindowMinutes),
-		"upload_rate_limit_max_requests":   strconv.Itoa(settings.UploadRateLimitMaxRequests),
+	fields := GetAllFields()
+	result := make(map[string]string, len(fields))
+	for _, field := range fields {
+		value, err := field.Get(&settings)
+		if err != nil {
+			// Should not happen with a complete runtimeConfigFields table.
+			continue
+		}
+		result[field.Key] = serializeValue(value, field.Type)
 	}
+	return result
 }
 
 func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error) {
 	settings := defaultRuntimeSettings()
-	if value, ok := values["site_name"]; ok {
-		settings.SiteName = strings.TrimSpace(value)
-	}
-	if value, ok := values["site_tagline"]; ok {
-		settings.SiteTagline = strings.TrimSpace(value)
-	}
-	if value, ok := values["public_base_url"]; ok {
-		settings.PublicBaseURL = strings.TrimSpace(value)
-	}
-	if value, ok := values["max_upload_size_mb"]; ok && strings.TrimSpace(value) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "max upload size is invalid")
+	for _, field := range GetAllFields() {
+		valueStr, ok := values[field.Key]
+		if !ok {
+			continue
 		}
-		settings.MaxUploadSizeMB = parsed
-	}
-	if value, ok := values["allowed_mime_types"]; ok {
-		allowed, err := normalizeMIMETypes(splitCSV(value))
+		valueStr = strings.TrimSpace(valueStr)
+		// Skip empty values for int and bool fields to preserve defaults without overwriting.
+		if valueStr == "" && (field.Type == FieldTypeInt || field.Type == FieldTypeBool) {
+			continue
+		}
+		dVal, err := deserializeValue(valueStr, field.Type)
 		if err != nil {
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, field.Key+" is invalid")
+		}
+		if err := field.Set(&settings, dVal); err != nil {
 			return RuntimeSettings{}, err
 		}
-		settings.AllowedMIMETypes = allowed
-	} else {
-		values["allowed_mime_types"] = defaultAllowedMIMETypesCSV
-	}
-	if value, ok := values["avif_quality"]; ok && strings.TrimSpace(value) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif quality is invalid")
-		}
-		settings.AvifQuality = parsed
-	}
-	if value, ok := values["avif_speed"]; ok && strings.TrimSpace(value) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif speed is invalid")
-		}
-		settings.AvifSpeed = parsed
-	}
-	if value, ok := values["allow_storage_selection"]; ok && strings.TrimSpace(value) != "" {
-		settings.AllowStorageSelect = parseBoolValue(value)
-	}
-	if value, ok := values["maintenance_mode"]; ok && strings.TrimSpace(value) != "" {
-		settings.MaintenanceMode = parseBoolValue(value)
-	}
-	if value, ok := values["maintenance_message"]; ok {
-		settings.MaintenanceMessage = strings.TrimSpace(value)
-	}
-	if value, ok := values["rate_limit_window_minutes"]; ok && strings.TrimSpace(value) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "rate limit window is invalid")
-		}
-		settings.RateLimitWindowMinutes = parsed
-	}
-	if value, ok := values["rate_limit_max_requests"]; ok && strings.TrimSpace(value) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "rate limit max requests is invalid")
-		}
-		settings.RateLimitMaxRequests = parsed
-	}
-	if value, ok := values["upload_rate_limit_window_minutes"]; ok && strings.TrimSpace(value) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "upload rate limit window is invalid")
-		}
-		settings.UploadRateLimitWindowMinutes = parsed
-	}
-	if value, ok := values["upload_rate_limit_max_requests"]; ok && strings.TrimSpace(value) != "" {
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "upload rate limit max requests is invalid")
-		}
-		settings.UploadRateLimitMaxRequests = parsed
 	}
 	return ValidateRuntimeSettingsInput(RuntimeSettingsUpdateInput(settings))
 }
 
 func defaultRuntimeSettings() RuntimeSettings {
-	return RuntimeSettings{
-		SiteName:                     DefaultSiteName,
-		SiteTagline:                  DefaultSiteTagline,
-		MaxUploadSizeMB:              20,
-		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
-		AvifQuality:                  DefaultAVIFQuality,
-		AvifSpeed:                    DefaultAVIFSpeed,
-		AllowStorageSelect:           true,
-		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
-		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
-		UploadRateLimitWindowMinutes: DefaultUploadRateLimitWindowMinutes,
-		UploadRateLimitMaxRequests:   DefaultUploadRateLimitMaxRequests,
-	}
+	return runtimeSettingsFromFieldDefaults()
 }
 
 func normalizeRuntimeSettings(settings RuntimeSettings) RuntimeSettings {

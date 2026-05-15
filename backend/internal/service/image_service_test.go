@@ -25,24 +25,18 @@ import (
 	"omepic/backend/internal/storage"
 )
 
-type fakeCache struct {
+type fakeImageCache struct {
 	mu             sync.Mutex
 	images         map[string]model.CachedImage
-	md5ToUID       map[string]string
 	imageSets      int
 	imageBatchSets int
-	md5Sets        int
-	md5BatchSets   int
 }
 
-func newFakeCache() *fakeCache {
-	return &fakeCache{
-		images:   make(map[string]model.CachedImage),
-		md5ToUID: make(map[string]string),
-	}
+func newFakeImageCache() *fakeImageCache {
+	return &fakeImageCache{images: make(map[string]model.CachedImage)}
 }
 
-func (c *fakeCache) GetImage(_ context.Context, uid string) (*model.CachedImage, error) {
+func (c *fakeImageCache) GetImage(_ context.Context, uid string) (*model.CachedImage, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	value, ok := c.images[uid]
@@ -53,7 +47,7 @@ func (c *fakeCache) GetImage(_ context.Context, uid string) (*model.CachedImage,
 	return &copy, nil
 }
 
-func (c *fakeCache) SetImage(_ context.Context, record model.ImageRecord) error {
+func (c *fakeImageCache) SetImage(_ context.Context, record model.ImageRecord) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.images[record.UID] = model.CachedImageFromRecord(record)
@@ -61,7 +55,7 @@ func (c *fakeCache) SetImage(_ context.Context, record model.ImageRecord) error 
 	return nil
 }
 
-func (c *fakeCache) SetImages(_ context.Context, records []model.ImageRecord) error {
+func (c *fakeImageCache) SetImages(_ context.Context, records []model.ImageRecord) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, record := range records {
@@ -72,83 +66,185 @@ func (c *fakeCache) SetImages(_ context.Context, records []model.ImageRecord) er
 	return nil
 }
 
-func (c *fakeCache) DeleteImage(_ context.Context, uid string) error {
+func (c *fakeImageCache) DeleteImage(_ context.Context, uid string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.images, uid)
 	return nil
 }
 
-func (c *fakeCache) GetMD5(_ context.Context, md5Hash string) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.md5ToUID[md5Hash], nil
-}
-
-func (c *fakeCache) SetMD5IfAbsent(_ context.Context, md5Hash string, uid string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, ok := c.md5ToUID[md5Hash]; !ok {
-		c.md5ToUID[md5Hash] = uid
-		c.md5Sets++
-	}
-	return nil
-}
-
-func (c *fakeCache) SetMD5(_ context.Context, md5Hash string, uid string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.md5ToUID[md5Hash] = uid
-	c.md5Sets++
-	return nil
-}
-
-func (c *fakeCache) SetMD5Mappings(_ context.Context, mappings map[string]string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for md5Hash, uid := range mappings {
-		c.md5ToUID[md5Hash] = uid
-		c.md5Sets++
-	}
-	c.md5BatchSets++
-	return nil
-}
-
-func (c *fakeCache) DeleteMD5(_ context.Context, md5Hash string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delete(c.md5ToUID, md5Hash)
-	return nil
-}
-
-func (c *fakeCache) Ping(_ context.Context) error {
-	return nil
-}
-
-func (c *fakeCache) cachedMD5(key string) (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	value, ok := c.md5ToUID[key]
-	return value, ok
-}
-
-func (c *fakeCache) setCachedMD5(key string, uid string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.md5ToUID[key] = uid
-}
-
-func (c *fakeCache) hasCachedImage(uid string) bool {
+func (c *fakeImageCache) hasCachedImage(uid string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	_, ok := c.images[uid]
 	return ok
 }
 
-func (c *fakeCache) stats() (imageSets int, md5Sets int, imageBatchSets int, md5BatchSets int) {
+func (c *fakeImageCache) stats() (imageSets int, imageBatchSets int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.imageSets, c.md5Sets, c.imageBatchSets, c.md5BatchSets
+	return c.imageSets, c.imageBatchSets
+}
+
+type fakeMD5MappingCache struct {
+	mu                sync.Mutex
+	md5ToUID          map[model.MD5MappingKey]string
+	md5Sets           int
+	md5BatchSets      int
+	getMD5Err         error
+	setMD5Err         error
+	setMD5IfAbsentErr error
+	setMD5MappingsErr error
+	deleteMD5Err      error
+}
+
+func newFakeMD5MappingCache() *fakeMD5MappingCache {
+	return &fakeMD5MappingCache{md5ToUID: make(map[model.MD5MappingKey]string)}
+}
+
+func (c *fakeMD5MappingCache) GetMD5(_ context.Context, key model.MD5MappingKey) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.getMD5Err != nil {
+		return "", c.getMD5Err
+	}
+	return c.md5ToUID[key], nil
+}
+
+func (c *fakeMD5MappingCache) SetMD5IfAbsent(_ context.Context, key model.MD5MappingKey, uid string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.setMD5IfAbsentErr != nil {
+		return c.setMD5IfAbsentErr
+	}
+	if _, ok := c.md5ToUID[key]; !ok {
+		c.md5ToUID[key] = uid
+		c.md5Sets++
+	}
+	return nil
+}
+
+func (c *fakeMD5MappingCache) SetMD5(_ context.Context, key model.MD5MappingKey, uid string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.setMD5Err != nil {
+		return c.setMD5Err
+	}
+	c.md5ToUID[key] = uid
+	c.md5Sets++
+	return nil
+}
+
+func (c *fakeMD5MappingCache) SetMD5Mappings(_ context.Context, mappings []model.MD5Mapping) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.setMD5MappingsErr != nil {
+		return c.setMD5MappingsErr
+	}
+	for _, mapping := range mappings {
+		c.md5ToUID[mapping.Key] = mapping.UID
+		c.md5Sets++
+	}
+	c.md5BatchSets++
+	return nil
+}
+
+func (c *fakeMD5MappingCache) DeleteMD5(_ context.Context, key model.MD5MappingKey) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.deleteMD5Err != nil {
+		return c.deleteMD5Err
+	}
+	delete(c.md5ToUID, key)
+	return nil
+}
+
+func (c *fakeMD5MappingCache) cachedMD5(key model.MD5MappingKey) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	value, ok := c.md5ToUID[key]
+	return value, ok
+}
+
+func (c *fakeMD5MappingCache) setCachedMD5(key model.MD5MappingKey, uid string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.md5ToUID[key] = uid
+}
+
+func (c *fakeMD5MappingCache) clearMD5Mappings() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.md5ToUID = make(map[model.MD5MappingKey]string)
+}
+
+func (c *fakeMD5MappingCache) stats() (md5Sets int, md5BatchSets int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.md5Sets, c.md5BatchSets
+}
+
+type fakeCache struct {
+	images *fakeImageCache
+	md5    *fakeMD5MappingCache
+}
+
+func newFakeCache() *fakeCache {
+	return &fakeCache{images: newFakeImageCache(), md5: newFakeMD5MappingCache()}
+}
+
+func (c *fakeCache) cachedMD5(key model.MD5MappingKey) (string, bool) {
+	return c.md5.cachedMD5(key)
+}
+
+func (c *fakeCache) setCachedMD5(key model.MD5MappingKey, uid string) {
+	c.md5.setCachedMD5(key, uid)
+}
+
+func (c *fakeCache) hasCachedImage(uid string) bool {
+	return c.images.hasCachedImage(uid)
+}
+
+func (c *fakeCache) stats() (imageSets int, md5Sets int, imageBatchSets int, md5BatchSets int) {
+	imageSets, imageBatchSets = c.images.stats()
+	md5Sets, md5BatchSets = c.md5.stats()
+	return imageSets, md5Sets, imageBatchSets, md5BatchSets
+}
+
+func (c *fakeCache) GetImage(ctx context.Context, uid string) (*model.CachedImage, error) {
+	return c.images.GetImage(ctx, uid)
+}
+
+func (c *fakeCache) SetImage(ctx context.Context, record model.ImageRecord) error {
+	return c.images.SetImage(ctx, record)
+}
+
+func (c *fakeCache) SetImages(ctx context.Context, records []model.ImageRecord) error {
+	return c.images.SetImages(ctx, records)
+}
+
+func (c *fakeCache) DeleteImage(ctx context.Context, uid string) error {
+	return c.images.DeleteImage(ctx, uid)
+}
+
+func (c *fakeCache) GetMD5(ctx context.Context, key model.MD5MappingKey) (string, error) {
+	return c.md5.GetMD5(ctx, key)
+}
+
+func (c *fakeCache) SetMD5(ctx context.Context, key model.MD5MappingKey, uid string) error {
+	return c.md5.SetMD5(ctx, key, uid)
+}
+
+func (c *fakeCache) SetMD5IfAbsent(ctx context.Context, key model.MD5MappingKey, uid string) error {
+	return c.md5.SetMD5IfAbsent(ctx, key, uid)
+}
+
+func (c *fakeCache) SetMD5Mappings(ctx context.Context, mappings []model.MD5Mapping) error {
+	return c.md5.SetMD5Mappings(ctx, mappings)
+}
+
+func (c *fakeCache) DeleteMD5(ctx context.Context, key model.MD5MappingKey) error {
+	return c.md5.DeleteMD5(ctx, key)
 }
 
 type fakeUIDCodec struct {
@@ -162,6 +258,13 @@ type fakeFailingProvider struct {
 	readBytes  int
 	saveErr    error
 	readCalled bool
+}
+
+type fakeStreamStorageProvider struct {
+	mu              sync.Mutex
+	savedPaths      []string
+	deletedPaths    []string
+	saveStreamCalls int
 }
 
 type fakeUploadStorageResolver struct {
@@ -238,6 +341,42 @@ func (p *fakeFailingProvider) Open(_ context.Context, _ string) (storage.OpenRes
 
 func (p *fakeFailingProvider) Delete(_ context.Context, _ string) error {
 	return nil
+}
+
+func (p *fakeStreamStorageProvider) Name() string {
+	return config.StorageBackendLocal
+}
+
+func (p *fakeStreamStorageProvider) Save(ctx context.Context, objectKey string, data []byte, contentType string) (string, error) {
+	return p.SaveStream(ctx, objectKey, bytes.NewReader(data), int64(len(data)), contentType)
+}
+
+func (p *fakeStreamStorageProvider) SaveStream(_ context.Context, objectKey string, reader io.Reader, _ int64, _ string) (string, error) {
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		return "", err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.saveStreamCalls++
+	p.savedPaths = append(p.savedPaths, objectKey)
+	return objectKey, nil
+}
+
+func (p *fakeStreamStorageProvider) Open(_ context.Context, _ string) (storage.OpenResult, error) {
+	return storage.OpenResult{}, errors.New("not implemented")
+}
+
+func (p *fakeStreamStorageProvider) Delete(_ context.Context, objectKey string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.deletedPaths = append(p.deletedPaths, objectKey)
+	return nil
+}
+
+func (p *fakeStreamStorageProvider) stats() (saveStreamCalls int, savedPaths []string, deletedPaths []string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.saveStreamCalls, append([]string(nil), p.savedPaths...), append([]string(nil), p.deletedPaths...)
 }
 
 func (r fakeUploadStorageResolver) Current() (storage.ResolvedProvider, error) {
@@ -472,7 +611,7 @@ func TestUploadDefaultFallbackUsesHotReloadedDefaultStorage(t *testing.T) {
 
 func TestUploadDeduplicatesWithinSelectedStorageOnly(t *testing.T) {
 	ctx := context.Background()
-	service, repo, _, primaryRoot, uidCodec := newImageServiceTestHarness(t)
+	service, repo, cacheStore, primaryRoot, uidCodec := newImageServiceTestHarness(t)
 	uidCodec.Queue("uid-primary", "uid-secondary", "uid-secondary-dup")
 
 	sourceBytes := mustPNGBytes(t, color.RGBA{R: 10, G: 150, B: 220, A: 255})
@@ -535,6 +674,12 @@ func TestUploadDeduplicatesWithinSelectedStorageOnly(t *testing.T) {
 	if secondRecord.FilePath != thirdRecord.FilePath {
 		t.Fatalf("expected same selected storage duplicate to reuse physical object")
 	}
+	if got, _ := cacheStore.cachedMD5(model.NewMD5MappingKey(firstRecord.StorageKey, firstRecord.MD5Hash)); got != "uid-primary" {
+		t.Fatalf("expected primary storage md5 mapping to point at primary uid, got %q", got)
+	}
+	if got, _ := cacheStore.cachedMD5(model.NewMD5MappingKey(secondRecord.StorageKey, secondRecord.MD5Hash)); got != "uid-secondary" {
+		t.Fatalf("expected secondary storage md5 mapping to point at secondary uid, got %q", got)
+	}
 	secondaryRoot := filepath.Join(filepath.Dir(primaryRoot), "images-secondary")
 	if _, err := os.Stat(filepath.Join(primaryRoot, filepath.FromSlash(firstRecord.FilePath))); err != nil {
 		t.Fatalf("expected default storage file to exist: %v", err)
@@ -572,15 +717,129 @@ func TestUploadRejectsUnknownStorageKeyBeforeWrite(t *testing.T) {
 	}
 }
 
+func TestUploadDuplicateReusesStoredObjectWithoutStreamWrite(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-stream-first", "uid-stream-duplicate")
+	provider := &fakeStreamStorageProvider{}
+	service.storage = fakeUploadStorageResolver{resolved: storage.ResolvedProvider{
+		Config:   config.RuntimeStorageConfig{StorageKey: "local-primary", Backend: config.StorageBackendLocal, IsDefault: true},
+		Provider: provider,
+	}}
+
+	sourceBytes := mustPNGBytes(t, color.RGBA{R: 210, G: 20, B: 90, A: 255})
+	first, err := service.Upload(ctx, UploadInput{
+		Token:            "token-stream-first",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("first upload returned error: %v", err)
+	}
+	if first.Duplicate {
+		t.Fatalf("expected first upload to create a physical object")
+	}
+
+	second, err := service.Upload(ctx, UploadInput{
+		Token:            "token-stream-duplicate",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("second upload returned error: %v", err)
+	}
+	if !second.Duplicate {
+		t.Fatalf("expected second upload to reuse the existing physical object")
+	}
+
+	saveCalls, savedPaths, deletedPaths := provider.stats()
+	if saveCalls != 1 {
+		t.Fatalf("expected duplicate upload not to call SaveStream again, got %d calls", saveCalls)
+	}
+	if len(savedPaths) != 1 || !strings.HasSuffix(savedPaths[0], "uid-stream-first"+publicImageExtension) {
+		t.Fatalf("expected first uid object to be the only saved path, got %+v", savedPaths)
+	}
+	if len(deletedPaths) != 0 {
+		t.Fatalf("expected duplicate reuse not to delete physical objects, got %+v", deletedPaths)
+	}
+}
+
+func TestUploadCleansNewPhysicalObjectWhenRecordCommitFails(t *testing.T) {
+	ctx := context.Background()
+	service, repo, cacheStore, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-conflict")
+	if err := repo.InsertImage(ctx, model.ImageRecord{
+		UID:            "uid-conflict",
+		Token:          "token-existing",
+		StorageKey:     "local-primary",
+		StorageBackend: config.StorageBackendLocal,
+		FilePath:       "2026/05/existing.avif",
+		MIMEType:       publicImageMIMEType,
+		Size:           1,
+		MD5Hash:        "other-md5",
+		IPAddress:      "127.0.0.1",
+		CreatedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("InsertImage existing returned error: %v", err)
+	}
+
+	provider := &fakeStreamStorageProvider{}
+	service.storage = fakeUploadStorageResolver{resolved: storage.ResolvedProvider{
+		Config:   config.RuntimeStorageConfig{StorageKey: "local-primary", Backend: config.StorageBackendLocal, IsDefault: true},
+		Provider: provider,
+	}}
+	sourceBytes := mustPNGBytes(t, color.RGBA{R: 20, G: 210, B: 120, A: 255})
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            "token-conflict",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err == nil {
+		t.Fatalf("expected upload error when SQLite record commit fails")
+	}
+
+	saveCalls, savedPaths, deletedPaths := provider.stats()
+	if saveCalls != 1 || len(savedPaths) != 1 {
+		t.Fatalf("expected one new physical SaveStream before commit failure, calls=%d paths=%+v", saveCalls, savedPaths)
+	}
+	if len(deletedPaths) != 1 || deletedPaths[0] != savedPaths[0] {
+		t.Fatalf("expected failed commit to delete the newly saved object %q, got %+v", savedPaths[0], deletedPaths)
+	}
+	if got, ok := cacheStore.cachedMD5(model.NewMD5MappingKey("local-primary", md5Hex(sourceBytes))); ok {
+		t.Fatalf("expected failed new physical commit not to publish md5 mapping, got %q", got)
+	}
+}
+
 func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
 	uidCodec.Queue("uid-1", "uid-2")
+	service.settings.Reconfigure(RuntimeSettings{
+		SiteName:                     DefaultSiteName,
+		SiteTagline:                  DefaultSiteTagline,
+		MaxUploadSizeMB:              20,
+		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
+		AvifQuality:                  35,
+		AvifSpeed:                    2,
+		AllowStorageSelect:           true,
+		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
+		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
+		UploadRateLimitWindowMinutes: DefaultUploadRateLimitWindowMinutes,
+		UploadRateLimitMaxRequests:   DefaultUploadRateLimitMaxRequests,
+	})
 
 	sourceBytes := mustPNGBytes(t, color.RGBA{R: 80, G: 160, B: 40, A: 255})
 	conversionCalls := 0
+	var observed []AVIFConversionSettings
 	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
 		conversionCalls++
+		observed = append(observed, settings)
 		return encodeAVIFToWriter(source, target, settings)
 	}
 
@@ -594,6 +853,19 @@ func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 		t.Fatalf("first upload returned error: %v", err)
 	}
 
+	service.settings.Reconfigure(RuntimeSettings{
+		SiteName:                     DefaultSiteName,
+		SiteTagline:                  DefaultSiteTagline,
+		MaxUploadSizeMB:              20,
+		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
+		AvifQuality:                  90,
+		AvifSpeed:                    10,
+		AllowStorageSelect:           true,
+		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
+		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
+		UploadRateLimitWindowMinutes: DefaultUploadRateLimitWindowMinutes,
+		UploadRateLimitMaxRequests:   DefaultUploadRateLimitMaxRequests,
+	})
 	result, err := service.Upload(ctx, UploadInput{
 		Token:            "token-b",
 		OriginalFilename: "sample.png",
@@ -609,6 +881,9 @@ func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 	}
 	if conversionCalls != 1 {
 		t.Fatalf("expected avif conversion to run once, got %d", conversionCalls)
+	}
+	if len(observed) != 1 || observed[0].Quality != 35 || observed[0].Speed != 2 {
+		t.Fatalf("expected only first upload to convert with initial avif settings, got %+v", observed)
 	}
 
 	secondRecord, err := repo.FindByUID(ctx, "uid-2")
@@ -681,6 +956,31 @@ func TestUploadSerializesSameStorageMD5WithoutGlobalUploadLock(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatalf("Upload returned error: %v", err)
 		}
+	}
+}
+
+func TestSaveConvertedAVIFPrefersEncoderInvalidInputOverSaveFailure(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, _, _ := newImageServiceTestHarness(t)
+	provider := &fakeFailingProvider{readBytes: 1, saveErr: errors.New("save failed after encoder failure")}
+	service.encoder = func(io.Reader, io.Writer, AVIFConversionSettings) error {
+		return WithUserMessage(ErrInvalidInput, "bad source image")
+	}
+
+	_, _, err := service.saveConvertedAVIF(ctx, provider, "bad.avif", strings.NewReader("not an image"), AVIFConversionSettings{Quality: 60, Speed: 8})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected encoder invalid input to take priority over save failure, got %v", err)
+	}
+	if !provider.readCalled {
+		t.Fatalf("expected provider to observe stream closure after encoder failure")
+	}
+}
+
+func TestAVIFStreamErrorTreatsSaveFailureClosedPipeAsDependencyUnavailable(t *testing.T) {
+	saveErr := errors.New("save failed")
+	err := avifStreamError(io.ErrClosedPipe, saveErr)
+	if err == nil || !containsError(err, ErrDependencyUnavailable) {
+		t.Fatalf("expected save failure to map to dependency unavailable when encoder only saw closed pipe, got %v", err)
 	}
 }
 
@@ -930,7 +1230,7 @@ func TestDeleteRetainsPhysicalFileAfterLastReferenceDeletion(t *testing.T) {
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("expected physical file to remain after first delete: %v", err)
 	}
-	if _, ok := cacheStore.cachedMD5(scopedMD5CacheKey(firstRecord.StorageKey, firstRecord.MD5Hash)); !ok {
+	if _, ok := cacheStore.cachedMD5(model.NewMD5MappingKey(firstRecord.StorageKey, firstRecord.MD5Hash)); !ok {
 		t.Fatalf("expected md5 cache to remain while references exist")
 	}
 
@@ -940,8 +1240,63 @@ func TestDeleteRetainsPhysicalFileAfterLastReferenceDeletion(t *testing.T) {
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("expected physical file to remain after last logical delete: %v", err)
 	}
-	if _, ok := cacheStore.cachedMD5(scopedMD5CacheKey(firstRecord.StorageKey, firstRecord.MD5Hash)); ok {
+	if _, ok := cacheStore.cachedMD5(model.NewMD5MappingKey(firstRecord.StorageKey, firstRecord.MD5Hash)); ok {
 		t.Fatalf("expected md5 cache to be removed after last delete")
+	}
+}
+
+func TestUploadRepairsStaleMD5MappingWhenCachedUIDBelongsToDifferentMD5(t *testing.T) {
+	ctx := context.Background()
+	service, repo, cacheStore, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Add("uid-wrong")
+	uidCodec.Queue("uid-correct", "uid-dup")
+
+	if err := repo.InsertImage(ctx, model.ImageRecord{
+		UID:            "uid-wrong",
+		Token:          "token-wrong",
+		StorageKey:     "local-primary",
+		StorageBackend: config.StorageBackendLocal,
+		FilePath:       "2026/04/wrong.avif",
+		MIMEType:       publicImageMIMEType,
+		Size:           1,
+		MD5Hash:        "different-md5",
+	}); err != nil {
+		t.Fatalf("InsertImage wrong record returned error: %v", err)
+	}
+
+	sourceBytes := mustPNGBytes(t, color.RGBA{R: 80, G: 20, B: 180, A: 255})
+	md5Key := model.NewMD5MappingKey("local-primary", md5Hex(sourceBytes))
+	cacheStore.setCachedMD5(md5Key, "uid-wrong")
+
+	first, err := service.Upload(ctx, UploadInput{
+		Token:            "token-correct",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("first upload returned error: %v", err)
+	}
+	if first.Duplicate {
+		t.Fatalf("expected stale wrong-md5 mapping to avoid false duplicate reuse")
+	}
+	if got, _ := cacheStore.cachedMD5(md5Key); got != "uid-correct" {
+		t.Fatalf("expected md5 cache to repair to correct uid, got %q", got)
+	}
+
+	second, err := service.Upload(ctx, UploadInput{
+		Token:            "token-dup",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("second upload returned error: %v", err)
+	}
+	if !second.Duplicate {
+		t.Fatalf("expected repaired mapping to deduplicate later upload")
 	}
 }
 
@@ -974,7 +1329,7 @@ func TestDeleteRepointsMD5CacheToRemainingReference(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByUID returned error: %v", err)
 	}
-	if got, _ := cacheStore.cachedMD5(scopedMD5CacheKey(record.StorageKey, record.MD5Hash)); got != "uid-a" {
+	if got, _ := cacheStore.cachedMD5(model.NewMD5MappingKey(record.StorageKey, record.MD5Hash)); got != "uid-a" {
 		t.Fatalf("expected initial md5 cache to point at first uid")
 	}
 
@@ -982,8 +1337,62 @@ func TestDeleteRepointsMD5CacheToRemainingReference(t *testing.T) {
 		t.Fatalf("Delete returned error: %v", err)
 	}
 
-	if got, _ := cacheStore.cachedMD5(scopedMD5CacheKey(record.StorageKey, record.MD5Hash)); got != "uid-b" {
+	if got, _ := cacheStore.cachedMD5(model.NewMD5MappingKey(record.StorageKey, record.MD5Hash)); got != "uid-b" {
 		t.Fatalf("expected md5 cache to repoint to remaining uid, got %q", got)
+	}
+}
+
+func TestDeleteRepointsMD5CacheWhenCachedUIDHasSameStorageButDifferentMD5(t *testing.T) {
+	ctx := context.Background()
+	service, repo, cacheStore, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Add("uid-wrong")
+	uidCodec.Queue("uid-a", "uid-b")
+
+	if err := repo.InsertImage(ctx, model.ImageRecord{
+		UID:            "uid-wrong",
+		Token:          "token-wrong",
+		StorageKey:     "local-primary",
+		StorageBackend: config.StorageBackendLocal,
+		FilePath:       "2026/04/wrong.avif",
+		MIMEType:       publicImageMIMEType,
+		Size:           1,
+		MD5Hash:        "different-md5",
+	}); err != nil {
+		t.Fatalf("InsertImage wrong record returned error: %v", err)
+	}
+
+	sourceBytes := mustPNGBytes(t, color.RGBA{R: 30, G: 160, B: 90, A: 255})
+	if _, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	}); err != nil {
+		t.Fatalf("first upload returned error: %v", err)
+	}
+	if _, err := service.Upload(ctx, UploadInput{
+		Token:            "token-b",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	}); err != nil {
+		t.Fatalf("second upload returned error: %v", err)
+	}
+
+	record, err := repo.FindByUID(ctx, "uid-a")
+	if err != nil {
+		t.Fatalf("FindByUID returned error: %v", err)
+	}
+	md5Key := model.NewMD5MappingKey(record.StorageKey, record.MD5Hash)
+	cacheStore.setCachedMD5(md5Key, "uid-wrong")
+
+	if err := service.Delete(ctx, "uid-a"+publicImageExtension, "token-a", false, ""); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if got, _ := cacheStore.cachedMD5(md5Key); got != "uid-b" {
+		t.Fatalf("expected md5 cache to repoint away from wrong-md5 cached uid, got %q", got)
 	}
 }
 
@@ -1020,7 +1429,7 @@ func TestDeleteRetainsPhysicalFileWhenOnlyCrossBackendReferenceTextMatches(t *te
 	}); err != nil {
 		t.Fatalf("InsertImage returned error: %v", err)
 	}
-	cacheStore.setCachedMD5(scopedMD5CacheKey(localRecord.StorageKey, localRecord.MD5Hash), "uid-local")
+	cacheStore.setCachedMD5(model.NewMD5MappingKey(localRecord.StorageKey, localRecord.MD5Hash), "uid-local")
 
 	storedPath := filepath.Join(rootDir, filepath.FromSlash(localRecord.FilePath))
 	if err := service.Delete(ctx, "uid-local"+publicImageExtension, "token-local", false, ""); err != nil {
@@ -1029,7 +1438,7 @@ func TestDeleteRetainsPhysicalFileWhenOnlyCrossBackendReferenceTextMatches(t *te
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("expected local file to remain for deferred cleanup, got err=%v", err)
 	}
-	if _, ok := cacheStore.cachedMD5(scopedMD5CacheKey(localRecord.StorageKey, localRecord.MD5Hash)); ok {
+	if _, ok := cacheStore.cachedMD5(model.NewMD5MappingKey(localRecord.StorageKey, localRecord.MD5Hash)); ok {
 		t.Fatalf("expected md5 cache to clear instead of repointing to another storage key")
 	}
 }
@@ -1218,7 +1627,7 @@ func TestPreheatRepairsStaleMD5MappingFromSQLite(t *testing.T) {
 		}
 	}
 
-	cacheStore.setCachedMD5(scopedMD5CacheKey("local-primary", "shared-hash"), "stale-uid")
+	cacheStore.setCachedMD5(model.NewMD5MappingKey("local-primary", "shared-hash"), "stale-uid")
 
 	count, err := service.Preheat(ctx)
 	if err != nil {
@@ -1227,7 +1636,7 @@ func TestPreheatRepairsStaleMD5MappingFromSQLite(t *testing.T) {
 	if count != len(records) {
 		t.Fatalf("expected preheat count %d, got %d", len(records), count)
 	}
-	if got, _ := cacheStore.cachedMD5(scopedMD5CacheKey("local-primary", "shared-hash")); got != "uid-1" {
+	if got, _ := cacheStore.cachedMD5(model.NewMD5MappingKey("local-primary", "shared-hash")); got != "uid-1" {
 		t.Fatalf("expected preheat to repair md5 cache to first sqlite uid, got %q", got)
 	}
 	_, md5Sets, _, _ := cacheStore.stats()
@@ -1363,10 +1772,12 @@ func newImageServiceTestHarness(t *testing.T) (*ImageService, *repository.Reposi
 	}
 
 	cacheStore := newFakeCache()
+	imageCache := cacheStore.images
+	md5Cache := cacheStore.md5
 	uidCodec := newFakeUIDCodec()
 	logger := slog.New(slog.NewTextHandler(ioDiscard{}, nil))
 	settingsManager := NewRuntimeSettingsManager()
-	return NewImageService(repo, cacheStore, manager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger), repo, cacheStore, rootDir, uidCodec
+	return NewImageServiceWithCaches(repo, imageCache, imageCache, md5Cache, md5Cache, manager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger), repo, cacheStore, rootDir, uidCodec
 }
 
 type ioDiscard struct{}

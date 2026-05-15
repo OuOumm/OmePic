@@ -51,47 +51,30 @@ func (c *handlerFakeCache) SetImage(_ context.Context, record model.ImageRecord)
 	return nil
 }
 
-func (c *handlerFakeCache) SetImages(_ context.Context, records []model.ImageRecord) error {
-	for _, record := range records {
-		c.images[record.UID] = model.CachedImageFromRecord(record)
-	}
-	return nil
-}
-
 func (c *handlerFakeCache) DeleteImage(_ context.Context, uid string) error {
 	delete(c.images, uid)
 	return nil
 }
 
-func (c *handlerFakeCache) GetMD5(_ context.Context, md5Hash string) (string, error) {
-	return c.md5ToUID[md5Hash], nil
+func (c *handlerFakeCache) GetMD5(_ context.Context, key model.MD5MappingKey) (string, error) {
+	return c.md5ToUID[key.CacheScope()], nil
 }
 
-func (c *handlerFakeCache) SetMD5IfAbsent(_ context.Context, md5Hash string, uid string) error {
-	if _, ok := c.md5ToUID[md5Hash]; !ok {
-		c.md5ToUID[md5Hash] = uid
+func (c *handlerFakeCache) SetMD5IfAbsent(_ context.Context, key model.MD5MappingKey, uid string) error {
+	cacheKey := key.CacheScope()
+	if _, ok := c.md5ToUID[cacheKey]; !ok {
+		c.md5ToUID[cacheKey] = uid
 	}
 	return nil
 }
 
-func (c *handlerFakeCache) SetMD5(_ context.Context, md5Hash string, uid string) error {
-	c.md5ToUID[md5Hash] = uid
+func (c *handlerFakeCache) SetMD5(_ context.Context, key model.MD5MappingKey, uid string) error {
+	c.md5ToUID[key.CacheScope()] = uid
 	return nil
 }
 
-func (c *handlerFakeCache) SetMD5Mappings(_ context.Context, mappings map[string]string) error {
-	for md5Hash, uid := range mappings {
-		c.md5ToUID[md5Hash] = uid
-	}
-	return nil
-}
-
-func (c *handlerFakeCache) DeleteMD5(_ context.Context, md5Hash string) error {
-	delete(c.md5ToUID, md5Hash)
-	return nil
-}
-
-func (c *handlerFakeCache) Ping(_ context.Context) error {
+func (c *handlerFakeCache) DeleteMD5(_ context.Context, key model.MD5MappingKey) error {
+	delete(c.md5ToUID, key.CacheScope())
 	return nil
 }
 
@@ -230,9 +213,12 @@ func newImageHandlerTestHarness(t *testing.T) (*ImageHandler, service.UploadOutp
 	cacheStore := newHandlerFakeCache()
 	validUID := "uid-handler"
 	settingsManager := service.NewRuntimeSettingsManager()
-	imageService := service.NewImageService(
+	imageService := service.NewImageServiceWithCaches(
 		repo,
 		cacheStore,
+		nil,
+		cacheStore,
+		nil,
 		manager,
 		settingsManager,
 		func() (string, error) { return validUID, nil },

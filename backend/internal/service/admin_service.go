@@ -116,9 +116,15 @@ const (
 	DefaultAdminPassword = "admin123"
 )
 
+type adminStorageManager interface {
+	storageReconfigurer
+	ForKey(string) (storage.ResolvedProvider, error)
+	CurrentKey() string
+}
+
 type AdminService struct {
 	repo         *repository.Repository
-	storage      *storage.Manager
+	storage      adminStorageManager
 	settings     *RuntimeSettingsManager
 	imageService *ImageService
 	jwtSecret    string
@@ -285,61 +291,7 @@ func (s *AdminService) DeleteImages(ctx context.Context, uids []string) error {
 }
 
 func (s *AdminService) CreateIPBan(ctx context.Context, input AdminIPBanCreateInput) (AdminIPBanCreateResult, error) {
-	uid := strings.TrimSpace(input.UID)
-	ipAddress := strings.TrimSpace(input.IPAddress)
-	if uid != "" {
-		record, err := s.repo.FindByUID(ctx, uid)
-		if err != nil {
-			if repository.IsNotFound(err) {
-				return AdminIPBanCreateResult{}, ErrNotFound
-			}
-			return AdminIPBanCreateResult{}, fmt.Errorf("%w: image lookup failed", ErrDependencyUnavailable)
-		}
-		ipAddress = strings.TrimSpace(record.IPAddress)
-	}
-	if ipAddress == "" {
-		return AdminIPBanCreateResult{}, WithUserMessage(ErrInvalidInput, "uid or ip_address is required")
-	}
-	reason := strings.TrimSpace(input.Reason)
-	if reason == "" {
-		if uid != "" {
-			reason = "Abusive upload from image " + uid
-		} else {
-			reason = "Abusive upload from IP " + maskIPAddress(ipAddress)
-		}
-	}
-	var expiresAt *time.Time
-	if input.DurationHours > 0 {
-		expires := time.Now().UTC().Add(time.Duration(input.DurationHours) * time.Hour)
-		expiresAt = &expires
-	}
-	existing, err := s.repo.FindActiveIPBanByHash(ctx, ipHash(ipAddress))
-	if err == nil {
-		summary, err := s.repo.ImageSummaryByIP(ctx, ipAddress)
-		if err != nil {
-			return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip image summary failed", ErrDependencyUnavailable)
-		}
-		return AdminIPBanCreateResult{Ban: existing, AffectedImageCount: summary.Count, AffectedTotalSize: summary.TotalSize}, nil
-	}
-	if err != nil && !repository.IsNotFound(err) {
-		return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip ban lookup failed", ErrDependencyUnavailable)
-	}
-
-	ban, err := s.repo.CreateIPBan(ctx, model.IPBan{
-		IPHash:          ipHash(ipAddress),
-		IPAddress:       ipAddress,
-		IPAddressMasked: maskIPAddress(ipAddress),
-		Reason:          reason,
-		ExpiresAt:       expiresAt,
-	})
-	if err != nil {
-		return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip ban create failed", ErrDependencyUnavailable)
-	}
-	summary, err := s.repo.ImageSummaryByIP(ctx, ipAddress)
-	if err != nil {
-		return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip image summary failed", ErrDependencyUnavailable)
-	}
-	return AdminIPBanCreateResult{Ban: ban, AffectedImageCount: summary.Count, AffectedTotalSize: summary.TotalSize}, nil
+	return newSecurityAnalysis(s.repo).CreateIPBan(ctx, input)
 }
 
 func (s *AdminService) IPBans(ctx context.Context) ([]model.IPBan, error) {
@@ -351,47 +303,11 @@ func (s *AdminService) IPBans(ctx context.Context) ([]model.IPBan, error) {
 }
 
 func (s *AdminService) AbuseOverview(ctx context.Context, input AdminAbuseOverviewInput) (model.AbuseOverview, error) {
-	from, to, err := normalizeAbuseRange(input.From, input.To)
-	if err != nil {
-		return model.AbuseOverview{}, err
-	}
-	uploadCount, uploadSize, err := s.repo.AbuseOverviewTotals(ctx, from, to)
-	if err != nil {
-		return model.AbuseOverview{}, fmt.Errorf("%w: abuse totals query failed", ErrDependencyUnavailable)
-	}
-	activeBanCount, err := s.repo.CountActiveIPBans(ctx)
-	if err != nil {
-		return model.AbuseOverview{}, fmt.Errorf("%w: active ip bans query failed", ErrDependencyUnavailable)
-	}
-	topIPs, err := s.repo.TopAbuseIPs(ctx, from, to, 10)
-	if err != nil {
-		return model.AbuseOverview{}, fmt.Errorf("%w: abuse ip rank query failed", ErrDependencyUnavailable)
-	}
-	topTokens, err := s.repo.TopAbuseTokens(ctx, from, to, 10)
-	if err != nil {
-		return model.AbuseOverview{}, fmt.Errorf("%w: abuse token rank query failed", ErrDependencyUnavailable)
-	}
-	return model.AbuseOverview{
-		From:             from,
-		To:               to,
-		UploadCount:      uploadCount,
-		UploadSize:       uploadSize,
-		ActiveIPBanCount: activeBanCount,
-		TopIPs:           topIPs,
-		TopTokens:        topTokens,
-	}, nil
+	return newSecurityAnalysis(s.repo).Overview(ctx, input)
 }
 
 func (s *AdminService) AbuseIPDetail(ctx context.Context, ipAddress string) (model.AbuseIPDetail, error) {
-	trimmed := strings.TrimSpace(ipAddress)
-	if trimmed == "" {
-		return model.AbuseIPDetail{}, ErrInvalidInput
-	}
-	detail, err := s.repo.IPDetail(ctx, trimmed)
-	if err != nil {
-		return model.AbuseIPDetail{}, fmt.Errorf("%w: abuse ip detail query failed", ErrDependencyUnavailable)
-	}
-	return detail, nil
+	return newSecurityAnalysis(s.repo).IPDetail(ctx, ipAddress)
 }
 
 func (s *AdminService) DeleteIPBan(ctx context.Context, id int64) error {
@@ -433,157 +349,40 @@ func (s *AdminService) DeleteImagesByIPBan(ctx context.Context, id int64) (Admin
 }
 
 func (s *AdminService) GetConfig(ctx context.Context) (AdminConfigView, error) {
-	return s.loadConfigView(ctx)
+	return s.storageCatalog().View(ctx)
 }
 
 func (s *AdminService) UpdateConfig(ctx context.Context, input AdminConfigUpdateInput) (AdminConfigView, error) {
-	hasPatch := hasStorageConfigPatch(input)
-	if !hasPatch && input.DefaultStorageKey == nil {
-		return s.loadConfigView(ctx)
-	}
-
-	defaultStorageKey := ""
-	if input.DefaultStorageKey != nil {
-		defaultStorageKey = trimStringPointer(input.DefaultStorageKey)
-		if defaultStorageKey == "" {
-			return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "default storage key is required")
-		}
-		if err := s.ensureStorageConfigExists(ctx, defaultStorageKey); err != nil {
-			return AdminConfigView{}, err
-		}
-	}
-
-	if hasPatch {
-		targetKey := trimStringPointer(input.StorageKey)
-		if targetKey == "" {
-			targetKey = defaultStorageKey
-		}
-		if targetKey == "" {
-			view, err := s.loadConfigView(ctx)
-			if err != nil {
-				return AdminConfigView{}, err
-			}
-			targetKey = view.DefaultStorageKey
-		}
-		if targetKey == "" {
-			return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "storage key is required")
-		}
-
-		view, err := s.UpdateStorageConfig(ctx, targetKey, storageUpdateFromConfigPatch(input))
-		if err != nil {
-			return AdminConfigView{}, err
-		}
-		if input.DefaultStorageKey == nil {
-			return view, nil
-		}
-	}
-
-	return s.SetDefaultStorageConfig(ctx, defaultStorageKey)
+	return s.storageCatalog().ApplyLegacyPatch(ctx, legacyStorageConfigPatch{
+		TargetStorageKey:  trimStringPointer(input.StorageKey),
+		DefaultStorageKey: input.DefaultStorageKey,
+		Update:            storageUpdateFromConfigPatch(input),
+		HasPatch:          hasStorageConfigPatch(input),
+	})
 }
 
 func (s *AdminService) CreateStorageConfig(ctx context.Context, input AdminStorageConfigCreateInput) (AdminConfigView, error) {
-	next, err := buildStorageConfig(input)
-	if err != nil {
-		return AdminConfigView{}, err
-	}
-	if err := storage.ValidateConfig(next); err != nil {
-		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, err.Error())
-	}
-	if err := s.repo.CreateStorageConfig(ctx, next); err != nil {
-		return AdminConfigView{}, fmt.Errorf("%w: config save failed", ErrDependencyUnavailable)
-	}
-	if err := s.reloadStorageManager(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
-	return s.loadConfigView(ctx)
+	return s.storageCatalog().Create(ctx, input)
 }
 
 func (s *AdminService) UpdateStorageConfig(ctx context.Context, storageKey string, input AdminStorageConfigUpdateInput) (AdminConfigView, error) {
-	current, err := s.repo.GetStorageConfigByKey(ctx, storageKey)
-	if err != nil {
-		if repository.IsNotFound(err) {
-			return AdminConfigView{}, ErrNotFound
-		}
-		return AdminConfigView{}, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
-	}
-
-	next := current
-	mergeStorageConfig(&next, current, input)
-	if storageBackendChanged(current.Backend, next.Backend) {
-		count, err := s.repo.CountImagesByStorageKey(ctx, storageKey)
-		if err != nil {
-			return AdminConfigView{}, fmt.Errorf("%w: image usage lookup failed", ErrDependencyUnavailable)
-		}
-		if count > 0 {
-			return AdminConfigView{}, WithUserMessage(ErrConflict, "storage backend cannot change while images still reference this storage key")
-		}
-	}
-	if strings.TrimSpace(next.Name) == "" {
-		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "storage instance name is required")
-	}
-	if err := storage.ValidateConfig(next); err != nil {
-		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, err.Error())
-	}
-	if err := s.repo.UpdateStorageConfig(ctx, next); err != nil {
-		if repository.IsNotFound(err) {
-			return AdminConfigView{}, ErrNotFound
-		}
-		return AdminConfigView{}, fmt.Errorf("%w: config save failed", ErrDependencyUnavailable)
-	}
-	if err := s.reloadStorageManager(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
-	return s.loadConfigView(ctx)
+	return s.storageCatalog().Patch(ctx, storageKey, input)
 }
 
 func (s *AdminService) DeleteStorageConfig(ctx context.Context, storageKey string) (AdminConfigView, error) {
-	current, err := s.repo.GetStorageConfigByKey(ctx, storageKey)
-	if err != nil {
-		if repository.IsNotFound(err) {
-			return AdminConfigView{}, ErrNotFound
-		}
-		return AdminConfigView{}, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
-	}
-	if current.IsDefault {
-		return AdminConfigView{}, WithUserMessage(ErrConflict, "default storage instance cannot be deleted")
-	}
-	count, err := s.repo.CountImagesByStorageKey(ctx, storageKey)
-	if err != nil {
-		return AdminConfigView{}, fmt.Errorf("%w: image usage lookup failed", ErrDependencyUnavailable)
-	}
-	if count > 0 {
-		return AdminConfigView{}, WithUserMessage(ErrConflict, "storage instance is in use by existing images")
-	}
-	if err := s.repo.DeleteStorageConfig(ctx, storageKey); err != nil {
-		if repository.IsNotFound(err) {
-			return AdminConfigView{}, ErrNotFound
-		}
-		return AdminConfigView{}, fmt.Errorf("%w: config delete failed", ErrDependencyUnavailable)
-	}
-	if err := s.reloadStorageManager(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
-	return s.loadConfigView(ctx)
+	return s.storageCatalog().Delete(ctx, storageKey)
 }
 
 func (s *AdminService) SetDefaultStorageConfig(ctx context.Context, storageKey string) (AdminConfigView, error) {
-	if strings.TrimSpace(storageKey) == "" {
-		return AdminConfigView{}, WithUserMessage(ErrInvalidInput, "storage key is required")
-	}
-	if err := s.repo.SetDefaultStorageConfig(ctx, storageKey); err != nil {
-		if repository.IsNotFound(err) {
-			return AdminConfigView{}, ErrNotFound
-		}
-		return AdminConfigView{}, fmt.Errorf("%w: default storage update failed", ErrDependencyUnavailable)
-	}
-	if err := s.reloadStorageManager(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
-	return s.loadConfigView(ctx)
+	return s.storageCatalog().SetDefault(ctx, storageKey)
 }
 
 func (s *AdminService) GetSystemSettings(ctx context.Context) (AdminSystemSettingsView, error) {
 	return s.loadSystemSettingsView(ctx)
+}
+
+func (s *AdminService) reloadStorageManager(ctx context.Context) error {
+	return s.storageCatalog().reload(ctx)
 }
 
 func (s *AdminService) UpdateSystemSettings(ctx context.Context, input RuntimeSettingsUpdateInput) (AdminSystemSettingsView, error) {
@@ -598,38 +397,6 @@ func (s *AdminService) UpdateSystemSettings(ctx context.Context, input RuntimeSe
 		s.settings.Reconfigure(settings)
 	}
 	return s.loadSystemSettingsView(ctx)
-}
-
-func (s *AdminService) loadConfigView(ctx context.Context) (AdminConfigView, error) {
-	configs, err := s.repo.ListStorageConfigs(ctx)
-	if err != nil {
-		return AdminConfigView{}, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
-	}
-
-	view := AdminConfigView{
-		StorageConfigs: make([]AdminStorageConfigView, 0, len(configs)),
-	}
-	for _, cfg := range configs {
-		if cfg.IsDefault {
-			view.DefaultStorageKey = cfg.StorageKey
-		}
-		view.StorageConfigs = append(view.StorageConfigs, maskStorageConfig(cfg))
-	}
-	if view.DefaultStorageKey == "" && len(view.StorageConfigs) > 0 {
-		view.DefaultStorageKey = view.StorageConfigs[0].StorageKey
-	}
-	return view, nil
-}
-
-func (s *AdminService) reloadStorageManager(ctx context.Context) error {
-	configs, err := s.repo.ListStorageConfigs(ctx)
-	if err != nil {
-		return fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
-	}
-	if err := s.storage.Reconfigure(configs); err != nil {
-		return fmt.Errorf("%w: storage reload failed", ErrDependencyUnavailable)
-	}
-	return nil
 }
 
 func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemSettingsView, error) {
@@ -690,16 +457,6 @@ func (s *AdminService) publicBaseURLSource() string {
 		return s.settings.PublicBaseURLSource()
 	}
 	return "request_host"
-}
-
-func (s *AdminService) ensureStorageConfigExists(ctx context.Context, storageKey string) error {
-	if _, err := s.repo.GetStorageConfigByKey(ctx, storageKey); err != nil {
-		if repository.IsNotFound(err) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
-	}
-	return nil
 }
 
 func buildStorageConfig(input AdminStorageConfigCreateInput) (config.RuntimeStorageConfig, error) {

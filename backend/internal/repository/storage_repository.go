@@ -107,34 +107,25 @@ func (r *Repository) CreateStorageConfig(ctx context.Context, cfg config.Runtime
 }
 
 func (r *Repository) UpdateStorageConfig(ctx context.Context, cfg config.RuntimeStorageConfig) error {
-	result, err := r.db.ExecContext(
-		ctx,
-		`UPDATE storage_configs
-		 SET name = ?, backend = ?, local_storage_path = ?, s3_endpoint = ?, s3_region = ?, s3_bucket = ?, s3_access_key = ?, s3_secret_key = ?, s3_use_ssl = ?, s3_force_path_style = ?, webdav_url = ?, webdav_user = ?, webdav_pass = ?, updated_at = ?
-		 WHERE storage_key = ?`,
-		cfg.Name,
-		cfg.Backend,
-		cfg.LocalStoragePath,
-		cfg.S3Endpoint,
-		cfg.S3Region,
-		cfg.S3Bucket,
-		cfg.S3AccessKey,
-		cfg.S3SecretKey,
-		boolString(cfg.S3UseSSL),
-		boolString(cfg.S3ForcePathStyle),
-		cfg.WebDAVURL,
-		cfg.WebDAVUser,
-		cfg.WebDAVPass,
-		time.Now().UTC().Format(time.RFC3339),
-		cfg.StorageKey,
-	)
+	return updateStorageConfig(ctx, r.db, cfg, time.Now().UTC().Format(time.RFC3339))
+}
+
+func (r *Repository) UpdateStorageConfigAndSetDefault(ctx context.Context, cfg config.RuntimeStorageConfig, defaultStorageKey string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if err := ensureRowsAffected(result); err != nil {
+	defer tx.Rollback()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := updateStorageConfig(ctx, tx, cfg, now); err != nil {
 		return err
 	}
-	return nil
+	if err := setDefaultStorageConfig(ctx, tx, defaultStorageKey, now); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (r *Repository) DeleteStorageConfig(ctx context.Context, storageKey string) error {
@@ -155,19 +146,7 @@ func (r *Repository) SetDefaultStorageConfig(ctx context.Context, storageKey str
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `UPDATE storage_configs SET is_default = 0`); err != nil {
-		return err
-	}
-	result, err := tx.ExecContext(
-		ctx,
-		`UPDATE storage_configs SET is_default = 1, updated_at = ? WHERE storage_key = ?`,
-		time.Now().UTC().Format(time.RFC3339),
-		storageKey,
-	)
-	if err != nil {
-		return err
-	}
-	if err := ensureRowsAffected(result); err != nil {
+	if err := setDefaultStorageConfig(ctx, tx, storageKey, time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return err
 	}
 
@@ -176,6 +155,50 @@ func (r *Repository) SetDefaultStorageConfig(ctx context.Context, storageKey str
 
 func (r *Repository) CountImagesByStorageKey(ctx context.Context, storageKey string) (int64, error) {
 	return r.countByQuery(ctx, `SELECT COUNT(1) FROM images WHERE storage_key = ?`, storageKey)
+}
+
+func updateStorageConfig(ctx context.Context, execer execContexter, cfg config.RuntimeStorageConfig, timestamp string) error {
+	result, err := execer.ExecContext(
+		ctx,
+		`UPDATE storage_configs
+		 SET name = ?, backend = ?, local_storage_path = ?, s3_endpoint = ?, s3_region = ?, s3_bucket = ?, s3_access_key = ?, s3_secret_key = ?, s3_use_ssl = ?, s3_force_path_style = ?, webdav_url = ?, webdav_user = ?, webdav_pass = ?, updated_at = ?
+		 WHERE storage_key = ?`,
+		cfg.Name,
+		cfg.Backend,
+		cfg.LocalStoragePath,
+		cfg.S3Endpoint,
+		cfg.S3Region,
+		cfg.S3Bucket,
+		cfg.S3AccessKey,
+		cfg.S3SecretKey,
+		boolString(cfg.S3UseSSL),
+		boolString(cfg.S3ForcePathStyle),
+		cfg.WebDAVURL,
+		cfg.WebDAVUser,
+		cfg.WebDAVPass,
+		timestamp,
+		cfg.StorageKey,
+	)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(result)
+}
+
+func setDefaultStorageConfig(ctx context.Context, execer execContexter, storageKey string, timestamp string) error {
+	if _, err := execer.ExecContext(ctx, `UPDATE storage_configs SET is_default = 0`); err != nil {
+		return err
+	}
+	result, err := execer.ExecContext(
+		ctx,
+		`UPDATE storage_configs SET is_default = 1, updated_at = ? WHERE storage_key = ?`,
+		timestamp,
+		storageKey,
+	)
+	if err != nil {
+		return err
+	}
+	return ensureRowsAffected(result)
 }
 
 func scanStorageConfig(scanner interface{ Scan(dest ...any) error }) (config.RuntimeStorageConfig, error) {

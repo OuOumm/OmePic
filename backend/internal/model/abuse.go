@@ -30,6 +30,24 @@ type AbuseTokenRankItem struct {
 	LatestUploadAt time.Time `json:"latest_upload_at"`
 }
 
+// AbuseIPAggregate is a repository-level upload aggregation fact.
+// Service-layer security analysis adds masked display fields and active-ban annotations.
+type AbuseIPAggregate struct {
+	IPAddress      string
+	UploadCount    int64
+	TotalSize      int64
+	LatestUploadAt time.Time
+}
+
+// AbuseTokenAggregate is a repository-level token aggregation fact.
+// Service-layer security analysis adds presentation fields such as token previews.
+type AbuseTokenAggregate struct {
+	Token          string
+	UploadCount    int64
+	TotalSize      int64
+	LatestUploadAt time.Time
+}
+
 type AbuseIPDetail struct {
 	IPAddress       string `json:"ip_address"`
 	IPAddressMasked string `json:"ip_address_masked"`

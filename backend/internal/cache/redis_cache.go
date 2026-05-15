@@ -10,17 +10,44 @@ import (
 	"omepic/backend/internal/model"
 )
 
-type ImageCache interface {
+// ImageLookupCache is the UID lookup/write seam used by serve, upload, and delete paths.
+// Callers should not depend on MD5 mapping, preheat, or health methods through this interface.
+type ImageLookupCache interface {
 	GetImage(ctx context.Context, uid string) (*model.CachedImage, error)
 	SetImage(ctx context.Context, record model.ImageRecord) error
-	SetImages(ctx context.Context, records []model.ImageRecord) error
 	DeleteImage(ctx context.Context, uid string) error
-	GetMD5(ctx context.Context, md5Hash string) (string, error)
-	SetMD5(ctx context.Context, md5Hash string, uid string) error
-	SetMD5Mappings(ctx context.Context, mappings map[string]string) error
-	SetMD5IfAbsent(ctx context.Context, md5Hash string, uid string) error
-	DeleteMD5(ctx context.Context, md5Hash string) error
+}
+
+// ImagePreheatCache is the batch UID-cache write seam used only by startup preheat.
+type ImagePreheatCache interface {
+	SetImages(ctx context.Context, records []model.ImageRecord) error
+}
+
+// MD5MappingCache is the scoped original-byte MD5 mapping seam owned by md5MappingFlow.
+type MD5MappingCache interface {
+	GetMD5(ctx context.Context, key model.MD5MappingKey) (string, error)
+	SetMD5(ctx context.Context, key model.MD5MappingKey, uid string) error
+	SetMD5IfAbsent(ctx context.Context, key model.MD5MappingKey, uid string) error
+	DeleteMD5(ctx context.Context, key model.MD5MappingKey) error
+}
+
+// MD5MappingPreheatCache is the batch MD5 mapping write seam used only by startup preheat.
+type MD5MappingPreheatCache interface {
+	SetMD5Mappings(ctx context.Context, mappings []model.MD5Mapping) error
+}
+
+// HealthCache is the health-check seam. Runtime upload/serve code must not depend on Ping.
+type HealthCache interface {
 	Ping(ctx context.Context) error
+}
+
+// ImageCache is a compatibility aggregate for Redis adapters that satisfy all image cache seams.
+// Prefer accepting the narrower interfaces above at call sites.
+type ImageCache interface {
+	ImageLookupCache
+	ImagePreheatCache
+	MD5MappingCache
+	MD5MappingPreheatCache
 }
 
 const (
@@ -131,8 +158,8 @@ func (c *RedisCache) DeleteImage(ctx context.Context, uid string) error {
 	return c.client.Del(ctx, uidKey(uid)).Err()
 }
 
-func (c *RedisCache) GetMD5(ctx context.Context, md5Hash string) (string, error) {
-	value, err := c.client.Get(ctx, md5Key(md5Hash)).Result()
+func (c *RedisCache) GetMD5(ctx context.Context, key model.MD5MappingKey) (string, error) {
+	value, err := c.client.Get(ctx, md5Key(key)).Result()
 	if err == redis.Nil {
 		return "", nil
 	}
@@ -142,35 +169,35 @@ func (c *RedisCache) GetMD5(ctx context.Context, md5Hash string) (string, error)
 	return value, nil
 }
 
-func (c *RedisCache) SetMD5(ctx context.Context, md5Hash string, uid string) error {
-	return c.client.Set(ctx, md5Key(md5Hash), uid, 0).Err()
+func (c *RedisCache) SetMD5(ctx context.Context, key model.MD5MappingKey, uid string) error {
+	return c.client.Set(ctx, md5Key(key), uid, 0).Err()
 }
 
-func (c *RedisCache) SetMD5Mappings(ctx context.Context, mappings map[string]string) error {
+func (c *RedisCache) SetMD5Mappings(ctx context.Context, mappings []model.MD5Mapping) error {
 	if len(mappings) == 0 {
 		return nil
 	}
 
 	pipe := c.client.Pipeline()
-	for md5Hash, uid := range mappings {
-		pipe.Set(ctx, md5Key(md5Hash), uid, 0)
+	for _, mapping := range mappings {
+		pipe.Set(ctx, md5Key(mapping.Key), mapping.UID, 0)
 	}
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
-func (c *RedisCache) SetMD5IfAbsent(ctx context.Context, md5Hash string, uid string) error {
-	return c.client.SetNX(ctx, md5Key(md5Hash), uid, 0).Err()
+func (c *RedisCache) SetMD5IfAbsent(ctx context.Context, key model.MD5MappingKey, uid string) error {
+	return c.client.SetNX(ctx, md5Key(key), uid, 0).Err()
 }
 
-func (c *RedisCache) DeleteMD5(ctx context.Context, md5Hash string) error {
-	return c.client.Del(ctx, md5Key(md5Hash)).Err()
+func (c *RedisCache) DeleteMD5(ctx context.Context, key model.MD5MappingKey) error {
+	return c.client.Del(ctx, md5Key(key)).Err()
 }
 
 func uidKey(uid string) string {
 	return "uid:" + uid
 }
 
-func md5Key(hash string) string {
-	return "md5:" + hash
+func md5Key(key model.MD5MappingKey) string {
+	return "md5:" + key.CacheScope()
 }
