@@ -168,9 +168,9 @@
             <th class="min-w-0 px-2 py-2 text-left font-normal" scope="row"><button class="block min-w-0 max-w-full text-left" type="button" onclick={() => (activeImage = image)}><span class="block truncate font-black hover:marker-highlight">{image.uid}</span><span class="block truncate text-xs text-[hsl(var(--ink-muted))]">{image.md5_hash}</span></button></th>
             <td class="px-2 py-2 font-bold tabular-nums">{formatBytes(image.size, preferences.language)}</td>
             <td class="px-2 py-2 font-bold" title={image.storage_key}>{image.storage_key}</td>
-            <td class="truncate px-2 py-2" title={image.ip_address_masked}>{image.ip_address_masked}</td>
+            <td class="truncate px-2 py-2" title={image.ip_address}>{image.ip_address}</td>
             <td class="px-2 py-2">
-              <div class="flex justify-end gap-1.5"><button class="studio-button px-2 py-1.5 text-xs" type="button" onclick={() => (activeImage = image)}>{t(preferences.language, 'admin.imageDetails')}</button><a class="studio-button px-2 py-1.5 text-xs" href={getImagePath(image.uid)} target="_blank" rel="noopener noreferrer">{t(preferences.language, 'admin.imageOpen')}</a><button class="studio-button px-2 py-1.5 text-xs" data-tone="danger" type="button" onclick={() => (banTargetImage = image)} aria-label={`${t(preferences.language, 'admin.securityBan')} ${image.ip_address_masked}`}><Ban class="size-4" /></button><button class="studio-button px-2 py-1.5 text-xs" data-tone="danger" type="button" onclick={() => (deleteTarget = image)} aria-label={`${t(preferences.language, 'common.delete')} ${image.uid}`}><Trash2 class="size-4" /></button></div>
+              <div class="flex justify-end gap-1.5"><button class="studio-button px-2 py-1.5 text-xs" type="button" onclick={() => (activeImage = image)}>{t(preferences.language, 'admin.imageDetails')}</button><a class="studio-button px-2 py-1.5 text-xs" href={getImagePath(image.uid)} target="_blank" rel="noopener noreferrer">{t(preferences.language, 'admin.imageOpen')}</a><button class="studio-button px-2 py-1.5 text-xs" data-tone="danger" type="button" onclick={() => (banTargetImage = image)} aria-label={`${t(preferences.language, 'admin.securityBan')} ${image.ip_address}`}><Ban class="size-4" /></button><button class="studio-button px-2 py-1.5 text-xs" data-tone="danger" type="button" onclick={() => (deleteTarget = image)} aria-label={`${t(preferences.language, 'common.delete')} ${image.uid}`}><Trash2 class="size-4" /></button></div>
             </td>
           </tr>
         {/each}
@@ -183,7 +183,7 @@
     <button class="studio-button px-3 py-1.5 text-sm" disabled={page >= totalPages} onclick={() => { page += 1; }}>{t(preferences.language, 'admin.imagesNext')}</button>
   </div>
   <ImageDetailDrawer image={activeImage} images={images} onNavigate={(image) => (activeImage = image)} onClose={() => (activeImage = null)} onDeleted={loadCurrent} />
-  <BanIPDialog target={banTargetImage ? { ip: banTargetImage.ip_address, label: banTargetImage.ip_address_masked } : null} busy={busy} onClose={() => (banTargetImage = null)} onConfirm={banOne} />
+  <BanIPDialog target={banTargetImage ? { ip: banTargetImage.ip_address, label: banTargetImage.ip_address } : null} busy={busy} onClose={() => (banTargetImage = null)} onConfirm={banOne} />
   <ConfirmDialog
     open={deleteTarget !== null}
     title={deleteTarget === 'selected' ? t(preferences.language, 'admin.imagesDeleteConfirm', { count: selected.size }) : `${t(preferences.language, 'common.delete')} ${deleteTarget?.uid ?? ''}?`}

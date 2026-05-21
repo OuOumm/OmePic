@@ -46,11 +46,10 @@ func (a securityAnalysis) CreateIPBan(ctx context.Context, input AdminIPBanCreat
 	}
 
 	ban, err = a.repo.CreateIPBan(ctx, model.IPBan{
-		IPHash:          ipHash(ipAddress),
-		IPAddress:       ipAddress,
-		IPAddressMasked: maskIPAddress(ipAddress),
-		Reason:          a.defaultReason(input.Reason, uid, ipAddress),
-		ExpiresAt:       a.expiresAt(input.DurationHours),
+		IPHash:    ipHash(ipAddress),
+		IPAddress: ipAddress,
+		Reason:    a.defaultReason(input.Reason, uid, ipAddress),
+		ExpiresAt: a.expiresAt(input.DurationHours),
 	})
 	if err != nil {
 		return AdminIPBanCreateResult{}, fmt.Errorf("%w: ip ban create failed", ErrDependencyUnavailable)
@@ -104,10 +103,9 @@ func (a securityAnalysis) IPDetail(ctx context.Context, ipAddress string) (model
 		return model.AbuseIPDetail{}, fmt.Errorf("%w: abuse ip detail query failed", ErrDependencyUnavailable)
 	}
 	detail := model.AbuseIPDetail{
-		IPAddress:       trimmed,
-		IPAddressMasked: maskIPAddress(trimmed),
-		UploadCount:     summary.Count,
-		TotalSize:       summary.TotalSize,
+		IPAddress:   trimmed,
+		UploadCount: summary.Count,
+		TotalSize:   summary.TotalSize,
 	}
 	ban, err := a.activeBanByIP(ctx, trimmed)
 	if err == nil {
@@ -141,7 +139,7 @@ func (a securityAnalysis) defaultReason(reason string, uid string, ipAddress str
 	if uid != "" {
 		return "Abusive upload from image " + uid
 	}
-	return "Abusive upload from IP " + maskIPAddress(ipAddress)
+	return "Abusive upload from IP " + ipAddress
 }
 
 func (a securityAnalysis) expiresAt(durationHours int) *time.Time {
@@ -175,11 +173,10 @@ func (a securityAnalysis) annotateIPRank(aggregates []model.AbuseIPAggregate, ac
 	items := make([]model.AbuseIPRankItem, 0, len(aggregates))
 	for _, aggregate := range aggregates {
 		item := model.AbuseIPRankItem{
-			IPAddress:       aggregate.IPAddress,
-			IPAddressMasked: maskIPAddress(aggregate.IPAddress),
-			UploadCount:     aggregate.UploadCount,
-			TotalSize:       aggregate.TotalSize,
-			LatestUploadAt:  aggregate.LatestUploadAt,
+			IPAddress:      aggregate.IPAddress,
+			UploadCount:    aggregate.UploadCount,
+			TotalSize:      aggregate.TotalSize,
+			LatestUploadAt: aggregate.LatestUploadAt,
 		}
 		if ban, exists := activeBans[ipHash(aggregate.IPAddress)]; exists {
 			item.IsBanned = true

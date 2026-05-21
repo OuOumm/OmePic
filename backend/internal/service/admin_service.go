@@ -76,17 +76,16 @@ type AdminImageList struct {
 }
 
 type AdminImageItem struct {
-	ID              int64     `json:"id"`
-	UID             string    `json:"uid"`
-	Token           string    `json:"token"`
-	StorageKey      string    `json:"storage_key"`
-	StorageBackend  string    `json:"storage_backend"`
-	MIMEType        string    `json:"mime_type"`
-	Size            int64     `json:"size"`
-	MD5Hash         string    `json:"md5_hash"`
-	IPAddress       string    `json:"ip_address"`
-	IPAddressMasked string    `json:"ip_address_masked"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID             int64     `json:"id"`
+	UID            string    `json:"uid"`
+	Token          string    `json:"token"`
+	StorageKey     string    `json:"storage_key"`
+	StorageBackend string    `json:"storage_backend"`
+	MIMEType       string    `json:"mime_type"`
+	Size           int64     `json:"size"`
+	MD5Hash        string    `json:"md5_hash"`
+	IPAddress      string    `json:"ip_address"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type AdminIPBanCreateInput struct {
@@ -259,17 +258,16 @@ func (s *AdminService) Images(ctx context.Context, page int, pageSize int, searc
 	viewItems := make([]AdminImageItem, 0, len(items))
 	for _, item := range items {
 		viewItems = append(viewItems, AdminImageItem{
-			ID:              item.ID,
-			UID:             item.UID,
-			Token:           item.Token,
-			StorageKey:      item.StorageKey,
-			StorageBackend:  item.StorageBackend,
-			MIMEType:        item.MIMEType,
-			Size:            item.Size,
-			MD5Hash:         item.MD5Hash,
-			IPAddress:       item.IPAddress,
-			IPAddressMasked: maskIPAddress(item.IPAddress),
-			CreatedAt:       item.CreatedAt,
+			ID:             item.ID,
+			UID:            item.UID,
+			Token:          item.Token,
+			StorageKey:     item.StorageKey,
+			StorageBackend: item.StorageBackend,
+			MIMEType:       item.MIMEType,
+			Size:           item.Size,
+			MD5Hash:        item.MD5Hash,
+			IPAddress:      item.IPAddress,
+			CreatedAt:      item.CreatedAt,
 		})
 	}
 

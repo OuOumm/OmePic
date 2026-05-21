@@ -38,6 +38,14 @@ func TestMigrateCreatesImagesSchemaWithoutOriginalFilenameColumnAndWithStorageKe
 	if !exists {
 		t.Fatalf("expected images schema to include storage_key")
 	}
+
+	exists, err = testTableColumnExists(ctx, repo.db, "ip_bans", "ip_address_masked")
+	if err != nil {
+		t.Fatalf("testTableColumnExists returned error: %v", err)
+	}
+	if exists {
+		t.Fatalf("expected ip_bans schema to omit ip_address_masked")
+	}
 }
 
 func TestMigrateDoesNotRebuildLegacyImagesTableForDroppedColumns(t *testing.T) {

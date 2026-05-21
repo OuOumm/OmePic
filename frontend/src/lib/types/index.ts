@@ -31,7 +31,6 @@ export interface AdminImage {
   size: number;
   md5_hash: string;
   ip_address: string;
-  ip_address_masked: string;
   created_at: string;
 }
 
@@ -39,7 +38,6 @@ export interface AdminIPBan {
   id: number;
   ip_hash: string;
   ip_address: string;
-  ip_address_masked: string;
   reason: string;
   expires_at: string | null;
   created_at: string;
@@ -72,7 +70,6 @@ export interface AdminAbuseOverview {
 
 export interface AdminAbuseIPRankItem {
   ip_address: string;
-  ip_address_masked: string;
   upload_count: number;
   total_size: number;
   latest_upload_at: string;
@@ -90,7 +87,6 @@ export interface AdminAbuseTokenRankItem {
 
 export interface AdminAbuseIPDetail {
   ip_address: string;
-  ip_address_masked: string;
   upload_count: number;
   total_size: number;
   is_banned: boolean;

@@ -13,13 +13,12 @@ type AbuseOverview struct {
 }
 
 type AbuseIPRankItem struct {
-	IPAddress       string    `json:"ip_address"`
-	IPAddressMasked string    `json:"ip_address_masked"`
-	UploadCount     int64     `json:"upload_count"`
-	TotalSize       int64     `json:"total_size"`
-	LatestUploadAt  time.Time `json:"latest_upload_at"`
-	IsBanned        bool      `json:"is_banned"`
-	BanID           int64     `json:"ban_id,omitempty"`
+	IPAddress      string    `json:"ip_address"`
+	UploadCount    int64     `json:"upload_count"`
+	TotalSize      int64     `json:"total_size"`
+	LatestUploadAt time.Time `json:"latest_upload_at"`
+	IsBanned       bool      `json:"is_banned"`
+	BanID          int64     `json:"ban_id,omitempty"`
 }
 
 type AbuseTokenRankItem struct {
@@ -31,7 +30,7 @@ type AbuseTokenRankItem struct {
 }
 
 // AbuseIPAggregate is a repository-level upload aggregation fact.
-// Service-layer security analysis adds masked display fields and active-ban annotations.
+// Service-layer security analysis adds active-ban annotations.
 type AbuseIPAggregate struct {
 	IPAddress      string
 	UploadCount    int64
@@ -49,10 +48,9 @@ type AbuseTokenAggregate struct {
 }
 
 type AbuseIPDetail struct {
-	IPAddress       string `json:"ip_address"`
-	IPAddressMasked string `json:"ip_address_masked"`
-	UploadCount     int64  `json:"upload_count"`
-	TotalSize       int64  `json:"total_size"`
-	IsBanned        bool   `json:"is_banned"`
-	Ban             *IPBan `json:"ban"`
+	IPAddress   string `json:"ip_address"`
+	UploadCount int64  `json:"upload_count"`
+	TotalSize   int64  `json:"total_size"`
+	IsBanned    bool   `json:"is_banned"`
+	Ban         *IPBan `json:"ban"`
 }

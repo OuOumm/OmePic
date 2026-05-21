@@ -16,20 +16,18 @@ func TestIPBanRepositoryActiveBanSemantics(t *testing.T) {
 	now := time.Now().UTC()
 	expiredAt := now.Add(-time.Hour)
 	expired, err := repo.CreateIPBan(ctx, model.IPBan{
-		IPHash:          "hash-expired",
-		IPAddress:       "192.0.2.10",
-		IPAddressMasked: "192.0.2.x",
-		Reason:          "expired",
-		ExpiresAt:       &expiredAt,
+		IPHash:    "hash-expired",
+		IPAddress: "192.0.2.10",
+		Reason:    "expired",
+		ExpiresAt: &expiredAt,
 	})
 	if err != nil {
 		t.Fatalf("CreateIPBan expired returned error: %v", err)
 	}
 	active, err := repo.CreateIPBan(ctx, model.IPBan{
-		IPHash:          "hash-active",
-		IPAddress:       "192.0.2.20",
-		IPAddressMasked: "192.0.2.x",
-		Reason:          "active",
+		IPHash:    "hash-active",
+		IPAddress: "192.0.2.20",
+		Reason:    "active",
 	})
 	if err != nil {
 		t.Fatalf("CreateIPBan active returned error: %v", err)

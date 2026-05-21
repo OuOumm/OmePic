@@ -34,8 +34,8 @@ func TestCreateIPBanByUIDBuildsSummaryAndDefaultReason(t *testing.T) {
 	if result.AffectedImageCount != 2 || result.AffectedTotalSize != 40 {
 		t.Fatalf("unexpected affected summary: count=%d size=%d", result.AffectedImageCount, result.AffectedTotalSize)
 	}
-	if result.Ban.IPHash == "" || result.Ban.IPAddressMasked == "" || result.Ban.IPAddressMasked == result.Ban.IPAddress {
-		t.Fatalf("expected security module to fill hash and masked IP, got %+v", result.Ban)
+	if result.Ban.IPHash == "" {
+		t.Fatalf("expected security module to fill hash, got %+v", result.Ban)
 	}
 }
 
@@ -89,11 +89,10 @@ func TestAbuseOverviewAnnotatesActiveBanButNotExpiredBan(t *testing.T) {
 	}
 	expiredAt := now.Add(-time.Minute)
 	if _, err := repo.CreateIPBan(ctx, model.IPBan{
-		IPHash:          ipHash("192.0.2.20"),
-		IPAddress:       "192.0.2.20",
-		IPAddressMasked: maskIPAddress("192.0.2.20"),
-		Reason:          "expired",
-		ExpiresAt:       &expiredAt,
+		IPHash:    ipHash("192.0.2.20"),
+		IPAddress: "192.0.2.20",
+		Reason:    "expired",
+		ExpiresAt: &expiredAt,
 	}); err != nil {
 		t.Fatalf("CreateIPBan expired fixture returned error: %v", err)
 	}
@@ -126,7 +125,7 @@ func TestAbuseOverviewAnnotatesActiveBanButNotExpiredBan(t *testing.T) {
 	}
 }
 
-func TestAbuseIPDetailIgnoresExpiredBanAndUsesMaskedIP(t *testing.T) {
+func TestAbuseIPDetailIgnoresExpiredBanAndReturnsRealIP(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
 
@@ -136,11 +135,10 @@ func TestAbuseIPDetailIgnoresExpiredBanAndUsesMaskedIP(t *testing.T) {
 	}
 	expiredAt := now.Add(-time.Hour)
 	if _, err := repo.CreateIPBan(ctx, model.IPBan{
-		IPHash:          ipHash("198.51.100.55"),
-		IPAddress:       "198.51.100.55",
-		IPAddressMasked: maskIPAddress("198.51.100.55"),
-		Reason:          "expired",
-		ExpiresAt:       &expiredAt,
+		IPHash:    ipHash("198.51.100.55"),
+		IPAddress: "198.51.100.55",
+		Reason:    "expired",
+		ExpiresAt: &expiredAt,
 	}); err != nil {
 		t.Fatalf("CreateIPBan fixture returned error: %v", err)
 	}
@@ -155,8 +153,8 @@ func TestAbuseIPDetailIgnoresExpiredBanAndUsesMaskedIP(t *testing.T) {
 	if detail.UploadCount != 1 || detail.TotalSize != 33 {
 		t.Fatalf("unexpected detail summary: %+v", detail)
 	}
-	if detail.IPAddressMasked == "" || detail.IPAddressMasked == detail.IPAddress {
-		t.Fatalf("expected masked IP in detail, got %+v", detail)
+	if detail.IPAddress != "198.51.100.55" {
+		t.Fatalf("expected real IP in detail, got %+v", detail)
 	}
 }
 

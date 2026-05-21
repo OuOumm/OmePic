@@ -45,7 +45,7 @@
 
   function requestBan() {
     if (!ip) return;
-    onBan({ ip, label: detail?.ip_address_masked ?? ip });
+    onBan({ ip, label: detail?.ip_address ?? ip });
   }
 
   async function unban() {
@@ -95,7 +95,7 @@
       <div class="mb-5 flex items-start justify-between gap-3 border-b-[3px] ink-line pb-3">
         <div>
           <span class="tape-label rotate-[-2deg]">{t(preferences.language, 'admin.ipDetail')}</span>
-          <h2 id="ip-detail-title" class="mt-3 break-all text-3xl font-black">{detail?.ip_address_masked ?? ip}</h2>
+          <h2 id="ip-detail-title" class="mt-3 break-all text-3xl font-black">{detail?.ip_address ?? ip}</h2>
         </div>
         <button class="studio-button p-2" type="button" onclick={onClose} aria-label={t(preferences.language, 'common.close')}><X class="size-4" /></button>
       </div>
@@ -137,7 +137,7 @@
     <ConfirmDialog
       open={purgeOpen}
       title={t(preferences.language, 'admin.securityDeleteIpImagesConfirm')}
-      description={detail?.ip_address_masked ?? ip}
+      description={detail?.ip_address ?? ip}
       confirmLabel={t(preferences.language, 'admin.securityPurge')}
       cancelLabel={t(preferences.language, 'common.cancel')}
       {busy}

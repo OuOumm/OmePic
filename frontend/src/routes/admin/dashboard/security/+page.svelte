@@ -216,11 +216,11 @@
               <tbody>
                 {#each topIps as item (item.ip_address)}
                   <tr class="studio-table-row align-middle">
-                    <th class="px-3 py-3 text-left font-black" scope="row">{item.ip_address_masked}</th>
+                    <th class="px-3 py-3 text-left font-black" scope="row">{item.ip_address}</th>
                     <td class="px-3 py-3">{item.upload_count}</td>
                     <td class="px-3 py-3">{formatBytes(item.total_size, preferences.language)}</td>
                     <td class="px-3 py-3 text-center">
-                      <button class="studio-button p-2 text-xs" data-tone={item.is_banned ? 'green' : 'danger'} type="button" disabled={item.is_banned} onclick={() => (banTarget = { ip: item.ip_address, label: item.ip_address_masked })}>
+                      <button class="studio-button p-2 text-xs" data-tone={item.is_banned ? 'green' : 'danger'} type="button" disabled={item.is_banned} onclick={() => (banTarget = { ip: item.ip_address, label: item.ip_address })}>
                         {item.is_banned ? t(preferences.language, 'admin.securityBanned') : t(preferences.language, 'admin.securityBan')}
                       </button>
                     </td>
@@ -250,7 +250,7 @@
                 <tbody>
                   {#each safeBans as ban (ban.id)}
                     <tr class="studio-table-row align-middle">
-                      <th class="px-2 py-3 text-left font-black" scope="row">{ban.ip_address_masked}</th>
+                      <th class="px-2 py-3 text-left font-black" scope="row">{ban.ip_address}</th>
                       <td class="min-w-0 px-2 py-3"><p class="truncate text-xs text-[hsl(var(--ink-muted))]" title={ban.reason}>{ban.reason}</p></td>
                       <td class="break-words px-2 py-3 text-xs text-[hsl(var(--ink-muted))]">{ban.expires_at ?? t(preferences.language, 'admin.securityNeverExpires')}</td>
                       <td class="px-2 py-3">
@@ -273,7 +273,7 @@
   <ConfirmDialog
     open={confirmTarget !== null}
     title={confirmTarget?.action === 'unban' ? t(preferences.language, 'admin.securityUnbanConfirm') : t(preferences.language, 'admin.securityDeleteBanImagesConfirm')}
-    description={confirmTarget?.ban.ip_address_masked ?? ''}
+    description={confirmTarget?.ban.ip_address ?? ''}
     confirmLabel={confirmTarget?.action === 'unban' ? t(preferences.language, 'admin.securityUnban') : t(preferences.language, 'admin.securityPurge')}
     cancelLabel={t(preferences.language, 'common.cancel')}
     tone={confirmTarget?.action === 'unban' ? 'primary' : 'danger'}

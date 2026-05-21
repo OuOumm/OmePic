@@ -16,11 +16,10 @@ func (r *Repository) CreateIPBan(ctx context.Context, ban model.IPBan) (model.IP
 	ban.UpdatedAt = now
 	result, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO ip_bans(ip_hash, ip_address, ip_address_masked, reason, expires_at, created_at, updated_at)
-		 VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO ip_bans(ip_hash, ip_address, reason, expires_at, created_at, updated_at)
+		 VALUES(?, ?, ?, ?, ?, ?)`,
 		ban.IPHash,
 		ban.IPAddress,
-		ban.IPAddressMasked,
 		ban.Reason,
 		nullableTimeString(ban.ExpiresAt),
 		ban.CreatedAt.Format(time.RFC3339),
@@ -37,7 +36,7 @@ func (r *Repository) CreateIPBan(ctx context.Context, ban model.IPBan) (model.IP
 }
 
 func (r *Repository) ListIPBans(ctx context.Context) ([]model.IPBan, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, ip_hash, ip_address, ip_address_masked, reason, expires_at, created_at, updated_at FROM ip_bans ORDER BY id DESC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, ip_hash, ip_address, reason, expires_at, created_at, updated_at FROM ip_bans ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +45,13 @@ func (r *Repository) ListIPBans(ctx context.Context) ([]model.IPBan, error) {
 }
 
 func (r *Repository) GetIPBan(ctx context.Context, id int64) (model.IPBan, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, ip_hash, ip_address, ip_address_masked, reason, expires_at, created_at, updated_at FROM ip_bans WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, ip_hash, ip_address, reason, expires_at, created_at, updated_at FROM ip_bans WHERE id = ?`, id)
 	return scanIPBan(row)
 }
 
 func (r *Repository) FindActiveIPBanByHash(ctx context.Context, ipHash string) (model.IPBan, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	row := r.db.QueryRowContext(ctx, `SELECT id, ip_hash, ip_address, ip_address_masked, reason, expires_at, created_at, updated_at FROM ip_bans WHERE ip_hash = ? AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?) ORDER BY id DESC LIMIT 1`, ipHash, now)
+	row := r.db.QueryRowContext(ctx, `SELECT id, ip_hash, ip_address, reason, expires_at, created_at, updated_at FROM ip_bans WHERE ip_hash = ? AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?) ORDER BY id DESC LIMIT 1`, ipHash, now)
 	return scanIPBan(row)
 }
 
@@ -69,7 +68,7 @@ func (r *Repository) DeleteIPBan(ctx context.Context, id int64) error {
 
 func (r *Repository) ActiveIPBansByHash(ctx context.Context) (map[string]model.IPBan, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	rows, err := r.db.QueryContext(ctx, `SELECT id, ip_hash, ip_address, ip_address_masked, reason, expires_at, created_at, updated_at FROM ip_bans WHERE expires_at IS NULL OR expires_at = '' OR expires_at > ? ORDER BY id DESC`, now)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, ip_hash, ip_address, reason, expires_at, created_at, updated_at FROM ip_bans WHERE expires_at IS NULL OR expires_at = '' OR expires_at > ? ORDER BY id DESC`, now)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +179,6 @@ func scanIPBan(scanner interface{ Scan(dest ...any) error }) (model.IPBan, error
 		&ban.ID,
 		&ban.IPHash,
 		&ban.IPAddress,
-		&ban.IPAddressMasked,
 		&ban.Reason,
 		&expiresAt,
 		&createdAt,

@@ -61,7 +61,6 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			ip_hash TEXT NOT NULL,
 			ip_address TEXT NOT NULL,
-			ip_address_masked TEXT NOT NULL,
 			reason TEXT NOT NULL,
 			expires_at DATETIME NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

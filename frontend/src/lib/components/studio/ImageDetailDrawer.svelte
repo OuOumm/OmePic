@@ -31,7 +31,7 @@
 
   const imageUrl = $derived(image ? getImagePath(image.uid) : '');
   const targetIp = $derived(image?.ip_address ?? '');
-  const targetIpLabel = $derived(image?.ip_address_masked ?? '');
+  const targetIpLabel = $derived(image?.ip_address ?? '');
   const isIpBanned = $derived(Boolean(ipDetail?.is_banned));
   const currentIndex = $derived(image ? images.findIndex((item) => item.uid === image.uid) : -1);
   const hasNavigation = $derived(Boolean(onNavigate) && images.length > 1 && currentIndex >= 0);
@@ -121,7 +121,6 @@
       onSuccess: (result) => {
         ipDetail = {
           ip_address: result.ban.ip_address,
-          ip_address_masked: result.ban.ip_address_masked,
           upload_count: result.affected_image_count,
           total_size: result.affected_total_size,
           is_banned: true,
