@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { CircleAlert, KeyRound, Save, TriangleAlert } from 'lucide-svelte';
-  import { adminChangePassword, adminGetConfig, adminGetSystemSettings, adminUpdateSystemSettings } from '@/api';
+  import { adminChangePassword, adminGetConfig, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
   import AnnouncementManager from '@/components/studio/AnnouncementManager.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import StorageInstanceManager from '@/components/studio/StorageInstanceManager.svelte';
@@ -17,12 +17,15 @@
   let system = $state<AdminSystemSettings | null>(null);
   let savingRuntime = $state(false);
   let changingPassword = $state(false);
+  let purgingCloudflare = $state(false);
   let mimeTypesText = $state('');
+  let cloudflarePurgeUrl = $state('');
   let oldPassword = $state('');
   let newPassword = $state('');
 
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
+  const cloudflarePurgeConfigured = $derived(system?.readonly.service.cloudflare_purge_configured ?? false);
   const securityWarnings = $derived.by(() => {
     const warnings: string[] = [];
     if (!system) return warnings;
@@ -91,6 +94,22 @@
       onSuccess: () => {
         oldPassword = '';
         newPassword = '';
+      },
+    });
+  }
+
+  async function purgeCloudflareCache() {
+    const token = preferences.adminToken;
+    const url = cloudflarePurgeUrl.trim();
+    if (!token || !url) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (purgingCloudflare = value),
+      successMessage: (result) => t(preferences.language, 'admin.cloudflarePurgeSuccess', { url: result.url }),
+      fallbackErrorKey: 'admin.cloudflarePurgeError',
+      action: () => adminPurgeCloudflareImageCache(token, url),
+      onSuccess: () => {
+        cloudflarePurgeUrl = '';
       },
     });
   }
@@ -185,14 +204,49 @@
             </label>
           </div>
 
-          <div class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4">
-            <div>
+          <div class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4 md:grid-cols-2">
+            <div class="md:col-span-2">
               <span class="tape-label rotate-[-1deg]" style="background:hsl(var(--marker-green))">{t(preferences.language, 'admin.runtimePublicAccess')}</span>
             </div>
-            <label class="grid gap-2 text-sm font-black">
+            <label class="grid gap-2 text-sm font-black md:col-span-2">
               {t(preferences.language, 'admin.runtimePublicUrl')}
               <input class="studio-input" bind:value={system.runtime.public_base_url} />
             </label>
+            <label class="flex items-start gap-3 border-y-2 ink-line py-3 font-black md:col-span-2">
+              <input class="mt-1" type="checkbox" bind:checked={system.runtime.cloudflare_purge_enabled} />
+              <span class="grid gap-1">
+                <span>{t(preferences.language, 'admin.cloudflarePurgeEnabled')}</span>
+                <span class="text-sm font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.cloudflarePurgeDescription')}</span>
+              </span>
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              {t(preferences.language, 'admin.cloudflareZoneId')}
+              <input class="studio-input font-mono text-sm" autocomplete="off" bind:value={system.runtime.cloudflare_zone_id} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              {t(preferences.language, 'admin.cloudflareApiToken')}
+              <input class="studio-input font-mono text-sm" type="password" autocomplete="new-password" placeholder={t(preferences.language, 'admin.cloudflareApiTokenPlaceholder')} bind:value={system.runtime.cloudflare_api_token} />
+            </label>
+            <label class="grid gap-2 text-sm font-black md:col-span-2">
+              {t(preferences.language, 'admin.cloudflareApiBaseUrl')}
+              <input class="studio-input font-mono text-sm" placeholder="https://api.cloudflare.com/client/v4" bind:value={system.runtime.cloudflare_api_base_url} />
+              <span class="text-sm font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.cloudflareApiBaseUrlHint')}</span>
+            </label>
+            <p class="text-sm font-bold text-[hsl(var(--ink-muted))] md:col-span-2">
+              {t(preferences.language, cloudflarePurgeConfigured ? 'admin.cloudflareConfigured' : 'admin.cloudflareNotConfigured')}
+            </p>
+            {#if system.runtime.cloudflare_purge_enabled}
+              <div class="grid gap-3 border-t-2 ink-line pt-3 md:col-span-2">
+                <label class="grid gap-2 text-sm font-black">
+                  {t(preferences.language, 'admin.cloudflareManualPurgeUrl')}
+                  <input class="studio-input" placeholder={t(preferences.language, 'admin.cloudflareManualPurgePlaceholder')} bind:value={cloudflarePurgeUrl} />
+                </label>
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <p class="text-sm font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.cloudflareManualPurgeHint')}</p>
+                  <button class="studio-button w-full md:w-fit" data-tone="blue" type="button" disabled={purgingCloudflare || !cloudflarePurgeConfigured || !cloudflarePurgeUrl.trim()} onclick={purgeCloudflareCache}>{t(preferences.language, 'admin.cloudflareManualPurge')}</button>
+                </div>
+              </div>
+            {/if}
           </div>
 
           <div class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4">

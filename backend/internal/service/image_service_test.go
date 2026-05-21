@@ -1677,6 +1677,20 @@ func TestPublicRuntimeSettingsExposeOnlySafeStorageFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublicRuntimeSettings returned error: %v", err)
 	}
+	if len(settings.Upload.AllowedMIMETypes) == 0 {
+		t.Fatalf("expected public upload settings to expose allowed_mime_types")
+	}
+	payload, err := json.Marshal(settings.Upload)
+	if err != nil {
+		t.Fatalf("json.Marshal upload returned error: %v", err)
+	}
+	var uploadFields map[string]any
+	if err := json.Unmarshal(payload, &uploadFields); err != nil {
+		t.Fatalf("json.Unmarshal upload returned error: %v", err)
+	}
+	if _, exists := uploadFields["effective_allowed_mime_types"]; exists {
+		t.Fatalf("public upload settings leaked effective_allowed_mime_types in %+v", uploadFields)
+	}
 	options := settings.Storage.Options
 	if len(options) != 4 {
 		t.Fatalf("expected four public storage options, got %d", len(options))

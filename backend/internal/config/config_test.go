@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestLoadUsesExplicitUIDEncryptionKey(t *testing.T) {
 	t.Setenv("UID_PREFIX", "custom_")
@@ -29,6 +32,9 @@ func TestLoadUsesOnlyStartupEnvironmentContract(t *testing.T) {
 	t.Setenv("PUBLIC_BASE_URL", "https://env.example.com")
 	t.Setenv("ADMIN_PASSWORD", "secret")
 	t.Setenv("STORAGE_BACKEND", "s3")
+	t.Setenv("CLOUDFLARE_ZONE_ID", "zone-from-env")
+	t.Setenv("CLOUDFLARE_API_TOKEN", "token-from-env")
+	t.Setenv("CLOUDFLARE_API_BASE_URL", "https://api.example.com")
 
 	cfg := Load()
 
@@ -40,5 +46,11 @@ func TestLoadUsesOnlyStartupEnvironmentContract(t *testing.T) {
 	}
 	if cfg.UIDEncryptionKey != "change-me-uid-secret" {
 		t.Fatalf("expected UID encryption key default independent from JWT secret, got %q", cfg.UIDEncryptionKey)
+	}
+	cfgType := reflect.TypeOf(cfg)
+	for _, field := range []string{"CloudflareZoneID", "CloudflareAPIToken", "CloudflareAPIBaseURL"} {
+		if _, ok := cfgType.FieldByName(field); ok {
+			t.Fatalf("%s should not be part of startup AppConfig", field)
+		}
 	}
 }

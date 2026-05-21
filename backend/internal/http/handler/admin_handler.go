@@ -104,6 +104,22 @@ func (h *AdminHandler) DeleteImages(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{})
 }
 
+func (h *AdminHandler) PurgeCloudflareImageCache(c *gin.Context) {
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "url is required")
+		return
+	}
+	result, err := h.service.PurgeCloudflareImageCache(c.Request.Context(), payload.URL)
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, result)
+}
+
 func (h *AdminHandler) CreateIPBan(c *gin.Context) {
 	var payload service.AdminIPBanCreateInput
 	if err := c.ShouldBindJSON(&payload); err != nil {

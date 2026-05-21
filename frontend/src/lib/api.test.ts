@@ -1,132 +1,229 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminChangePassword, adminCreateStorageInstance, adminDeleteImages, adminGetImages, adminGetStatus, adminUpdateSystemSettings, deleteImageByUid } from './api';
-import type { RuntimeSettings, StorageInstance } from '@/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  adminChangePassword,
+  adminCreateStorageInstance,
+  adminDeleteImages,
+  adminGetImages,
+  adminGetStatus,
+  adminPurgeCloudflareImageCache,
+  adminUpdateSystemSettings,
+  deleteImageByUid,
+  getRuntimeSettings,
+} from "./api";
+import type { RuntimeSettings, StorageInstance } from "@/types";
 
 const jsonResponse = (status: number, payload: unknown) =>
   new Response(JSON.stringify(payload), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json" },
   });
 
 const storageInstance: Partial<StorageInstance> = {
-  name: 'Archive',
-  storage_backend: 'local',
-  local_storage_path: 'data/archive',
+  name: "Archive",
+  storage_backend: "local",
+  local_storage_path: "data/archive",
 };
 
 const runtimeSettings: RuntimeSettings = {
-  site_name: 'OmePic',
-  site_tagline: 'Upload and share images',
-  public_base_url: '',
+  site_name: "OmePic",
+  site_tagline: "Upload and share images",
+  public_base_url: "",
+  cloudflare_purge_enabled: false,
+  cloudflare_zone_id: "",
+  cloudflare_api_token: "",
+  cloudflare_api_base_url: "",
   max_upload_size_mb: 20,
-  allowed_mime_types: ['image/png'],
+  allowed_mime_types: ["image/png"],
   avif_quality: 60,
   avif_speed: 8,
   allow_storage_selection: true,
   maintenance_mode: false,
-  maintenance_message: '',
+  maintenance_message: "",
   rate_limit_window_minutes: 1,
   rate_limit_max_requests: 120,
   upload_rate_limit_window_minutes: 10,
   upload_rate_limit_max_requests: 20,
 };
 
-describe('admin API helpers', () => {
+describe("admin API helpers", () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('throws ApiError with backend code and HTTP status when storage creation fails', async () => {
+  it("throws ApiError with backend code and HTTP status when storage creation fails", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse(400, {
         success: false,
-        error: { code: 'invalid_input', message: 'storage instance name is required' },
+        error: {
+          code: "invalid_input",
+          message: "storage instance name is required",
+        },
       })
     );
 
-    await expect(adminCreateStorageInstance('admin-token', storageInstance)).rejects.toMatchObject({
-      name: 'ApiError',
-      message: 'storage instance name is required',
-      code: 'invalid_input',
+    await expect(
+      adminCreateStorageInstance("admin-token", storageInstance)
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      message: "storage instance name is required",
+      code: "invalid_input",
       status: 400,
     });
   });
 
-  it('uses the admin password change request contract', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
+  it("uses the admin password change request contract", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, data: {} })
+    );
 
-    await adminChangePassword('admin-token', 'old-secret', 'new-secret');
+    await adminChangePassword("admin-token", "old-secret", "new-secret");
 
-    expect(fetch).toHaveBeenCalledWith('http://localhost:8080/admin/password', {
-      cache: 'no-store',
-      method: 'PUT',
+    expect(fetch).toHaveBeenCalledWith("http://localhost:8080/admin/password", {
+      cache: "no-store",
+      method: "PUT",
       headers: {
-        Authorization: 'Bearer admin-token',
-        'Content-Type': 'application/json',
+        Authorization: "Bearer admin-token",
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ old_password: 'old-secret', new_password: 'new-secret' }),
+      body: JSON.stringify({
+        old_password: "old-secret",
+        new_password: "new-secret",
+      }),
     });
   });
 
-  it('uses the shared admin JSON request contract for image deletion', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
+  it("uses the shared admin JSON request contract for image deletion", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, data: {} })
+    );
 
-    await adminDeleteImages('admin-token', ['uid-1', 'uid-2']);
+    await adminDeleteImages("admin-token", ["uid-1", "uid-2"]);
 
-    expect(fetch).toHaveBeenCalledWith('http://localhost:8080/admin/images', {
-      cache: 'no-store',
-      method: 'DELETE',
+    expect(fetch).toHaveBeenCalledWith("http://localhost:8080/admin/images", {
+      cache: "no-store",
+      method: "DELETE",
       headers: {
-        Authorization: 'Bearer admin-token',
-        'Content-Type': 'application/json',
+        Authorization: "Bearer admin-token",
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ uids: ['uid-1', 'uid-2'] }),
+      body: JSON.stringify({ uids: ["uid-1", "uid-2"] }),
     });
   });
 
-  it('uses the shared public image path for user deletion', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
+  it("uses the shared public image path for user deletion", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, data: {} })
+    );
 
-    await deleteImageByUid('uid-1', 'client-token');
+    await deleteImageByUid("uid-1", "client-token");
 
-    expect(fetch).toHaveBeenCalledWith('http://localhost:8080/i/uid-1.avif', {
-      cache: 'no-store',
-      method: 'DELETE',
-      headers: { 'X-Token': 'client-token' },
+    expect(fetch).toHaveBeenCalledWith("http://localhost:8080/i/uid-1.avif", {
+      cache: "no-store",
+      method: "DELETE",
+      headers: { "X-Token": "client-token" },
     });
   });
 
-  it('passes AbortSignal through admin image listing requests', async () => {
+  it("uses the admin Cloudflare single URL purge request contract", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, {
+        success: true,
+        data: { url: "https://img.example.com/i/uid-1.avif" },
+      })
+    );
+
+    await expect(
+      adminPurgeCloudflareImageCache(
+        "admin-token",
+        "https://img.example.com/i/uid-1.avif"
+      )
+    ).resolves.toEqual({
+      url: "https://img.example.com/i/uid-1.avif",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/admin/cloudflare/purge-image-cache",
+      {
+        cache: "no-store",
+        method: "POST",
+        headers: {
+          Authorization: "Bearer admin-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: "https://img.example.com/i/uid-1.avif" }),
+      }
+    );
+  });
+
+  it("passes AbortSignal through admin image listing requests", async () => {
     const controller = new AbortController();
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: { items: [], total: 0 } }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, data: { items: [], total: 0 } })
+    );
 
-    await adminGetImages('admin-token', 2, 30, 'needle', controller.signal);
+    await adminGetImages("admin-token", 2, 30, "needle", controller.signal);
 
     const [url, options] = vi.mocked(fetch).mock.calls[0];
-    expect(url).toBe('http://localhost:8080/admin/images?page=2&pageSize=30&search=needle');
+    expect(url).toBe(
+      "http://localhost:8080/admin/images?page=2&pageSize=30&search=needle"
+    );
     expect(options).toMatchObject({
-      cache: 'no-store',
+      cache: "no-store",
       headers: {
-        Authorization: 'Bearer admin-token',
-        'Content-Type': 'application/json',
+        Authorization: "Bearer admin-token",
+        "Content-Type": "application/json",
       },
       signal: controller.signal,
     });
   });
 
-  it('preserves typed response data when updating system settings', async () => {
+  it("reads public runtime settings without the removed effective MIME field", async () => {
+    const runtimeView = {
+      site: { name: "OmePic", tagline: "Upload and share images" },
+      access: { public_base_url: "https://img.example.com" },
+      upload: {
+        max_upload_size_mb: 20,
+        allowed_mime_types: ["image/avif", "image/png"],
+      },
+      features: {
+        allow_storage_selection: true,
+        maintenance_mode: false,
+        maintenance_message: "",
+      },
+      storage: {
+        options: [
+          {
+            storage_key: "local-primary",
+            name: "Local Primary",
+            storage_backend: "local",
+            is_default: true,
+          },
+        ],
+      },
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, data: runtimeView })
+    );
+
+    await expect(getRuntimeSettings()).resolves.toEqual(runtimeView);
+
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(options).toMatchObject({ cache: "no-store" });
+  });
+
+  it("preserves typed response data when updating system settings", async () => {
     const system = {
       runtime: runtimeSettings,
       readonly: {
         environment: {
-          http_addr: ':8080',
-          database_path: 'data/app.db',
+          http_addr: ":8080",
+          database_path: "data/app.db",
           redis_configured: false,
-          public_base_url_source: 'request_host',
+          public_base_url_source: "request_host",
           runtime_public_base_url_set: false,
         },
         security: {
@@ -135,50 +232,76 @@ describe('admin API helpers', () => {
           uid_encryption_key: { configured: true, using_default: false },
         },
         storage: {
-          default_storage_key: 'local',
+          default_storage_key: "local",
           storage_config_count: 1,
           allow_storage_selection: true,
         },
         service: {
-          health: 'ok',
+          health: "ok",
           maintenance_mode: false,
+          cloudflare_purge_configured: false,
         },
       },
     };
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { success: true, data: system }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, data: system })
+    );
 
-    await expect(adminUpdateSystemSettings('admin-token', runtimeSettings)).resolves.toEqual(system);
+    await expect(
+      adminUpdateSystemSettings("admin-token", runtimeSettings)
+    ).resolves.toEqual(system);
   });
 
-  it('deduplicates concurrent GET requests within the same auth scope', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, {
-      success: true,
-      data: { total_images: 1, total_storage_size: 2, today_uploads: 3, unique_tokens: 4 },
-    }));
+  it("deduplicates concurrent GET requests within the same auth scope", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, {
+        success: true,
+        data: {
+          total_images: 1,
+          total_storage_size: 2,
+          today_uploads: 3,
+          unique_tokens: 4,
+        },
+      })
+    );
 
     const [left, right] = await Promise.all([
-      adminGetStatus('admin-token'),
-      adminGetStatus('admin-token'),
+      adminGetStatus("admin-token"),
+      adminGetStatus("admin-token"),
     ]);
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(left).toEqual(right);
   });
 
-  it('keeps GET request deduplication scoped by auth headers', async () => {
+  it("keeps GET request deduplication scoped by auth headers", async () => {
     vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse(200, {
-        success: true,
-        data: { total_images: 1, total_storage_size: 2, today_uploads: 3, unique_tokens: 4 },
-      }))
-      .mockResolvedValueOnce(jsonResponse(200, {
-        success: true,
-        data: { total_images: 5, total_storage_size: 6, today_uploads: 7, unique_tokens: 8 },
-      }));
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          success: true,
+          data: {
+            total_images: 1,
+            total_storage_size: 2,
+            today_uploads: 3,
+            unique_tokens: 4,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          success: true,
+          data: {
+            total_images: 5,
+            total_storage_size: 6,
+            today_uploads: 7,
+            unique_tokens: 8,
+          },
+        })
+      );
 
     await Promise.all([
-      adminGetStatus('admin-token-a'),
-      adminGetStatus('admin-token-b'),
+      adminGetStatus("admin-token-a"),
+      adminGetStatus("admin-token-b"),
     ]);
 
     expect(fetch).toHaveBeenCalledTimes(2);

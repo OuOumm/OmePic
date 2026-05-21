@@ -28,6 +28,10 @@
       code: `{
   "success": true,
   "data": {
+    "upload": {
+      "max_upload_size_mb": 20,
+      "allowed_mime_types": ["image/avif", "image/gif", "image/jpeg", "image/png", "image/webp"]
+    },
     "features": {
       "allow_storage_selection": true
     },

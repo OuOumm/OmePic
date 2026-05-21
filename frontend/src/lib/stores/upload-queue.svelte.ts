@@ -39,7 +39,7 @@ function validateFiles(files: File[]): File[] {
   const settings = preferences.runtimeSettings;
   if (!settings) return files;
   const maxBytes = settings.upload.max_upload_size_mb > 0 ? settings.upload.max_upload_size_mb * 1024 * 1024 : 0;
-  const allowedTypes = settings.upload.effective_allowed_mime_types;
+  const allowedTypes = settings.upload.allowed_mime_types;
   return files.filter((file) => {
     if (maxBytes > 0 && file.size > maxBytes) {
       toast.error(`${file.name}: ${t(preferences.language, 'upload.error')}`);

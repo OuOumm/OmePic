@@ -36,6 +36,7 @@
 ### 速率限制
 
 失败响应包含以下响应头：
+
 - `X-RateLimit-Limit`: 限制上限
 - `X-RateLimit-Remaining`: 剩余次数
 - `Retry-After`: 建议等待秒数
@@ -55,13 +56,18 @@ GET /health
 无需认证。检查 SQLite 和 Redis 连通性。
 
 **响应** (200):
+
 ```json
 { "success": true, "data": { "status": "ok" } }
 ```
 
 **响应** (503):
+
 ```json
-{ "success": false, "error": { "code": "dependency_unavailable", "message": "sqlite unavailable" } }
+{
+  "success": false,
+  "error": { "code": "dependency_unavailable", "message": "sqlite unavailable" }
+}
 ```
 
 ### 2.2 获取运行时设置
@@ -73,6 +79,7 @@ GET /v1/runtime-settings
 公开的运行时配置，包括站点信息、上传限制和存储选项。
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -86,8 +93,13 @@ GET /v1/runtime-settings
     },
     "upload": {
       "max_upload_size_mb": 20,
-      "allowed_mime_types": ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"],
-      "effective_allowed_mime_types": ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"]
+      "allowed_mime_types": [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "image/avif"
+      ]
     },
     "features": {
       "allow_storage_selection": true,
@@ -96,7 +108,12 @@ GET /v1/runtime-settings
     },
     "storage": {
       "options": [
-        { "storage_key": "local-default", "name": "Default Local Storage", "storage_backend": "local", "is_default": true }
+        {
+          "storage_key": "local-default",
+          "name": "Default Local Storage",
+          "storage_backend": "local",
+          "is_default": true
+        }
       ]
     }
   }
@@ -112,6 +129,7 @@ GET /v1/announcements
 公开的已发布且有效时间窗口内的公告。
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -142,12 +160,13 @@ POST /v1/image
 
 **请求体**: `multipart/form-data`
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `file` | File | 是 | 图片文件 |
-| `storage_key` | String | 否 | 指定存储实例（需 `allow_storage_selection` 开启） |
+| 字段          | 类型   | 必填 | 说明                                              |
+| ------------- | ------ | ---- | ------------------------------------------------- |
+| `file`        | File   | 是   | 图片文件                                          |
+| `storage_key` | String | 否   | 指定存储实例（需 `allow_storage_selection` 开启） |
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -159,6 +178,7 @@ POST /v1/image
 ```
 
 **说明**:
+
 - 上传的图片会自动转换为 AVIF 格式
 - `duplicate` 为 true 表示 MD5 去重命中，未创建新物理文件
 - 前端会基于返回的 `url` 自行推导 `uid` 并拼接 Markdown / BBCode 等分享字段
@@ -173,6 +193,7 @@ GET /i/:uid.avif
 直接返回图片文件内容。
 
 **响应头**:
+
 - `Content-Type: image/avif`
 - `Cache-Control: public, max-age=31536000, immutable`
 - `Content-Disposition: inline`
@@ -188,13 +209,16 @@ DELETE /i/:uid.avif
 **请求头**: `X-Token: <client-token>`（必填，需与上传时的 token 一致）
 
 **响应** (200):
+
 ```json
 { "success": true, "data": {} }
 ```
 
 **说明**:
+
 - 逻辑删除：仅删除数据库记录和 Redis 缓存，保留物理文件
 - 需使用原上传时的 X-Token 才能删除
+- 如果运行时启用 `cloudflare_purge_enabled`，删除记录和 Redis 缓存前会先清理 `{public_base_url}/i/:uid.avif` 的 Cloudflare 图片 URL 缓存；Cloudflare 清理失败时删除停止。
 
 ---
 
@@ -209,11 +233,13 @@ POST /admin/login
 ```
 
 **请求体**:
+
 ```json
 { "password": "admin123" }
 ```
 
 **响应** (200):
+
 ```json
 { "success": true, "data": { "token": "eyJhbGciOiJIUzI1NiIs..." } }
 ```
@@ -229,11 +255,13 @@ PUT /admin/password
 **请求头**: `Authorization: Bearer <jwt>`
 
 **请求体**:
+
 ```json
 { "old_password": "admin123", "new_password": "New-secret!" }
 ```
 
 **响应** (200):
+
 ```json
 { "success": true, "data": {} }
 ```
@@ -247,6 +275,7 @@ GET /admin/status
 ```
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -266,11 +295,13 @@ GET /admin/images?page=1&pageSize=20&search=abc
 ```
 
 **参数**:
+
 - `page`: 页码（默认 1）
 - `pageSize`: 每页数量（默认 20，最大 100）
 - `search`: 搜索关键词（支持 uid, token, ip, md5, storage_key）
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -304,11 +335,13 @@ DELETE /admin/images
 ```
 
 **请求体**:
+
 ```json
 { "uids": ["abc123", "def456"] }
 ```
 
 **响应** (200):
+
 ```json
 { "success": true, "data": {} }
 ```
@@ -322,6 +355,7 @@ POST /admin/ip-bans
 ```
 
 **请求体**:
+
 ```json
 {
   "uid": "abc123",
@@ -334,6 +368,7 @@ POST /admin/ip-bans
 **说明**: `uid` 和 `ip_address` 至少提供一个。提供 `uid` 时自动使用该图片的 IP。
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -364,6 +399,7 @@ DELETE /admin/ip-bans/:id/images
 ```
 
 **响应** (200):
+
 ```json
 { "success": true, "data": { "deleted_count": 10 } }
 ```
@@ -377,10 +413,12 @@ GET /admin/abuse/overview?from=2025-01-01T00:00:00Z&to=2025-01-02T00:00:00Z
 ```
 
 **参数**:
+
 - `from`: 起始时间（RFC3339）
 - `to`: 结束时间（RFC3339）
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -391,10 +429,24 @@ GET /admin/abuse/overview?from=2025-01-01T00:00:00Z&to=2025-01-02T00:00:00Z
     "upload_size": 5000000,
     "active_ip_ban_count": 5,
     "top_ips": [
-      { "ip_address": "192.168.1.1", "ip_address_masked": "192.168.1.*", "upload_count": 50, "total_size": 250000, "latest_upload_at": "2025-01-01T12:00:00Z", "is_banned": true, "ban_id": 1 }
+      {
+        "ip_address": "192.168.1.1",
+        "ip_address_masked": "192.168.1.*",
+        "upload_count": 50,
+        "total_size": 250000,
+        "latest_upload_at": "2025-01-01T12:00:00Z",
+        "is_banned": true,
+        "ban_id": 1
+      }
     ],
     "top_tokens": [
-      { "token": "abc123...", "token_preview": "abc123...", "upload_count": 30, "total_size": 150000, "latest_upload_at": "2025-01-01T10:00:00Z" }
+      {
+        "token": "abc123...",
+        "token_preview": "abc123...",
+        "upload_count": 30,
+        "total_size": 150000,
+        "latest_upload_at": "2025-01-01T10:00:00Z"
+      }
     ]
   }
 }
@@ -407,6 +459,7 @@ GET /admin/abuse/ip?ip=192.168.1.1
 ```
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -430,6 +483,7 @@ GET /admin/config
 ```
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -475,6 +529,7 @@ POST /admin/config/storage-instances
 ```
 
 **请求体**:
+
 ```json
 {
   "storage_key": "my-s3",
@@ -513,6 +568,7 @@ POST /admin/config/default
 ```
 
 **请求体**:
+
 ```json
 { "storage_key": "my-s3" }
 ```
@@ -526,6 +582,7 @@ GET /admin/system-settings
 ```
 
 **响应** (200):
+
 ```json
 {
   "success": true,
@@ -534,8 +591,18 @@ GET /admin/system-settings
       "site_name": "OmePic",
       "site_tagline": "上传、分享和管理图片",
       "public_base_url": "",
+      "cloudflare_purge_enabled": false,
+      "cloudflare_zone_id": "",
+      "cloudflare_api_token": "",
+      "cloudflare_api_base_url": "",
       "max_upload_size_mb": 20,
-      "allowed_mime_types": ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"],
+      "allowed_mime_types": [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "image/avif"
+      ],
       "avif_quality": 60,
       "avif_speed": 8,
       "allow_storage_selection": true,
@@ -566,7 +633,8 @@ GET /admin/system-settings
       },
       "service": {
         "health": "ok",
-        "maintenance_mode": false
+        "maintenance_mode": false,
+        "cloudflare_purge_configured": false
       }
     }
   }
@@ -579,9 +647,48 @@ GET /admin/system-settings
 PUT /admin/system-settings
 ```
 
-**请求体**: 同 `runtime` 字段结构。`avif_quality` 范围为 `0..100`（`100` 表示无损），`avif_speed` 范围为 `0..10`（数值越低通常越慢但压缩/质量取舍更好）。越界返回 `invalid_input`，不会保存部分配置。
+**请求体**: 同 `runtime` 字段结构。`avif_quality` 范围为 `0..100`（`100` 表示无损），`avif_speed` 范围为 `0..10`（数值越低通常越慢但压缩/质量取舍更好）。Cloudflare 字段包括 `cloudflare_zone_id`、`cloudflare_api_token`、`cloudflare_api_base_url`；Token 是 admin-only secret，GET 只返回遮罩值，PUT 原样提交遮罩值会保留旧 Token，提交空值会清空 Token。`cloudflare_api_base_url` 非空时必须是 http/https URL，保存时会 trim 并去掉末尾 `/`。`cloudflare_purge_enabled=true` 时必须配置合法 `public_base_url`、Zone ID 和 API Token。越界或依赖字段缺失返回 `invalid_input`，不会保存部分配置。
 
-### 3.9 公告管理
+### 3.9 Cloudflare 图片 URL 缓存清理
+
+```
+POST /admin/cloudflare/purge-image-cache
+```
+
+**请求头**: `Authorization: Bearer <jwt>`
+
+**前置条件**:
+
+- 运行时设置 `cloudflare_purge_enabled=true`
+- 运行时设置 `public_base_url` 已配置为合法 `http` 或 `https` URL
+- 运行时设置已配置 `cloudflare_zone_id` 与 `cloudflare_api_token`
+
+**请求体**:
+
+```json
+{ "url": "https://img.example.com/i/abc123.avif" }
+```
+
+**响应** (200):
+
+```json
+{
+  "success": true,
+  "data": {
+    "url": "https://img.example.com/i/abc123.avif"
+  }
+}
+```
+
+**说明**:
+
+- 手动接口每次提交一个 URL 给 Cloudflare；后台批量删除多张图片时会尽量合并为一次 `{ "files": [...] }` 请求。
+- 不做全站、前缀或 `purge_everything` 清理。
+- 后端会 trim URL、仅允许 `http` / `https`、要求存在 host，并移除 fragment 后返回规范化 URL。
+- `cloudflare_api_token` 持久化在 SQLite 中，作为 admin-only secret 处理；后台读取只返回遮罩值，公开 API 不返回该字段。
+- URL 无效或未启用清理返回 `invalid_input`；Cloudflare 凭据缺失、网络错误、非 2xx 或 `success=false` 返回 `dependency_unavailable`。
+
+### 3.10 公告管理
 
 #### 获取所有公告
 
@@ -596,6 +703,7 @@ POST /admin/announcements
 ```
 
 **请求体**:
+
 ```json
 {
   "title": "Notice",
@@ -632,30 +740,30 @@ POST /admin/announcements/:id/archive
 
 ### HTTP 状态码
 
-| 状态码 | 含义 | 常见场景 |
-|--------|------|----------|
-| 200 | 成功 | 请求正常处理 |
-| 201 | 创建成功 | 创建资源成功 |
-| 400 | 请求参数错误 | 无效输入、缺少必填字段 |
-| 401 | 未认证 | 缺少或无效的 Token/JWT |
-| 403 | 禁止访问 | Token 不匹配、IP 被封禁 |
-| 404 | 资源不存在 | 图片/公告/存储配置未找到 |
-| 409 | 冲突 | 资源状态冲突 |
-| 429 | 请求超限 | 超过速率限制 |
-| 500 | 内部错误 | 未预期的服务端错误 |
-| 503 | 服务不可用 | 依赖故障（Redis/SQLite/Storage） |
+| 状态码 | 含义         | 常见场景                         |
+| ------ | ------------ | -------------------------------- |
+| 200    | 成功         | 请求正常处理                     |
+| 201    | 创建成功     | 创建资源成功                     |
+| 400    | 请求参数错误 | 无效输入、缺少必填字段           |
+| 401    | 未认证       | 缺少或无效的 Token/JWT           |
+| 403    | 禁止访问     | Token 不匹配、IP 被封禁          |
+| 404    | 资源不存在   | 图片/公告/存储配置未找到         |
+| 409    | 冲突         | 资源状态冲突                     |
+| 429    | 请求超限     | 超过速率限制                     |
+| 500    | 内部错误     | 未预期的服务端错误               |
+| 503    | 服务不可用   | 依赖故障（Redis/SQLite/Storage） |
 
 ### 错误码列表
 
-| 错误码 | 说明 |
-|--------|------|
-| `invalid_input` | 请求参数无效 |
-| `missing_token` | 缺少 X-Token 头 |
-| `invalid_admin_token` | JWT 无效或过期 |
-| `forbidden` | Token 不匹配或无权限 |
-| `ip_banned` | IP 被封禁 |
-| `not_found` | 资源不存在 |
-| `conflict` | 操作冲突 |
-| `rate_limited` | 请求频率超限 |
-| `dependency_unavailable` | 后端依赖不可用 |
-| `internal_error` | 服务器内部错误 |
+| 错误码                   | 说明                 |
+| ------------------------ | -------------------- |
+| `invalid_input`          | 请求参数无效         |
+| `missing_token`          | 缺少 X-Token 头      |
+| `invalid_admin_token`    | JWT 无效或过期       |
+| `forbidden`              | Token 不匹配或无权限 |
+| `ip_banned`              | IP 被封禁            |
+| `not_found`              | 资源不存在           |
+| `conflict`               | 操作冲突             |
+| `rate_limited`           | 请求频率超限         |
+| `dependency_unavailable` | 后端依赖不可用       |
+| `internal_error`         | 服务器内部错误       |

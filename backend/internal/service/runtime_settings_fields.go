@@ -63,6 +63,50 @@ var runtimeConfigFields = []ConfigField{
 		}),
 	},
 	{
+		Key:     "cloudflare_purge_enabled",
+		Type:    FieldTypeBool,
+		Default: false,
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return settings.CloudflarePurgeEnabled, nil
+		},
+		Set: setBoolRuntimeField("cloudflare_purge_enabled", func(settings *RuntimeSettings, value bool) {
+			settings.CloudflarePurgeEnabled = value
+		}),
+	},
+	{
+		Key:     "cloudflare_zone_id",
+		Type:    FieldTypeString,
+		Default: "",
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return settings.CloudflareZoneID, nil
+		},
+		Set: setStringRuntimeField("cloudflare_zone_id", func(settings *RuntimeSettings, value string) {
+			settings.CloudflareZoneID = value
+		}),
+	},
+	{
+		Key:     "cloudflare_api_token",
+		Type:    FieldTypeString,
+		Default: "",
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return settings.CloudflareAPIToken, nil
+		},
+		Set: setStringRuntimeField("cloudflare_api_token", func(settings *RuntimeSettings, value string) {
+			settings.CloudflareAPIToken = value
+		}),
+	},
+	{
+		Key:     "cloudflare_api_base_url",
+		Type:    FieldTypeString,
+		Default: "",
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return settings.CloudflareAPIBaseURL, nil
+		},
+		Set: setStringRuntimeField("cloudflare_api_base_url", func(settings *RuntimeSettings, value string) {
+			settings.CloudflareAPIBaseURL = value
+		}),
+	},
+	{
 		Key:     "max_upload_size_mb",
 		Type:    FieldTypeInt,
 		Default: 20,

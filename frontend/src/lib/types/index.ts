@@ -56,6 +56,10 @@ export interface AdminIPBanDeleteImagesResult {
   deleted_count: number;
 }
 
+export interface CloudflareImageCachePurgeResult {
+  url: string;
+}
+
 export interface AdminAbuseOverview {
   from: string;
   to: string;
@@ -104,7 +108,7 @@ export interface StorageInstance {
   storage_key: string;
   name: string;
   is_default: boolean;
-  storage_backend: 'local' | 's3' | 'webdav';
+  storage_backend: "local" | "s3" | "webdav";
   local_storage_path?: string;
   s3_endpoint?: string;
   s3_region?: string;
@@ -127,6 +131,10 @@ export interface RuntimeSettings {
   site_name: string;
   site_tagline: string;
   public_base_url: string;
+  cloudflare_purge_enabled: boolean;
+  cloudflare_zone_id: string;
+  cloudflare_api_token: string;
+  cloudflare_api_base_url: string;
   max_upload_size_mb: number;
   allowed_mime_types: string[];
   avif_quality: number;
@@ -151,7 +159,6 @@ export interface PublicRuntimeSettings {
   upload: {
     max_upload_size_mb: number;
     allowed_mime_types: string[];
-    effective_allowed_mime_types: string[];
   };
   features: {
     allow_storage_selection: boolean;
@@ -186,6 +193,7 @@ export interface AdminSystemSettings {
     service: {
       health: string;
       maintenance_mode: boolean;
+      cloudflare_purge_configured: boolean;
     };
   };
 }
@@ -195,8 +203,8 @@ export interface SecretStatus {
   using_default: boolean;
 }
 
-export type AnnouncementStatus = 'draft' | 'published' | 'archived';
-export type AnnouncementPriority = 'normal' | 'important' | 'urgent';
+export type AnnouncementStatus = "draft" | "published" | "archived";
+export type AnnouncementPriority = "normal" | "important" | "urgent";
 
 export interface Announcement {
   id: number;
@@ -241,6 +249,6 @@ export interface UploadHistoryRecord {
   saved_at: string;
 }
 
-export type Language = 'en' | 'zh';
-export type Theme = 'light' | 'dark' | 'system';
-export type ViewMode = 'grid' | 'list';
+export type Language = "en" | "zh";
+export type Theme = "light" | "dark" | "system";
+export type ViewMode = "grid" | "list";

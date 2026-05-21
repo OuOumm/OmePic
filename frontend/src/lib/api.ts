@@ -16,6 +16,7 @@ import type {
   AdminIPBan,
   AdminIPBanCreateResult,
   AdminIPBanDeleteImagesResult,
+  CloudflareImageCachePurgeResult,
   AdminAbuseOverview,
   AdminAbuseIPDetail,
 } from "@/types";
@@ -36,7 +37,10 @@ export class ApiError extends Error {
   status?: number;
   retryAfter?: number;
 
-  constructor(message: string, options: { code?: string; status?: number; retryAfter?: number } = {}) {
+  constructor(
+    message: string,
+    options: { code?: string; status?: number; retryAfter?: number } = {}
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = options.code;
@@ -60,19 +64,35 @@ function requestMethod(options: RequestInit): string {
   return (options.method ?? "GET").toUpperCase();
 }
 
-function normalizedHeaders(headers: HeadersInit | undefined): [string, string][] {
-  return Array.from(new Headers(headers).entries()).sort(([left], [right]) => left.localeCompare(right));
+function normalizedHeaders(
+  headers: HeadersInit | undefined
+): [string, string][] {
+  return Array.from(new Headers(headers).entries()).sort(([left], [right]) =>
+    left.localeCompare(right)
+  );
 }
 
-function pendingRequestKey(method: string, url: string, options: RequestInit): string {
-  return JSON.stringify([method, url, normalizedHeaders(options.headers), options.credentials ?? ""]);
+function pendingRequestKey(
+  method: string,
+  url: string,
+  options: RequestInit
+): string {
+  return JSON.stringify([
+    method,
+    url,
+    normalizedHeaders(options.headers),
+    options.credentials ?? "",
+  ]);
 }
 
 function abortError(): DOMException {
   return new DOMException("The operation was aborted.", "AbortError");
 }
 
-function attachPendingRequest<T>(entry: PendingGetRequest, signal?: AbortSignal | null): Promise<T> {
+function attachPendingRequest<T>(
+  entry: PendingGetRequest,
+  signal?: AbortSignal | null
+): Promise<T> {
   if (signal?.aborted) return Promise.reject(abortError());
 
   entry.subscribers += 1;
@@ -104,16 +124,23 @@ function attachPendingRequest<T>(entry: PendingGetRequest, signal?: AbortSignal 
   });
 }
 
-async function fetchApiResponse<T>(url: string, requestOptions: RequestInit, signal?: AbortSignal | null): Promise<T> {
+async function fetchApiResponse<T>(
+  url: string,
+  requestOptions: RequestInit,
+  signal?: AbortSignal | null
+): Promise<T> {
   const fetchOptions: RequestInit = signal
     ? { cache: "no-store", ...requestOptions, signal }
     : { cache: "no-store", ...requestOptions };
   const res = await fetch(url, fetchOptions);
   let json: ApiResponse<T>;
   try {
-    json = await res.json() as ApiResponse<T>;
+    json = (await res.json()) as ApiResponse<T>;
   } catch {
-    throw new ApiError(res.ok ? "Invalid response from server" : `HTTP ${res.status}`, { status: res.status });
+    throw new ApiError(
+      res.ok ? "Invalid response from server" : `HTTP ${res.status}`,
+      { status: res.status }
+    );
   }
 
   if (!res.ok || !json.success) {
@@ -122,7 +149,10 @@ async function fetchApiResponse<T>(url: string, requestOptions: RequestInit, sig
   return json.data as T;
 }
 
-async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+async function apiFetch<T>(
+  path: string,
+  options: ApiFetchOptions = {}
+): Promise<T> {
   const { params, ...requestOptions } = options;
   const url = buildApiUrl(path, params);
   const method = requestMethod(requestOptions);
@@ -139,11 +169,14 @@ async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise
         subscribers: 0,
         done: false,
       };
-      pending.promise = fetchApiResponse<T>(url, requestOptions, controller.signal)
-        .finally(() => {
-          pending.done = true;
-          pendingGetRequests.delete(key);
-        });
+      pending.promise = fetchApiResponse<T>(
+        url,
+        requestOptions,
+        controller.signal
+      ).finally(() => {
+        pending.done = true;
+        pendingGetRequests.delete(key);
+      });
       entry = pending;
       pendingGetRequests.set(key, entry);
     }
@@ -160,7 +193,11 @@ function apiErrorFromResponse<T>(
   retryAfter?: number
 ): ApiError {
   if ("error" in json) {
-    return new ApiError(json.error.message, { code: json.error.code, status, retryAfter });
+    return new ApiError(json.error.message, {
+      code: json.error.code,
+      status,
+      retryAfter,
+    });
   }
   return new ApiError(fallbackMessage, { status, retryAfter });
 }
@@ -169,9 +206,17 @@ function uploadResponseError(xhr: XMLHttpRequest): ApiError {
   const retryAfter = parseRetryAfter(xhr.getResponseHeader("Retry-After"));
   try {
     const json: ApiResponse<UploadResult> = JSON.parse(xhr.responseText);
-    return apiErrorFromResponse(json, xhr.status, `Upload failed: HTTP ${xhr.status}`, retryAfter);
+    return apiErrorFromResponse(
+      json,
+      xhr.status,
+      `Upload failed: HTTP ${xhr.status}`,
+      retryAfter
+    );
   } catch {
-    return new ApiError(`Upload failed: HTTP ${xhr.status}`, { status: xhr.status, retryAfter });
+    return new ApiError(`Upload failed: HTTP ${xhr.status}`, {
+      status: xhr.status,
+      retryAfter,
+    });
   }
 }
 
@@ -213,17 +258,31 @@ export function uploadImageWithProgress(
         return;
       }
 
-      reject(apiErrorFromResponse(json, xhr.status, "Upload failed", parseRetryAfter(xhr.getResponseHeader("Retry-After"))));
+      reject(
+        apiErrorFromResponse(
+          json,
+          xhr.status,
+          "Upload failed",
+          parseRetryAfter(xhr.getResponseHeader("Retry-After"))
+        )
+      );
     });
 
     xhr.addEventListener("error", () => {
-      reject(new ApiError("Network error during upload", {
-        code: xhr.status === 429 || xhr.getResponseHeader("Retry-After") ? "rate_limited" : "network_error",
-        status: xhr.status || undefined,
-        retryAfter: parseRetryAfter(xhr.getResponseHeader("Retry-After")),
-      }));
+      reject(
+        new ApiError("Network error during upload", {
+          code:
+            xhr.status === 429 || xhr.getResponseHeader("Retry-After")
+              ? "rate_limited"
+              : "network_error",
+          status: xhr.status || undefined,
+          retryAfter: parseRetryAfter(xhr.getResponseHeader("Retry-After")),
+        })
+      );
     });
-    xhr.addEventListener("abort", () => reject(new ApiError("Upload aborted", { code: "upload_aborted" })));
+    xhr.addEventListener("abort", () =>
+      reject(new ApiError("Upload aborted", { code: "upload_aborted" }))
+    );
 
     xhr.open("POST", `${base}/v1/image`);
     xhr.setRequestHeader("X-Token", token);
@@ -237,16 +296,25 @@ function parseRetryAfter(value: string | null): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-export async function getRuntimeSettings(signal?: AbortSignal): Promise<PublicRuntimeSettings> {
+export async function getRuntimeSettings(
+  signal?: AbortSignal
+): Promise<PublicRuntimeSettings> {
   return apiFetch<PublicRuntimeSettings>("/v1/runtime-settings", { signal });
 }
 
-export async function getAnnouncements(signal?: AbortSignal): Promise<Announcement[]> {
-  const data = await apiFetch<AnnouncementListResponse>("/v1/announcements", { signal });
+export async function getAnnouncements(
+  signal?: AbortSignal
+): Promise<Announcement[]> {
+  const data = await apiFetch<AnnouncementListResponse>("/v1/announcements", {
+    signal,
+  });
   return data.items;
 }
 
-export async function deleteImageByUid(uid: string, token: string): Promise<void> {
+export async function deleteImageByUid(
+  uid: string,
+  token: string
+): Promise<void> {
   await apiFetch<Record<string, never> | null>(getImagePath(uid), {
     method: "DELETE",
     headers: { "X-Token": token },
@@ -266,7 +334,10 @@ function adminHeaders(token: string): HeadersInit {
   };
 }
 
-export async function adminLogin(password: string, signal?: AbortSignal): Promise<string> {
+export async function adminLogin(
+  password: string,
+  signal?: AbortSignal
+): Promise<string> {
   const data = await apiFetch<{ token: string }>("/admin/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -284,11 +355,17 @@ export async function adminChangePassword(
   await apiFetch<Record<string, never> | null>("/admin/password", {
     method: "PUT",
     headers: adminHeaders(token),
-    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    body: JSON.stringify({
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
   });
 }
 
-export async function adminGetStatus(token: string, signal?: AbortSignal): Promise<AdminStatus> {
+export async function adminGetStatus(
+  token: string,
+  signal?: AbortSignal
+): Promise<AdminStatus> {
   return apiFetch<AdminStatus>("/admin/status", {
     headers: adminAuthHeaders(token),
     signal,
@@ -313,7 +390,10 @@ export async function adminGetImages(
   });
 }
 
-export async function adminDeleteImages(token: string, uids: string[]): Promise<void> {
+export async function adminDeleteImages(
+  token: string,
+  uids: string[]
+): Promise<void> {
   await apiFetch<Record<string, never> | null>("/admin/images", {
     method: "DELETE",
     headers: adminHeaders(token),
@@ -321,9 +401,28 @@ export async function adminDeleteImages(token: string, uids: string[]): Promise<
   });
 }
 
+export async function adminPurgeCloudflareImageCache(
+  token: string,
+  url: string
+): Promise<CloudflareImageCachePurgeResult> {
+  return apiFetch<CloudflareImageCachePurgeResult>(
+    "/admin/cloudflare/purge-image-cache",
+    {
+      method: "POST",
+      headers: adminHeaders(token),
+      body: JSON.stringify({ url }),
+    }
+  );
+}
+
 export async function adminCreateIPBan(
   token: string,
-  input: { uid?: string; ip_address?: string; duration_hours: number | null; reason?: string }
+  input: {
+    uid?: string;
+    ip_address?: string;
+    duration_hours: number | null;
+    reason?: string;
+  }
 ): Promise<AdminIPBanCreateResult> {
   return apiFetch<AdminIPBanCreateResult>("/admin/ip-bans", {
     method: "POST",
@@ -332,14 +431,20 @@ export async function adminCreateIPBan(
   });
 }
 
-export async function adminGetIPBans(token: string, signal?: AbortSignal): Promise<AdminIPBan[]> {
+export async function adminGetIPBans(
+  token: string,
+  signal?: AbortSignal
+): Promise<AdminIPBan[]> {
   return apiFetch<AdminIPBan[]>("/admin/ip-bans", {
     headers: adminAuthHeaders(token),
     signal,
   });
 }
 
-export async function adminDeleteIPBan(token: string, id: number): Promise<void> {
+export async function adminDeleteIPBan(
+  token: string,
+  id: number
+): Promise<void> {
   await apiFetch<Record<string, never>>(`/admin/ip-bans/${id}`, {
     method: "DELETE",
     headers: adminAuthHeaders(token),
@@ -372,7 +477,11 @@ export async function adminGetAbuseOverview(
   });
 }
 
-export async function adminGetAbuseIPDetail(token: string, ip: string, signal?: AbortSignal): Promise<AdminAbuseIPDetail> {
+export async function adminGetAbuseIPDetail(
+  token: string,
+  ip: string,
+  signal?: AbortSignal
+): Promise<AdminAbuseIPDetail> {
   return apiFetch<AdminAbuseIPDetail>("/admin/abuse/ip", {
     headers: adminAuthHeaders(token),
     signal,
@@ -380,7 +489,10 @@ export async function adminGetAbuseIPDetail(token: string, ip: string, signal?: 
   });
 }
 
-export async function adminGetConfig(token: string, signal?: AbortSignal): Promise<AdminConfig> {
+export async function adminGetConfig(
+  token: string,
+  signal?: AbortSignal
+): Promise<AdminConfig> {
   return apiFetch<AdminConfig>("/admin/config", {
     headers: adminAuthHeaders(token),
     signal,
@@ -403,21 +515,27 @@ export async function adminUpdateStorageInstance(
   storageKey: string,
   instance: Partial<StorageInstance>
 ): Promise<AdminConfig> {
-  return apiFetch<AdminConfig>(`/admin/config/storage-instances/${storageKey}`, {
-    method: "PUT",
-    headers: adminHeaders(token),
-    body: JSON.stringify(instance),
-  });
+  return apiFetch<AdminConfig>(
+    `/admin/config/storage-instances/${storageKey}`,
+    {
+      method: "PUT",
+      headers: adminHeaders(token),
+      body: JSON.stringify(instance),
+    }
+  );
 }
 
 export async function adminDeleteStorageInstance(
   token: string,
   storageKey: string
 ): Promise<AdminConfig> {
-  return apiFetch<AdminConfig>(`/admin/config/storage-instances/${storageKey}`, {
-    method: "DELETE",
-    headers: adminAuthHeaders(token),
-  });
+  return apiFetch<AdminConfig>(
+    `/admin/config/storage-instances/${storageKey}`,
+    {
+      method: "DELETE",
+      headers: adminAuthHeaders(token),
+    }
+  );
 }
 
 export async function adminSetDefaultStorage(
@@ -431,7 +549,10 @@ export async function adminSetDefaultStorage(
   });
 }
 
-export async function adminGetSystemSettings(token: string, signal?: AbortSignal): Promise<AdminSystemSettings> {
+export async function adminGetSystemSettings(
+  token: string,
+  signal?: AbortSignal
+): Promise<AdminSystemSettings> {
   return apiFetch<AdminSystemSettings>("/admin/system-settings", {
     headers: adminAuthHeaders(token),
     signal,
@@ -449,11 +570,17 @@ export async function adminUpdateSystemSettings(
   });
 }
 
-export async function adminGetAnnouncements(token: string, signal?: AbortSignal): Promise<Announcement[]> {
-  const data = await apiFetch<AnnouncementListResponse>("/admin/announcements", {
-    headers: adminAuthHeaders(token),
-    signal,
-  });
+export async function adminGetAnnouncements(
+  token: string,
+  signal?: AbortSignal
+): Promise<Announcement[]> {
+  const data = await apiFetch<AnnouncementListResponse>(
+    "/admin/announcements",
+    {
+      headers: adminAuthHeaders(token),
+      signal,
+    }
+  );
   return data.items;
 }
 
@@ -480,14 +607,20 @@ export async function adminUpdateAnnouncement(
   });
 }
 
-export async function adminDeleteAnnouncement(token: string, id: number): Promise<void> {
+export async function adminDeleteAnnouncement(
+  token: string,
+  id: number
+): Promise<void> {
   await apiFetch<Record<string, never>>(`/admin/announcements/${id}`, {
     method: "DELETE",
     headers: adminAuthHeaders(token),
   });
 }
 
-export async function adminArchiveAnnouncement(token: string, id: number): Promise<Announcement> {
+export async function adminArchiveAnnouncement(
+  token: string,
+  id: number
+): Promise<Announcement> {
   return apiFetch<Announcement>(`/admin/announcements/${id}/archive`, {
     method: "POST",
     headers: adminAuthHeaders(token),

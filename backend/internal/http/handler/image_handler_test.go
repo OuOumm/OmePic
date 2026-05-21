@@ -145,6 +145,17 @@ func TestRuntimeSettingsReturnsSafePublicCatalog(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected data object, got %#v", payload["data"])
 	}
+	uploadView, ok := data["upload"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected upload object, got %#v", data["upload"])
+	}
+	if _, exists := uploadView["effective_allowed_mime_types"]; exists {
+		t.Fatalf("public runtime settings should not expose effective_allowed_mime_types: %#v", uploadView)
+	}
+	allowedTypes, ok := uploadView["allowed_mime_types"].([]any)
+	if !ok || len(allowedTypes) == 0 {
+		t.Fatalf("expected allowed_mime_types list, got %#v", uploadView["allowed_mime_types"])
+	}
 	storageView, ok := data["storage"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected storage object, got %#v", data["storage"])

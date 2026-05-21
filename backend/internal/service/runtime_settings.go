@@ -36,6 +36,10 @@ type RuntimeSettings struct {
 	SiteName                     string   `json:"site_name"`
 	SiteTagline                  string   `json:"site_tagline"`
 	PublicBaseURL                string   `json:"public_base_url"`
+	CloudflarePurgeEnabled       bool     `json:"cloudflare_purge_enabled"`
+	CloudflareZoneID             string   `json:"cloudflare_zone_id"`
+	CloudflareAPIToken           string   `json:"cloudflare_api_token"`
+	CloudflareAPIBaseURL         string   `json:"cloudflare_api_base_url"`
 	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
 	AvifQuality                  int      `json:"avif_quality"`
@@ -67,9 +71,8 @@ type PublicAccessSettingsView struct {
 }
 
 type PublicUploadSettingsView struct {
-	MaxUploadSizeMB           int      `json:"max_upload_size_mb"`
-	AllowedMIMETypes          []string `json:"allowed_mime_types"`
-	EffectiveAllowedMIMETypes []string `json:"effective_allowed_mime_types"`
+	MaxUploadSizeMB  int      `json:"max_upload_size_mb"`
+	AllowedMIMETypes []string `json:"allowed_mime_types"`
 }
 
 type PublicFeatureSettingsView struct {
@@ -118,16 +121,20 @@ type AdminStorageStatus struct {
 	StorageConfigCount    int    `json:"storage_config_count"`
 	AllowStorageSelection bool   `json:"allow_storage_selection"`
 }
-
 type AdminServiceStatus struct {
-	Health          string `json:"health"`
-	MaintenanceMode bool   `json:"maintenance_mode"`
+	Health                    string `json:"health"`
+	MaintenanceMode           bool   `json:"maintenance_mode"`
+	CloudflarePurgeConfigured bool   `json:"cloudflare_purge_configured"`
 }
 
 type RuntimeSettingsUpdateInput struct {
 	SiteName                     string   `json:"site_name"`
 	SiteTagline                  string   `json:"site_tagline"`
 	PublicBaseURL                string   `json:"public_base_url"`
+	CloudflarePurgeEnabled       bool     `json:"cloudflare_purge_enabled"`
+	CloudflareZoneID             string   `json:"cloudflare_zone_id"`
+	CloudflareAPIToken           string   `json:"cloudflare_api_token"`
+	CloudflareAPIBaseURL         string   `json:"cloudflare_api_base_url"`
 	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
 	AvifQuality                  int      `json:"avif_quality"`
@@ -205,10 +212,6 @@ func (s RuntimeSettings) EffectiveMaintenanceMessage() string {
 	return message
 }
 
-func (s RuntimeSettings) EffectiveAllowedMIMETypes() []string {
-	return append([]string(nil), s.AllowedMIMETypes...)
-}
-
 func (s RuntimeSettings) MaxUploadSizeBytes() int64 {
 	if s.MaxUploadSizeMB <= 0 {
 		return 0
@@ -221,10 +224,18 @@ func DefaultAllowedMIMETypes() []string {
 }
 
 func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSettings, error) {
+	return validateRuntimeSettingsInput(input, true)
+}
+
+func validateRuntimeSettingsInput(input RuntimeSettingsUpdateInput, strictCloudflare bool) (RuntimeSettings, error) {
 	settings := RuntimeSettings{
 		SiteName:                     strings.TrimSpace(input.SiteName),
 		SiteTagline:                  strings.TrimSpace(input.SiteTagline),
 		PublicBaseURL:                strings.TrimSpace(input.PublicBaseURL),
+		CloudflarePurgeEnabled:       input.CloudflarePurgeEnabled,
+		CloudflareZoneID:             strings.TrimSpace(input.CloudflareZoneID),
+		CloudflareAPIToken:           strings.TrimSpace(input.CloudflareAPIToken),
+		CloudflareAPIBaseURL:         normalizeCloudflareAPIBaseURL(input.CloudflareAPIBaseURL),
 		MaxUploadSizeMB:              input.MaxUploadSizeMB,
 		AllowedMIMETypes:             input.AllowedMIMETypes,
 		AvifQuality:                  input.AvifQuality,
@@ -241,6 +252,20 @@ func ValidateRuntimeSettingsInput(input RuntimeSettingsUpdateInput) (RuntimeSett
 		parsed, err := url.Parse(settings.PublicBaseURL)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "public base url must be an http or https URL")
+		}
+	}
+	if settings.CloudflareAPIBaseURL != "" {
+		parsed, err := url.Parse(settings.CloudflareAPIBaseURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "cloudflare api base url must be an http or https URL")
+		}
+	}
+	if strictCloudflare && settings.CloudflarePurgeEnabled {
+		if settings.PublicBaseURL == "" {
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "public base url is required when cloudflare purge is enabled")
+		}
+		if settings.CloudflareZoneID == "" || settings.CloudflareAPIToken == "" {
+			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "cloudflare zone id and api token are required when cloudflare purge is enabled")
 		}
 	}
 	if settings.MaxUploadSizeMB < 0 {
@@ -298,7 +323,7 @@ func runtimeSettingsFromValues(values map[string]string) (RuntimeSettings, error
 			return RuntimeSettings{}, err
 		}
 	}
-	return ValidateRuntimeSettingsInput(RuntimeSettingsUpdateInput(settings))
+	return validateRuntimeSettingsInput(RuntimeSettingsUpdateInput(settings), false)
 }
 
 func defaultRuntimeSettings() RuntimeSettings {
@@ -315,6 +340,9 @@ func normalizeRuntimeSettings(settings RuntimeSettings) RuntimeSettings {
 		settings.SiteTagline = DefaultSiteTagline
 	}
 	settings.PublicBaseURL = strings.TrimRight(strings.TrimSpace(settings.PublicBaseURL), "/")
+	settings.CloudflareZoneID = strings.TrimSpace(settings.CloudflareZoneID)
+	settings.CloudflareAPIToken = strings.TrimSpace(settings.CloudflareAPIToken)
+	settings.CloudflareAPIBaseURL = normalizeCloudflareAPIBaseURL(settings.CloudflareAPIBaseURL)
 	settings.MaintenanceMessage = strings.TrimSpace(settings.MaintenanceMessage)
 	allowed, _ := normalizeMIMETypes(settings.AllowedMIMETypes)
 	if allowed == nil {
@@ -322,6 +350,10 @@ func normalizeRuntimeSettings(settings RuntimeSettings) RuntimeSettings {
 	}
 	settings.AllowedMIMETypes = allowed
 	return settings
+}
+
+func normalizeCloudflareAPIBaseURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
 func (s RuntimeSettings) RateLimitPolicy() (int, int) {

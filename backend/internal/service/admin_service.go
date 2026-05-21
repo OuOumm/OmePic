@@ -111,8 +111,11 @@ type AdminIPBanDeleteImagesResult struct {
 	DeletedCount int `json:"deleted_count"`
 }
 
+type CloudflareImageCachePurgeResult struct {
+	URL string `json:"url"`
+}
+
 const (
-	// DefaultAdminPassword is only a first-boot compatibility value; administrators should change it immediately.
 	DefaultAdminPassword = "admin123"
 )
 
@@ -282,12 +285,62 @@ func (s *AdminService) DeleteImages(ctx context.Context, uids []string) error {
 	if len(uids) == 0 {
 		return ErrInvalidInput
 	}
+	if s.imageService == nil {
+		return fmt.Errorf("%w: image service is not configured", ErrDependencyUnavailable)
+	}
+
+	records := make([]model.ImageRecord, 0, len(uids))
+	seen := make(map[string]struct{}, len(uids))
 	for _, uid := range uids {
-		if err := s.imageService.Delete(ctx, uid, "", true, ""); err != nil {
+		normalizedUID, err := s.imageService.normalizeStoredUID(uid)
+		if err != nil {
+			return err
+		}
+		if _, ok := seen[normalizedUID]; ok {
+			continue
+		}
+		seen[normalizedUID] = struct{}{}
+		record, err := s.repo.FindByUID(ctx, normalizedUID)
+		if err != nil {
+			if repository.IsNotFound(err) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("%w: image lookup failed", ErrDependencyUnavailable)
+		}
+		records = append(records, *record)
+	}
+
+	if err := s.imageService.purgeImageURLCachesForRecords(ctx, records); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		if err := s.imageService.deleteRecord(ctx, record); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *AdminService) PurgeCloudflareImageCache(ctx context.Context, rawURL string) (CloudflareImageCachePurgeResult, error) {
+	settings := defaultRuntimeSettings()
+	if s.settings != nil {
+		settings = s.settings.Current()
+	}
+	if !settings.CloudflarePurgeEnabled {
+		return CloudflareImageCachePurgeResult{}, WithUserMessage(ErrInvalidInput, "cloudflare purge is not enabled")
+	}
+	if strings.TrimSpace(settings.PublicBaseURL) == "" {
+		return CloudflareImageCachePurgeResult{}, WithUserMessage(ErrInvalidInput, "public base url is required when cloudflare purge is enabled")
+	}
+	if s.imageService == nil {
+		return CloudflareImageCachePurgeResult{}, fmt.Errorf("%w: image service is not configured", ErrDependencyUnavailable)
+	}
+	normalizedURL, err := s.imageService.PurgeImageURLCache(ctx, rawURL)
+	if err != nil {
+		return CloudflareImageCachePurgeResult{}, err
+	}
+	return CloudflareImageCachePurgeResult{URL: normalizedURL}, nil
 }
 
 func (s *AdminService) CreateIPBan(ctx context.Context, input AdminIPBanCreateInput) (AdminIPBanCreateResult, error) {
@@ -338,14 +391,17 @@ func (s *AdminService) DeleteImagesByIPBan(ctx context.Context, id int64) (Admin
 	if err != nil {
 		return AdminIPBanDeleteImagesResult{}, fmt.Errorf("%w: ip image list failed", ErrDependencyUnavailable)
 	}
-	deleted := 0
+	uids := make([]string, 0, len(images))
 	for _, image := range images {
-		if err := s.imageService.Delete(ctx, image.UID, "", true, ""); err != nil {
-			return AdminIPBanDeleteImagesResult{}, err
-		}
-		deleted++
+		uids = append(uids, image.UID)
 	}
-	return AdminIPBanDeleteImagesResult{DeletedCount: deleted}, nil
+	if len(uids) == 0 {
+		return AdminIPBanDeleteImagesResult{DeletedCount: 0}, nil
+	}
+	if err := s.DeleteImages(ctx, uids); err != nil {
+		return AdminIPBanDeleteImagesResult{}, err
+	}
+	return AdminIPBanDeleteImagesResult{DeletedCount: len(uids)}, nil
 }
 
 func (s *AdminService) GetConfig(ctx context.Context) (AdminConfigView, error) {
@@ -386,6 +442,14 @@ func (s *AdminService) reloadStorageManager(ctx context.Context) error {
 }
 
 func (s *AdminService) UpdateSystemSettings(ctx context.Context, input RuntimeSettingsUpdateInput) (AdminSystemSettingsView, error) {
+	current := defaultRuntimeSettings()
+	if s.settings != nil {
+		current = s.settings.Current()
+	}
+	if input.CloudflareAPIToken == maskSecret(current.CloudflareAPIToken) {
+		input.CloudflareAPIToken = current.CloudflareAPIToken
+	}
+
 	settings, err := ValidateRuntimeSettingsInput(input)
 	if err != nil {
 		return AdminSystemSettingsView{}, err
@@ -416,7 +480,7 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 		}
 	}
 	return AdminSystemSettingsView{
-		Runtime: settings,
+		Runtime: maskRuntimeSettings(settings),
 		Readonly: AdminReadonlySettings{
 			Environment: AdminEnvironmentStatus{
 				HTTPAddr:                s.adminEnv.HTTPAddr,
@@ -445,11 +509,18 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 				AllowStorageSelection: settings.AllowStorageSelect,
 			},
 			Service: AdminServiceStatus{
-				Health:          "ok",
-				MaintenanceMode: settings.MaintenanceMode,
+				Health:                    "ok",
+				MaintenanceMode:           settings.MaintenanceMode,
+				CloudflarePurgeConfigured: s.cloudflarePurgeConfigured(),
 			},
 		},
 	}, nil
+}
+
+func maskRuntimeSettings(settings RuntimeSettings) RuntimeSettings {
+	settings = cloneRuntimeSettings(settings)
+	settings.CloudflareAPIToken = maskSecret(settings.CloudflareAPIToken)
+	return settings
 }
 
 func (s *AdminService) publicBaseURLSource() string {
@@ -457,6 +528,10 @@ func (s *AdminService) publicBaseURLSource() string {
 		return s.settings.PublicBaseURLSource()
 	}
 	return "request_host"
+}
+
+func (s *AdminService) cloudflarePurgeConfigured() bool {
+	return s.imageService != nil && s.imageService.CloudflarePurgeConfigured()
 }
 
 func buildStorageConfig(input AdminStorageConfigCreateInput) (config.RuntimeStorageConfig, error) {

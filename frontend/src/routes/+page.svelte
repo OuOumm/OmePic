@@ -33,7 +33,7 @@
 
   const siteName = $derived(preferences.runtimeSettings?.site.name || 'OmePic');
   const siteTitle = $derived(preferences.runtimeSettings?.site.tagline ? `${siteName} - ${preferences.runtimeSettings.site.tagline}` : siteName);
-  const allowedMimeTypes = $derived(preferences.runtimeSettings?.upload.effective_allowed_mime_types ?? []);
+  const allowedMimeTypes = $derived(preferences.runtimeSettings?.upload.allowed_mime_types ?? []);
   const allowedMimeTypesText = $derived(allowedMimeTypes.join(', '));
   const uploadAccept = $derived(imageAcceptFromMimeTypes(allowedMimeTypes));
   const publicImageAllowedOrigins = $derived(imageUrlAllowedOrigins(preferences.runtimeSettings?.access.public_base_url));
@@ -142,7 +142,7 @@
         return;
       }
       const mimeType = response.headers.get('Content-Type') || blob.type;
-      const allowedTypes = preferences.runtimeSettings?.upload.effective_allowed_mime_types ?? [];
+      const allowedTypes = preferences.runtimeSettings?.upload.allowed_mime_types ?? [];
       if (!mimeType.startsWith('image/') || (allowedTypes.length > 0 && !isAllowedImageMimeType(mimeType, allowedTypes))) {
         toast.error(t(preferences.language, 'upload.urlNotImage'));
         return;

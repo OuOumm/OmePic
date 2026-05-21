@@ -121,18 +121,19 @@ type uploadStorageResolver interface {
 }
 
 type ImageService struct {
-	repo        *repository.Repository
-	imageCache  cache.ImageLookupCache
-	preheat     cache.ImagePreheatCache
-	md5Cache    cache.MD5MappingCache
-	md5Preheat  cache.MD5MappingPreheatCache
-	storage     uploadStorageResolver
-	settings    *RuntimeSettingsManager
-	logger      *slog.Logger
-	generateUID UIDGenerator
-	validateUID UIDValidator
-	encoder     func(io.Reader, io.Writer, AVIFConversionSettings) error
-	hashLocks   *keyedMutex
+	repo                *repository.Repository
+	imageCache          cache.ImageLookupCache
+	preheat             cache.ImagePreheatCache
+	md5Cache            cache.MD5MappingCache
+	md5Preheat          cache.MD5MappingPreheatCache
+	storage             uploadStorageResolver
+	settings            *RuntimeSettingsManager
+	logger              *slog.Logger
+	generateUID         UIDGenerator
+	validateUID         UIDValidator
+	encoder             func(io.Reader, io.Writer, AVIFConversionSettings) error
+	hashLocks           *keyedMutex
+	imageURLCachePurger ImageURLCachePurger
 }
 
 func NewImageService(
@@ -186,6 +187,10 @@ func NewImageServiceWithCaches(
 	}
 }
 
+func (s *ImageService) SetImageURLCachePurger(purger ImageURLCachePurger) {
+	s.imageURLCachePurger = purger
+}
+
 func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOutput, error) {
 	return s.newUploadFlow(ctx, input).Run()
 }
@@ -219,22 +224,11 @@ func (s *ImageService) Delete(ctx context.Context, uid string, token string, isA
 		}
 	}
 
-	if err := s.repo.DeleteByUID(ctx, normalizedUID); err != nil {
-		if repository.IsNotFound(err) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("%w: delete record failed", ErrDependencyUnavailable)
-	}
-
-	if err := s.imageCache.DeleteImage(ctx, normalizedUID); err != nil {
-		return fmt.Errorf("%w: redis uid delete failed", ErrDependencyUnavailable)
-	}
-
-	if err := s.md5Mappings().RepairAfterDelete(ctx, md5MappingKeyForRecord(*record), record.UID); err != nil {
+	if err := s.purgeImageURLCachesForRecords(ctx, []model.ImageRecord{*record}); err != nil {
 		return err
 	}
 
-	return nil
+	return s.deleteRecord(ctx, *record)
 }
 
 func (s *ImageService) Open(ctx context.Context, uid string) (ImageOpenOutput, error) {
@@ -344,9 +338,8 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 			PublicBaseURL: s.EffectivePublicBaseURL(""),
 		},
 		Upload: PublicUploadSettingsView{
-			MaxUploadSizeMB:           settings.MaxUploadSizeMB,
-			AllowedMIMETypes:          append([]string(nil), settings.AllowedMIMETypes...),
-			EffectiveAllowedMIMETypes: settings.EffectiveAllowedMIMETypes(),
+			MaxUploadSizeMB:  settings.MaxUploadSizeMB,
+			AllowedMIMETypes: append([]string(nil), settings.AllowedMIMETypes...),
 		},
 		Features: PublicFeatureSettingsView{
 			AllowStorageSelection: settings.AllowStorageSelect,
@@ -479,6 +472,91 @@ func (s *ImageService) EffectivePublicBaseURL(requestBase string) string {
 	return s.settings.EffectivePublicBaseURL(requestBase)
 }
 
+func (s *ImageService) CloudflarePurgeConfigured() bool {
+	if s == nil {
+		return false
+	}
+	if s.imageURLCachePurger != nil {
+		if configured, ok := s.imageURLCachePurger.(interface{ Configured() bool }); ok {
+			return configured.Configured()
+		}
+		return true
+	}
+	settings := s.currentRuntimeSettings()
+	return strings.TrimSpace(settings.CloudflareZoneID) != "" && strings.TrimSpace(settings.CloudflareAPIToken) != ""
+}
+
+func (s *ImageService) PurgeImageURLCache(ctx context.Context, rawURL string) (string, error) {
+	normalizedURLs, err := s.PurgeImageURLCaches(ctx, []string{rawURL})
+	if err != nil {
+		return "", err
+	}
+	return normalizedURLs[0], nil
+}
+
+func (s *ImageService) PurgeImageURLCaches(ctx context.Context, rawURLs []string) ([]string, error) {
+	normalizedURLs, err := normalizeCloudflarePurgeURLs(rawURLs)
+	if err != nil {
+		return nil, err
+	}
+	purger := s.imageURLCachePurger
+	if purger == nil {
+		settings := s.currentRuntimeSettings()
+		purger = NewCloudflareCachePurger(settings.CloudflareZoneID, settings.CloudflareAPIToken, settings.CloudflareAPIBaseURL, nil)
+	}
+	if err := purger.PurgeURLs(ctx, normalizedURLs); err != nil {
+		return nil, mapImageURLCachePurgeError(err)
+	}
+	return normalizedURLs, nil
+}
+
+func (s *ImageService) purgeImageURLCachesForRecords(ctx context.Context, records []model.ImageRecord) error {
+	settings := s.currentRuntimeSettings()
+	if !settings.CloudflarePurgeEnabled {
+		return nil
+	}
+	publicBaseURL := s.EffectivePublicBaseURL("")
+	if strings.TrimSpace(publicBaseURL) == "" {
+		return WithUserMessage(ErrInvalidInput, "public base url is required when cloudflare purge is enabled")
+	}
+	baseURL := strings.TrimRight(publicBaseURL, "/")
+	urls := make([]string, 0, len(records))
+	for _, record := range records {
+		urls = append(urls, baseURL+"/i/"+record.UID+publicImageExtension)
+	}
+	_, err := s.PurgeImageURLCaches(ctx, urls)
+	return err
+}
+
+func (s *ImageService) deleteRecord(ctx context.Context, record model.ImageRecord) error {
+	if err := s.repo.DeleteByUID(ctx, record.UID); err != nil {
+		if repository.IsNotFound(err) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("%w: delete record failed", ErrDependencyUnavailable)
+	}
+
+	if err := s.imageCache.DeleteImage(ctx, record.UID); err != nil {
+		return fmt.Errorf("%w: redis uid delete failed", ErrDependencyUnavailable)
+	}
+
+	if err := s.md5Mappings().RepairAfterDelete(ctx, md5MappingKeyForRecord(record), record.UID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func mapImageURLCachePurgeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrDependencyUnavailable) {
+		return err
+	}
+	return fmt.Errorf("%w: cloudflare purge failed: %v", ErrDependencyUnavailable, err)
+}
+
 func (s *ImageService) currentRuntimeSettings() RuntimeSettings {
 	if s.settings == nil {
 		return defaultRuntimeSettings()
@@ -506,7 +584,7 @@ func runtimeSettingsAllowsMIME(settings RuntimeSettings, mimeType string) bool {
 	if candidate == "" {
 		return false
 	}
-	for _, allowed := range settings.EffectiveAllowedMIMETypes() {
+	for _, allowed := range settings.AllowedMIMETypes {
 		if candidate == allowed {
 			return true
 		}

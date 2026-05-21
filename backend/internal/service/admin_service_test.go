@@ -551,6 +551,97 @@ func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *tes
 	}
 }
 
+func TestSystemSettingsMaskAndPreserveCloudflareAPIToken(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+	input := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
+	input.CloudflareZoneID = "zone-123"
+	input.CloudflareAPIToken = "token-secret"
+	input.CloudflareAPIBaseURL = " https://api.example.com/client/v4/ "
+	view, err := adminService.UpdateSystemSettings(ctx, input)
+	if err != nil {
+		t.Fatalf("UpdateSystemSettings returned error: %v", err)
+	}
+	if view.Runtime.CloudflareAPIToken != "********cret" {
+		t.Fatalf("expected masked token in update response, got %q", view.Runtime.CloudflareAPIToken)
+	}
+	if view.Runtime.CloudflareAPIBaseURL != "https://api.example.com/client/v4" {
+		t.Fatalf("expected normalized base url, got %q", view.Runtime.CloudflareAPIBaseURL)
+	}
+
+	view, err = adminService.GetSystemSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetSystemSettings returned error: %v", err)
+	}
+	if view.Runtime.CloudflareAPIToken != "********cret" {
+		t.Fatalf("expected masked token in get response, got %q", view.Runtime.CloudflareAPIToken)
+	}
+
+	preserve := RuntimeSettingsUpdateInput(view.Runtime)
+	preserve.SiteName = "Preserved Token Site"
+	if _, err := adminService.UpdateSystemSettings(ctx, preserve); err != nil {
+		t.Fatalf("masked-token preserve update returned error: %v", err)
+	}
+	stored, err := repo.GetConfigValue(ctx, "cloudflare_api_token")
+	if err != nil {
+		t.Fatalf("GetConfigValue returned error: %v", err)
+	}
+	if stored != "token-secret" {
+		t.Fatalf("expected masked token submission to preserve old token, got %q", stored)
+	}
+
+	clear := RuntimeSettingsUpdateInput(adminService.settings.Current())
+	clear.CloudflareAPIToken = ""
+	if _, err := adminService.UpdateSystemSettings(ctx, clear); err != nil {
+		t.Fatalf("empty-token clear update returned error: %v", err)
+	}
+	stored, err = repo.GetConfigValue(ctx, "cloudflare_api_token")
+	if err != nil {
+		t.Fatalf("GetConfigValue after clear returned error: %v", err)
+	}
+	if stored != "" || adminService.settings.Current().CloudflareAPIToken != "" {
+		t.Fatalf("expected empty token to clear old token, repo=%q memory=%q", stored, adminService.settings.Current().CloudflareAPIToken)
+	}
+}
+
+func TestUpdateSystemSettingsRejectsInvalidCloudflareConfigWithoutPartialSave(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+	initial := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
+	initial.SiteName = "Original Site"
+	initial.CloudflareZoneID = "zone-123"
+	if _, err := adminService.UpdateSystemSettings(ctx, initial); err != nil {
+		t.Fatalf("initial UpdateSystemSettings returned error: %v", err)
+	}
+
+	invalidURL := initial
+	invalidURL.SiteName = "Invalid URL Site"
+	invalidURL.CloudflareAPIBaseURL = "ftp://api.example.com"
+	if _, err := adminService.UpdateSystemSettings(ctx, invalidURL); err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for invalid cloudflare api base url, got %v", err)
+	}
+
+	invalidEnabled := initial
+	invalidEnabled.SiteName = "Invalid Enabled Site"
+	invalidEnabled.PublicBaseURL = "https://img.example.com"
+	invalidEnabled.CloudflarePurgeEnabled = true
+	invalidEnabled.CloudflareAPIToken = ""
+	if _, err := adminService.UpdateSystemSettings(ctx, invalidEnabled); err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for enabled purge without token, got %v", err)
+	}
+
+	values, err := repo.GetAllConfig(ctx)
+	if err != nil {
+		t.Fatalf("GetAllConfig returned error: %v", err)
+	}
+	if values["site_name"] != "Original Site" {
+		t.Fatalf("expected failed Cloudflare updates to avoid partial site_name save, got %q", values["site_name"])
+	}
+	if adminService.settings.Current().SiteName != "Original Site" {
+		t.Fatalf("expected failed Cloudflare updates to avoid in-memory reconfigure")
+	}
+}
+
 func TestGetSystemSettingsMarksDefaultSecurityValuesAndPasswordBootstrapState(t *testing.T) {
 	ctx := context.Background()
 	adminService, _ := newAdminServiceTestHarnessWithEnv(t, "change-me-too", "change-me-uid-secret")

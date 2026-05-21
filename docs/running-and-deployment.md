@@ -16,18 +16,18 @@
 
 ### 运行时依赖
 
-| 组件 | 版本要求 | 说明 |
-|------|----------|------|
-| Go | >= 1.25 | 后端编译运行 |
-| Redis | >= 5.x | 缓存和速率限制 |
-| Node.js | >= 20 | 前端构建 |
-| npm | >= 10 | 前端包管理 |
+| 组件    | 版本要求 | 说明           |
+| ------- | -------- | -------------- |
+| Go      | >= 1.25  | 后端编译运行   |
+| Redis   | >= 5.x   | 缓存和速率限制 |
+| Node.js | >= 20    | 前端构建       |
+| npm     | >= 10    | 前端包管理     |
 
 ### 可选依赖
 
-| 组件 | 用途 |
-|------|------|
-| S3 兼容存储 | 上传文件存储后端 |
+| 组件          | 用途             |
+| ------------- | ---------------- |
+| S3 兼容存储   | 上传文件存储后端 |
 | WebDAV 服务器 | 上传文件存储后端 |
 
 ---
@@ -38,18 +38,18 @@
 
 ### 启动环境变量
 
-后端启动环境变量只保留无法在打开 SQLite 前读取或属于启动安全密钥的 6 项：
+后端启动环境变量保留无法在打开 SQLite 前读取或属于启动安全密钥的配置：
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `HTTP_ADDR` | `:8080` | HTTP 监听地址 |
-| `DATABASE_PATH` | `data/omepic.db` | SQLite 数据库文件路径 |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接 URL |
-| `UID_PREFIX` | `omeo_` | UID 明文前缀（尾部下划线会规范化） |
-| `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | UID XOR 加密密钥 |
-| `JWT_SECRET` | `change-me-too` | JWT 签名密钥 |
+| 变量                 | 默认值                     | 说明                               |
+| -------------------- | -------------------------- | ---------------------------------- |
+| `HTTP_ADDR`          | `:8080`                    | HTTP 监听地址                      |
+| `DATABASE_PATH`      | `data/omepic.db`           | SQLite 数据库文件路径              |
+| `REDIS_URL`          | `redis://localhost:6379/0` | Redis 连接 URL                     |
+| `UID_PREFIX`         | `omeo_`                    | UID 明文前缀（尾部下划线会规范化） |
+| `UID_ENCRYPTION_KEY` | `change-me-uid-secret`     | UID XOR 加密密钥                   |
+| `JWT_SECRET`         | `change-me-too`            | JWT 签名密钥                       |
 
-存储配置、公开访问基准 URL、上传策略、维护模式、限流和管理员密码均保存在 SQLite。首次登录或首次修改密码时，如果尚无密码哈希，程序会写入默认 `admin123` 的 bcrypt 哈希；登录后可在管理端设置页修改密码。
+存储配置、公开访问基准 URL、上传策略、AVIF 参数、维护模式、限流、管理员密码和 Cloudflare 图片 URL 清理配置均保存在 SQLite。Cloudflare API Token 是 admin-only runtime secret：SQLite 保存真实值，后台读取时返回遮罩值。首次登录或首次修改密码时，如果尚无密码哈希，程序会写入默认 `admin123` 的 bcrypt 哈希；登录后可在管理端设置页修改密码。
 
 ---
 
@@ -113,6 +113,7 @@ go build -o server.exe ./cmd/server
 ```
 
 此时：
+
 - 访问 `http://host:8080/` → 前端首页
 - 访问 `http://host:8080/admin/dashboard` → 管理后台
 - 访问 `http://host:8080/health` → API 健康检查
@@ -205,6 +206,7 @@ services:
       - UID_PREFIX=omeo_
       - UID_ENCRYPTION_KEY=secure-uid-key
       - JWT_SECRET=secure-jwt-secret
+      # Cloudflare image URL cache purge is configured in the admin runtime settings UI.
     volumes:
       - app-data:/data
       - app-images:/data/images
@@ -271,6 +273,7 @@ go run ./cmd/server
 ### Q: 图片上传后返回 503
 
 检查：
+
 1. 存储后端配置是否正确（文件系统权限？S3 凭证？）
 2. `data/images/` 目录是否存在且可写
 3. Redis 是否正常运行
@@ -311,12 +314,14 @@ server {
 ### Q: 前端白屏/路由不工作
 
 确保：
+
 1. 生产模式下 `backend/web/` 目录存在（执行了 `npm run build:backend`）
 2. 开发模式下确认前端 API 基准地址指向正在运行的后端；生产单端口部署默认使用相对路径
 
 ### Q: 如何备份数据
 
 需要备份的文件和数据库：
+
 1. SQLite 数据库文件（默认 `data/omepic.db`）
 2. 本地图片文件（默认 `data/images/`）
 3. S3/WebDAV 上的图片文件（如使用远程存储）
