@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 func (r *Repository) Migrate(ctx context.Context) error {
@@ -67,13 +68,19 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 	}
+	imageIndexes := map[string]string{
+		"idx_images_uid":                `CREATE INDEX IF NOT EXISTS idx_images_uid ON images(uid);`,
+		"idx_images_storage_md5":        `CREATE INDEX IF NOT EXISTS idx_images_storage_md5 ON images(storage_key, md5_hash);`,
+		"idx_images_created_at":         `CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at DESC);`,
+		"idx_images_token_created_at":   `CREATE INDEX IF NOT EXISTS idx_images_token_created_at ON images(token, created_at DESC);`,
+		"idx_images_ip_created_at":      `CREATE INDEX IF NOT EXISTS idx_images_ip_created_at ON images(ip_address, created_at DESC);`,
+		"idx_images_storage_created_at": `CREATE INDEX IF NOT EXISTS idx_images_storage_created_at ON images(storage_key, created_at DESC);`,
+	}
 	indexes := []string{
-		`CREATE INDEX IF NOT EXISTS idx_images_uid ON images(uid);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_md5_hash ON images(md5_hash);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_file_path ON images(file_path);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_storage_key ON images(storage_key);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_ip_address ON images(ip_address);`,
-		`CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_created_ip ON images(created_at, ip_address);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_created_token ON images(created_at, token);`,
 		`CREATE INDEX IF NOT EXISTS idx_storage_configs_default ON storage_configs(is_default);`,
@@ -90,12 +97,45 @@ func (r *Repository) Migrate(ctx context.Context) error {
 	if err := r.ensureImageColumn(ctx, "storage_key", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if hasDeletedAt, err := testTableColumnExists(ctx, r.db, "images", "deleted_at"); err != nil {
+		return err
+	} else if hasDeletedAt {
+		imageIndexes["idx_images_deleted_created_at"] = `CREATE INDEX IF NOT EXISTS idx_images_deleted_created_at ON images(deleted_at, created_at DESC);`
+	}
+	for name, stmt := range imageIndexes {
+		if err := r.ensureIndex(ctx, name, stmt); err != nil {
+			return err
+		}
+	}
 	for _, stmt := range indexes {
 		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *Repository) ensureIndex(ctx context.Context, name string, ddl string) error {
+	var current string
+	err := r.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, name).Scan(&current)
+	if err == nil {
+		if normalizeIndexSQL(current) == normalizeIndexSQL(ddl) {
+			return nil
+		}
+		if _, err := r.db.ExecContext(ctx, fmt.Sprintf(`DROP INDEX IF EXISTS %s`, name)); err != nil {
+			return err
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, ddl)
+	return err
+}
+
+func normalizeIndexSQL(sql string) string {
+	normalized := strings.TrimSuffix(strings.Join(strings.Fields(sql), " "), ";")
+	normalized = strings.ReplaceAll(normalized, " IF NOT EXISTS", "")
+	return normalized
 }
 
 func (r *Repository) ensureImageColumn(ctx context.Context, column string, ddl string) error {

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"omepic/backend/internal/config"
@@ -45,6 +46,78 @@ func TestMigrateCreatesImagesSchemaWithoutOriginalFilenameColumnAndWithStorageKe
 	}
 	if exists {
 		t.Fatalf("expected ip_bans schema to omit ip_address_masked")
+	}
+}
+
+func TestMigrateCreatesCoreImageIndexesIdempotently(t *testing.T) {
+	ctx := context.Background()
+	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = repo.Close()
+	})
+
+	if err := repo.Migrate(ctx); err != nil {
+		t.Fatalf("first Migrate returned error: %v", err)
+	}
+	if err := repo.Migrate(ctx); err != nil {
+		t.Fatalf("second Migrate returned error: %v", err)
+	}
+
+	expected := map[string]string{
+		"idx_images_uid":                "CREATE INDEX idx_images_uid ON images(uid)",
+		"idx_images_storage_md5":        "CREATE INDEX idx_images_storage_md5 ON images(storage_key, md5_hash)",
+		"idx_images_created_at":         "CREATE INDEX idx_images_created_at ON images(created_at DESC)",
+		"idx_images_token_created_at":   "CREATE INDEX idx_images_token_created_at ON images(token, created_at DESC)",
+		"idx_images_ip_created_at":      "CREATE INDEX idx_images_ip_created_at ON images(ip_address, created_at DESC)",
+		"idx_images_storage_created_at": "CREATE INDEX idx_images_storage_created_at ON images(storage_key, created_at DESC)",
+	}
+	for name, want := range expected {
+		got, err := imageIndexSQL(ctx, repo, name)
+		if err != nil {
+			t.Fatalf("imageIndexSQL(%s) returned error: %v", name, err)
+		}
+		if normalizeIndexSQL(got) != normalizeIndexSQL(want) {
+			t.Fatalf("index %s mismatch:\nwant %s\n got %s", name, want, got)
+		}
+	}
+
+	if _, err := imageIndexSQL(ctx, repo, "idx_images_deleted_created_at"); err == nil {
+		t.Fatalf("expected deleted_at index to be skipped until soft-delete column exists")
+	} else if !strings.Contains(err.Error(), "no rows") {
+		t.Fatalf("expected missing deleted_at index, got error: %v", err)
+	}
+}
+
+func TestMigrateCreatesDeletedAtIndexOnlyWhenColumnExists(t *testing.T) {
+	ctx := context.Background()
+	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = repo.Close()
+	})
+
+	if err := repo.Migrate(ctx); err != nil {
+		t.Fatalf("initial Migrate returned error: %v", err)
+	}
+	if err := repo.ensureImageColumn(ctx, "deleted_at", "DATETIME NULL"); err != nil {
+		t.Fatalf("ensureImageColumn deleted_at returned error: %v", err)
+	}
+	if err := repo.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate after deleted_at returned error: %v", err)
+	}
+
+	got, err := imageIndexSQL(ctx, repo, "idx_images_deleted_created_at")
+	if err != nil {
+		t.Fatalf("imageIndexSQL deleted_at returned error: %v", err)
+	}
+	want := "CREATE INDEX idx_images_deleted_created_at ON images(deleted_at, created_at DESC)"
+	if normalizeIndexSQL(got) != normalizeIndexSQL(want) {
+		t.Fatalf("deleted_at index mismatch:\nwant %s\n got %s", want, got)
 	}
 }
 
@@ -260,6 +333,12 @@ func TestInitializeStorageCatalogSeedsLegacyBackendsAndBackfillsImageStorageKeys
 	if s3Record.StorageKey != "s3-default" {
 		t.Fatalf("expected s3 record to backfill s3-default, got %q", s3Record.StorageKey)
 	}
+}
+
+func imageIndexSQL(ctx context.Context, repo *Repository, name string) (string, error) {
+	var sql string
+	err := repo.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, name).Scan(&sql)
+	return sql, err
 }
 
 func createLegacyImagesTable(ctx context.Context, repo *Repository) error {
