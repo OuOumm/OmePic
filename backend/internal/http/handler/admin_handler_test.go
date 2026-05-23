@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"omepic/backend/internal/config"
+	"omepic/backend/internal/model"
 	"omepic/backend/internal/repository"
 	"omepic/backend/internal/service"
 	"omepic/backend/internal/storage"
@@ -204,6 +205,66 @@ func TestAdminUpdateSystemSettingsSuccessIncludesAVIFFields(t *testing.T) {
 	}
 	if body.Data.Runtime.AvifQuality != 77 || body.Data.Runtime.AvifSpeed != 5 || body.Data.Runtime.MaxImagePixels != 123456 || body.Data.Runtime.AVIFMaxConcurrency != 3 || body.Data.Runtime.AVIFConversionTimeoutSeconds != 45 {
 		t.Fatalf("expected avif resource guard fields in response, got %+v", body.Data.Runtime)
+	}
+}
+
+func TestAdminStorageHealthManualCheckAndList(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adminService := newTestAdminService(t)
+	handler := NewAdminHandler(adminService, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	checkRecorder := httptest.NewRecorder()
+	checkCtx, _ := gin.CreateTestContext(checkRecorder)
+	checkCtx.Params = gin.Params{{Key: "key", Value: "local-default"}}
+	checkCtx.Request = httptest.NewRequest(http.MethodPost, "/admin/storage/local-default/health-check", nil)
+	handler.CheckStorageHealth(checkCtx)
+	if checkRecorder.Code != http.StatusOK {
+		t.Fatalf("expected manual check status 200, got %d body=%s", checkRecorder.Code, checkRecorder.Body.String())
+	}
+	var checkBody struct {
+		Success bool                     `json:"success"`
+		Data    model.StorageHealthCheck `json:"data"`
+	}
+	if err := json.Unmarshal(checkRecorder.Body.Bytes(), &checkBody); err != nil {
+		t.Fatalf("invalid manual check json: %v", err)
+	}
+	if !checkBody.Success || checkBody.Data.StorageKey != "local-default" || checkBody.Data.Status != model.StorageHealthHealthy {
+		t.Fatalf("unexpected manual check response: %+v", checkBody)
+	}
+
+	listRecorder := httptest.NewRecorder()
+	listCtx, _ := gin.CreateTestContext(listRecorder)
+	listCtx.Request = httptest.NewRequest(http.MethodGet, "/admin/storage/health", nil)
+	handler.StorageHealth(listCtx)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+	var listBody struct {
+		Success bool                       `json:"success"`
+		Data    []model.StorageHealthCheck `json:"data"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("invalid list json: %v", err)
+	}
+	if !listBody.Success || len(listBody.Data) != 1 || listBody.Data[0].StorageKey != "local-default" {
+		t.Fatalf("unexpected list response: %+v", listBody)
+	}
+}
+
+func TestAdminStorageHealthCheckAll(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adminService := newTestAdminService(t)
+	handler := NewAdminHandler(adminService, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/admin/storage/health-check-all", nil)
+	handler.CheckAllStorageHealth(ctx)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected check all status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "local-default") || !strings.Contains(recorder.Body.String(), model.StorageHealthHealthy) {
+		t.Fatalf("unexpected check all body: %s", recorder.Body.String())
 	}
 }
 

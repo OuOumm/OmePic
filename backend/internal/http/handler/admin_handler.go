@@ -340,6 +340,33 @@ func (h *AdminHandler) SetDefaultStorageConfig(c *gin.Context) {
 	response.Success(c, http.StatusOK, view)
 }
 
+func (h *AdminHandler) StorageHealth(c *gin.Context) {
+	checks, err := h.service.StorageHealth(c.Request.Context())
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, checks)
+}
+
+func (h *AdminHandler) CheckStorageHealth(c *gin.Context) {
+	check, err := h.service.CheckStorageHealth(c.Request.Context(), c.Param("key"))
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, check)
+}
+
+func (h *AdminHandler) CheckAllStorageHealth(c *gin.Context) {
+	checks, err := h.service.CheckAllStorageHealth(c.Request.Context())
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, checks)
+}
+
 func (h *AdminHandler) GetSystemSettings(c *gin.Context) {
 	settings, err := h.service.GetSystemSettings(c.Request.Context())
 	if err != nil {

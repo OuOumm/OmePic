@@ -105,6 +105,9 @@ func main() {
 	})
 	announcementService := service.NewAnnouncementService(repo)
 	healthService := service.NewHealthService(repo, imageCache)
+	storageHealthService := service.NewStorageHealthService(repo, storageManager, logger)
+	stopStorageHealthHeartbeat := storageHealthService.StartHeartbeat(context.Background(), service.StorageHealthDefaultInterval)
+	defer stopStorageHealthHeartbeat()
 	ipResolver := clientip.NewResolver(nil, "")
 
 	if _, err := imageService.Preheat(ctx); err != nil {

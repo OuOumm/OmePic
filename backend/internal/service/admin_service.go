@@ -601,6 +601,18 @@ func (s *AdminService) SetDefaultStorageConfig(ctx context.Context, storageKey s
 	return view, nil
 }
 
+func (s *AdminService) StorageHealth(ctx context.Context) ([]model.StorageHealthCheck, error) {
+	return NewStorageHealthService(s.repo, s.storage, nil).List(ctx)
+}
+
+func (s *AdminService) CheckStorageHealth(ctx context.Context, storageKey string) (model.StorageHealthCheck, error) {
+	return NewStorageHealthService(s.repo, s.storage, nil).Check(ctx, storageKey)
+}
+
+func (s *AdminService) CheckAllStorageHealth(ctx context.Context) ([]model.StorageHealthCheck, error) {
+	return NewStorageHealthService(s.repo, s.storage, nil).CheckAll(ctx)
+}
+
 func (s *AdminService) GetSystemSettings(ctx context.Context) (AdminSystemSettingsView, error) {
 	return s.loadSystemSettingsView(ctx)
 }

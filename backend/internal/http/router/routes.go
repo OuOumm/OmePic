@@ -25,6 +25,9 @@ const (
 	adminTokensRoute           = "/admin/tokens"
 	adminAuditLogsRoute        = "/admin/audit-logs"
 	adminConfigRoute           = "/admin/config"
+	adminStorageHealthRoute    = "/admin/storage/health"
+	adminStorageHealthKeyRoute = "/admin/storage/:key/health-check"
+	adminStorageHealthAllRoute = "/admin/storage/health-check-all"
 	adminStorageInstancesRoute = "/admin/config/storage-instances"
 	adminConfigDefaultRoute    = "/admin/config/default"
 	adminSystemSettingsRoute   = "/admin/system-settings"
@@ -64,6 +67,9 @@ var (
 	adminTokenEnableRouteSpec    = routeSpec{Path: adminTokensRoute + "/:token_hash/enable", Methods: methods(http.MethodPost)}
 	adminAuditLogsRouteSpec      = routeSpec{Path: adminAuditLogsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminConfigRouteSpec         = routeSpec{Path: adminConfigRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
+	adminStorageHealthSpec       = routeSpec{Path: adminStorageHealthRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminStorageHealthKeySpec    = routeSpec{Path: adminStorageHealthKeyRoute, Methods: methods(http.MethodPost)}
+	adminStorageHealthAllSpec    = routeSpec{Path: adminStorageHealthAllRoute, Methods: methods(http.MethodPost)}
 	adminStorageInstancesSpec    = routeSpec{Path: adminStorageInstancesRoute, Methods: methods(http.MethodPost)}
 	adminStorageInstanceSpec     = routeSpec{Path: adminStorageInstancesRoute + "/:storageKey", Methods: methods(http.MethodPut, http.MethodDelete)}
 	adminConfigDefaultSpec       = routeSpec{Path: adminConfigDefaultRoute, Methods: methods(http.MethodPost)}
@@ -100,6 +106,9 @@ var adminRouteSpecs = []routeSpec{
 	adminTokenEnableRouteSpec,
 	adminAuditLogsRouteSpec,
 	adminConfigRouteSpec,
+	adminStorageHealthSpec,
+	adminStorageHealthKeySpec,
+	adminStorageHealthAllSpec,
 	adminStorageInstancesSpec,
 	adminStorageInstanceSpec,
 	adminConfigDefaultSpec,

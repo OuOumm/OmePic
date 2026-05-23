@@ -16,7 +16,7 @@
 | 6 | 软删除与回收站 | `docs/tasks/soft-delete-recycle-bin.md` | 4 | 已完成 | Implement Agent |
 | 7 | SQLite 核心索引 | `docs/tasks/sqlite-core-indexes.md` | 1.5 | 已完成 | Implement Agent |
 | 8 | 配置审计日志 MVP | `docs/tasks/config-audit-log.md` | 3 | 已完成 | Implement Agent |
-| 9 | 存储健康检查 MVP | `docs/tasks/storage-health-check.md` | 4 | 未开始 | TBD |
+| 9 | 存储健康检查 MVP | `docs/tasks/storage-health-check.md` | 4 | 已完成 | Implement Agent |
 
 ## P1：高价值扩展与架构升级（约 50 人日）
 
