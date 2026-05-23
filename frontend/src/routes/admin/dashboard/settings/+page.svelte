@@ -31,7 +31,7 @@
     if (!system) return warnings;
     if (system.readonly.security.jwt_secret.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningJwtDefault'));
     if (system.readonly.security.uid_encryption_key.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningUidDefault'));
-    if (!system.readonly.security.admin_password.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningAdminPasswordBootstrap'));
+    if (!system.readonly.security.admin_password.configured || system.readonly.security.admin_password.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningAdminPasswordBootstrap'));
     return warnings;
   });
 
@@ -91,9 +91,11 @@
       successMessage: t(preferences.language, 'admin.passwordChanged'),
       fallbackErrorKey: 'admin.passwordChangeError',
       action: () => adminChangePassword(token, oldPassword, newPassword),
-      onSuccess: () => {
+      onSuccess: async () => {
         oldPassword = '';
         newPassword = '';
+        system = await adminGetSystemSettings(token);
+        mimeTypesText = runtimeMimeTypesText(system);
       },
     });
   }

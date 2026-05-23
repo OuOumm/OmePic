@@ -12,7 +12,7 @@
 | 2 | 文件真实性校验 | `docs/tasks/file-authenticity-validation.md` | 2 | 已完成 | Implement Agent |
 | 3 | URL 上传 SSRF 防护 | `docs/tasks/url-upload-ssrf-protection.md` | 3 | 已完成 | Implement Agent |
 | 4 | Token 治理基础 | `docs/tasks/token-governance.md` | 3 | 未开始 | TBD |
-| 5 | 默认密码安全改造 | `docs/tasks/default-password-hardening.md` | 1.5 | 未开始 | TBD |
+| 5 | 默认密码安全改造 | `docs/tasks/default-password-hardening.md` | 1.5 | 已完成 | Implement Agent |
 | 6 | 软删除与回收站 | `docs/tasks/soft-delete-recycle-bin.md` | 4 | 未开始 | TBD |
 | 7 | SQLite 核心索引 | `docs/tasks/sqlite-core-indexes.md` | 1.5 | 已完成 | Implement Agent |
 | 8 | 配置审计日志 MVP | `docs/tasks/config-audit-log.md` | 3 | 未开始 | TBD |

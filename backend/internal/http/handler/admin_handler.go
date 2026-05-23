@@ -297,7 +297,7 @@ func (h *AdminHandler) mapError(c *gin.Context, err error) {
 		service.ErrForbidden: {
 			Status:  http.StatusForbidden,
 			Code:    "forbidden",
-			Message: "forbidden",
+			Message: service.UserMessage(err, "forbidden"),
 		},
 	})
 }

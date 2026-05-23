@@ -58,6 +58,7 @@ func TestGetConfigMasksSecrets(t *testing.T) {
 func TestCreateStorageConfigUsesProvidedKeyAndGeneratesOnlyWhenEmpty(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	customPath := filepath.Join(t.TempDir(), "custom")
 	view, err := adminService.CreateStorageConfig(ctx, AdminStorageConfigCreateInput{
@@ -117,6 +118,7 @@ func TestCreateStorageConfigUsesProvidedKeyAndGeneratesOnlyWhenEmpty(t *testing.
 func TestDeleteStorageConfigRejectsDefaultAndInUseInstances(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	if _, err := adminService.DeleteStorageConfig(ctx, "local-default"); err == nil || !containsError(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict for deleting default storage, got %v", err)
@@ -148,6 +150,7 @@ func TestDeleteStorageConfigRejectsDefaultAndInUseInstances(t *testing.T) {
 func TestUpdateStorageConfigPreservesMaskedSecretsAndReloadsManager(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	if err := repo.CreateStorageConfig(ctx, config.RuntimeStorageConfig{
 		StorageKey:       "s3-secondary",
@@ -217,6 +220,7 @@ func TestUpdateStorageConfigPreservesMaskedSecretsAndReloadsManager(t *testing.T
 func TestUpdateConfigPatchesDefaultStorageInstance(t *testing.T) {
 	ctx := context.Background()
 	adminService, _ := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	nextPath := filepath.Join(t.TempDir(), "next-images")
 	view, err := adminService.UpdateConfig(ctx, AdminConfigUpdateInput{
@@ -259,6 +263,7 @@ func TestUpdateConfigPatchesDefaultStorageInstance(t *testing.T) {
 func TestUpdateConfigSwitchesDefaultStorageInstance(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	if err := repo.CreateStorageConfig(ctx, config.RuntimeStorageConfig{
 		StorageKey:       "local-secondary",
@@ -289,6 +294,7 @@ func TestUpdateConfigSwitchesDefaultStorageInstance(t *testing.T) {
 func TestUpdateConfigRejectsInvalidDefaultBeforePatch(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	original, err := repo.GetStorageConfigByKey(ctx, "local-default")
 	if err != nil {
@@ -318,6 +324,7 @@ func TestUpdateConfigRejectsInvalidDefaultBeforePatch(t *testing.T) {
 func TestUpdateConfigRejectsEmptyDefaultBeforePatch(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	original, err := repo.GetStorageConfigByKey(ctx, "local-default")
 	if err != nil {
@@ -347,6 +354,7 @@ func TestUpdateConfigRejectsEmptyDefaultBeforePatch(t *testing.T) {
 func TestUpdateStorageConfigSurfacesReloadFailureAfterSQLiteSave(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	originalManager := adminService.storage
 	adminService.storage = failingAdminStorageManager{
@@ -382,6 +390,7 @@ func TestUpdateStorageConfigSurfacesReloadFailureAfterSQLiteSave(t *testing.T) {
 func TestUpdateStorageConfigRejectsInvalidReloadBeforeSaving(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	original, err := repo.GetStorageConfigByKey(ctx, "local-default")
 	if err != nil {
@@ -408,6 +417,7 @@ func TestUpdateStorageConfigRejectsInvalidReloadBeforeSaving(t *testing.T) {
 func TestUpdateConfigPatchAndDefaultSwitchRejectsInvalidReloadBeforeSaving(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	if err := repo.CreateStorageConfig(ctx, config.RuntimeStorageConfig{
 		StorageKey:       "local-secondary",
@@ -460,6 +470,7 @@ func TestUpdateConfigPatchAndDefaultSwitchRejectsInvalidReloadBeforeSaving(t *te
 func TestSetDefaultStorageConfigRejectsInvalidReloadBeforeSaving(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	if err := repo.CreateStorageConfig(ctx, config.RuntimeStorageConfig{
 		StorageKey: "broken-s3",
@@ -489,6 +500,7 @@ func TestSetDefaultStorageConfigRejectsInvalidReloadBeforeSaving(t *testing.T) {
 func TestUpdateStorageConfigRejectsBackendChangeForInUseInstance(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 
 	if err := repo.CreateStorageConfig(ctx, config.RuntimeStorageConfig{
 		StorageKey:       "s3-secondary",
@@ -527,6 +539,7 @@ func TestUpdateStorageConfigRejectsBackendChangeForInUseInstance(t *testing.T) {
 func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 	if _, err := adminService.UpdateSystemSettings(ctx, RuntimeSettingsUpdateInput(defaultRuntimeSettings())); err != nil {
 		t.Fatalf("initial UpdateSystemSettings returned error: %v", err)
 	}
@@ -554,6 +567,7 @@ func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *tes
 func TestSystemSettingsMaskAndPreserveCloudflareAPIToken(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 	input := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
 	input.CloudflareZoneID = "zone-123"
 	input.CloudflareAPIToken = "token-secret"
@@ -607,6 +621,7 @@ func TestSystemSettingsMaskAndPreserveCloudflareAPIToken(t *testing.T) {
 func TestUpdateSystemSettingsRejectsInvalidCloudflareConfigWithoutPartialSave(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
 	initial := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
 	initial.SiteName = "Original Site"
 	initial.CloudflareZoneID = "zone-123"
@@ -659,6 +674,9 @@ func TestGetSystemSettingsMarksDefaultSecurityValuesAndPasswordBootstrapState(t 
 	if view.Readonly.Security.AdminPassword.Configured {
 		t.Fatalf("expected admin_password.configured to be false before password bootstrap")
 	}
+	if !view.Readonly.Security.AdminPassword.UsingDefault {
+		t.Fatalf("expected admin_password.using_default to be true before password bootstrap")
+	}
 
 	if _, err := adminService.Login(ctx, DefaultAdminPassword); err != nil {
 		t.Fatalf("expected first-boot default login to succeed, got %v", err)
@@ -670,8 +688,71 @@ func TestGetSystemSettingsMarksDefaultSecurityValuesAndPasswordBootstrapState(t 
 	if !view.Readonly.Security.AdminPassword.Configured {
 		t.Fatalf("expected admin_password.configured to be true after password bootstrap")
 	}
+	if !view.Readonly.Security.AdminPassword.UsingDefault {
+		t.Fatalf("expected admin_password.using_default to be true after default bootstrap")
+	}
+}
+
+func TestChangePasswordUpdatesDefaultPasswordState(t *testing.T) {
+	ctx := context.Background()
+	adminService, _ := newAdminServiceTestHarness(t)
+
+	view, err := adminService.GetSystemSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetSystemSettings returned error: %v", err)
+	}
+	if !view.Readonly.Security.AdminPassword.UsingDefault {
+		t.Fatalf("expected first-boot default state to be true")
+	}
+
+	if err := adminService.ChangePassword(ctx, DefaultAdminPassword, "New-secret!"); err != nil {
+		t.Fatalf("ChangePassword away from default returned error: %v", err)
+	}
+	view, err = adminService.GetSystemSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetSystemSettings after password change returned error: %v", err)
+	}
 	if view.Readonly.Security.AdminPassword.UsingDefault {
-		t.Fatalf("expected admin_password.using_default to remain false until explicit support exists")
+		t.Fatalf("expected admin_password.using_default to be false after changing password")
+	}
+
+	if err := adminService.ChangePassword(ctx, "New-secret!", DefaultAdminPassword); err != nil {
+		t.Fatalf("ChangePassword back to default returned error: %v", err)
+	}
+	view, err = adminService.GetSystemSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetSystemSettings after reset returned error: %v", err)
+	}
+	if !view.Readonly.Security.AdminPassword.UsingDefault {
+		t.Fatalf("expected admin_password.using_default to be true after changing back to default")
+	}
+}
+
+func TestDefaultPasswordBlocksHighRiskSettingsButAllowsPasswordChange(t *testing.T) {
+	ctx := context.Background()
+	adminService, repo := newAdminServiceTestHarness(t)
+
+	_, err := adminService.UpdateSystemSettings(ctx, RuntimeSettingsUpdateInput(defaultRuntimeSettings()))
+	if err == nil || !containsError(err, ErrForbidden) {
+		t.Fatalf("expected default password to block runtime settings, got %v", err)
+	}
+	_, err = adminService.UpdateConfig(ctx, AdminConfigUpdateInput{DefaultStorageKey: strPtr("local-default")})
+	if err == nil || !containsError(err, ErrForbidden) {
+		t.Fatalf("expected default password to block storage config, got %v", err)
+	}
+
+	if err := adminService.ChangePassword(ctx, DefaultAdminPassword, "New-secret!"); err != nil {
+		t.Fatalf("expected password change to remain allowed under default state, got %v", err)
+	}
+	if _, err := adminService.UpdateSystemSettings(ctx, RuntimeSettingsUpdateInput(defaultRuntimeSettings())); err != nil {
+		t.Fatalf("expected runtime settings after password change to succeed, got %v", err)
+	}
+	stored, err := repo.GetConfigValue(ctx, adminPasswordDefaultConfigKey)
+	if err != nil {
+		t.Fatalf("GetConfigValue returned error: %v", err)
+	}
+	if stored != "false" {
+		t.Fatalf("expected default password state false after password change, got %q", stored)
 	}
 }
 
@@ -732,6 +813,13 @@ func (m failingAdminStorageManager) ForKey(storageKey string) (storage.ResolvedP
 
 func (m failingAdminStorageManager) CurrentKey() string {
 	return m.delegate.CurrentKey()
+}
+
+func unlockAdminHighRiskSettings(t *testing.T, ctx context.Context, adminService *AdminService) {
+	t.Helper()
+	if err := adminService.ChangePassword(ctx, DefaultAdminPassword, "New-secret!"); err != nil {
+		t.Fatalf("unlock default admin password returned error: %v", err)
+	}
 }
 
 func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Repository) {
