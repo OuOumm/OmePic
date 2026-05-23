@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -76,6 +78,52 @@ func TestAdminChangePasswordWeakNewPasswordReturnsInvalidInput(t *testing.T) {
 	}
 	if body.Success || body.Error.Code != "invalid_input" || body.Error.Message != "new password must be at least 8 characters and include uppercase, lowercase, and symbol characters" {
 		t.Fatalf("expected password strength error, got %+v", body)
+	}
+}
+
+func TestAdminTokenAPIUsesHashAndDoesNotExposePlaintext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adminService, repo := newTestAdminServiceWithRepo(t)
+	ctx := context.Background()
+	plaintext := "plain-secret-token"
+	if err := service.NewTokenService(repo).RecordUpload(ctx, plaintext, 42, "203.0.113.10", time.Now().UTC()); err != nil {
+		t.Fatalf("RecordUpload returned error: %v", err)
+	}
+	handler := NewAdminHandler(adminService, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	listRecorder := httptest.NewRecorder()
+	listCtx, _ := gin.CreateTestContext(listRecorder)
+	listCtx.Request = httptest.NewRequest(http.MethodGet, "/admin/tokens", nil)
+	handler.Tokens(listCtx)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+	body := listRecorder.Body.String()
+	if strings.Contains(body, plaintext) {
+		t.Fatalf("token list leaked plaintext token: %s", body)
+	}
+	hash := service.TokenHash(plaintext)
+	if !strings.Contains(body, hash) || strings.Contains(body, "/"+plaintext+"/") {
+		t.Fatalf("token list should include hash only, body=%s", body)
+	}
+
+	disableRecorder := httptest.NewRecorder()
+	disableCtx, _ := gin.CreateTestContext(disableRecorder)
+	disableCtx.Params = gin.Params{{Key: "token_hash", Value: hash}}
+	disableCtx.Request = httptest.NewRequest(http.MethodPost, "/admin/tokens/"+hash+"/disable", bytes.NewBufferString(`{"reason":"abuse"}`))
+	disableCtx.Request.Header.Set("Content-Type", "application/json")
+	handler.DisableToken(disableCtx)
+	if disableRecorder.Code != http.StatusOK {
+		t.Fatalf("expected disable status 200, got %d body=%s", disableRecorder.Code, disableRecorder.Body.String())
+	}
+
+	enableRecorder := httptest.NewRecorder()
+	enableCtx, _ := gin.CreateTestContext(enableRecorder)
+	enableCtx.Params = gin.Params{{Key: "token_hash", Value: hash}}
+	enableCtx.Request = httptest.NewRequest(http.MethodPost, "/admin/tokens/"+hash+"/enable", nil)
+	handler.EnableToken(enableCtx)
+	if enableRecorder.Code != http.StatusOK {
+		t.Fatalf("expected enable status 200, got %d body=%s", enableRecorder.Code, enableRecorder.Body.String())
 	}
 }
 
@@ -161,6 +209,12 @@ func TestAdminUpdateSystemSettingsSuccessIncludesAVIFFields(t *testing.T) {
 
 func newTestAdminService(t *testing.T) *service.AdminService {
 	t.Helper()
+	adminService, _ := newTestAdminServiceWithRepo(t)
+	return adminService
+}
+
+func newTestAdminServiceWithRepo(t *testing.T) (*service.AdminService, *repository.Repository) {
+	t.Helper()
 
 	dir := t.TempDir()
 	repo, err := repository.New(filepath.Join(dir, "test.sqlite"))
@@ -188,5 +242,5 @@ func newTestAdminService(t *testing.T) *service.AdminService {
 		t.Fatalf("storage.NewManager returned error: %v", err)
 	}
 	settings := service.NewRuntimeSettingsManager()
-	return service.NewAdminService(repo, manager, settings, nil, "test-secret", service.AdminEnvMetadata{})
+	return service.NewAdminService(repo, manager, settings, nil, "test-secret", service.AdminEnvMetadata{}), repo
 }

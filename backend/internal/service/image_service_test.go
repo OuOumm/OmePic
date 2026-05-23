@@ -392,6 +392,59 @@ func (r fakeUploadStorageResolver) Reconfigure([]config.RuntimeStorageConfig) er
 	return nil
 }
 
+func TestUploadRejectsDisabledTokenBeforePersistingImage(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-disabled-token")
+	service.SetTokenService(NewTokenService(repo))
+
+	token := "disabled-upload-token"
+	if err := service.tokenService.Disable(ctx, TokenHash(token), "abuse"); err != nil {
+		t.Fatalf("Disable returned error: %v", err)
+	}
+
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            token,
+		OriginalFilename: "blocked.png",
+		MIMEType:         "image/png",
+		Bytes:            mustPNGBytes(t, color.NRGBA{R: 255, A: 255}),
+		BaseURL:          "https://img.example",
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected forbidden for disabled token, got %v", err)
+	}
+	if _, err := repo.FindByUID(ctx, "uid-disabled-token"); !repository.IsNotFound(err) {
+		t.Fatalf("expected no image row for disabled token, got %v", err)
+	}
+}
+
+func TestUploadRecordsTokenUsageAfterSuccess(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-token-usage")
+	service.SetTokenService(NewTokenService(repo))
+
+	token := "usage-upload-token"
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            token,
+		OriginalFilename: "ok.png",
+		MIMEType:         "image/png",
+		Bytes:            mustPNGBytes(t, color.NRGBA{G: 255, A: 255}),
+		IPAddress:        "198.51.100.10",
+		BaseURL:          "https://img.example",
+	})
+	if err != nil {
+		t.Fatalf("Upload returned error: %v", err)
+	}
+	entries, err := NewTokenService(repo).List(ctx)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(entries.Items) != 1 || entries.Items[0].TokenHash != TokenHash(token) || entries.Items[0].UploadCount != 1 || entries.Items[0].TotalBytes == 0 || entries.Items[0].LastIP != "198.51.100.10" {
+		t.Fatalf("unexpected token usage entries: %+v", entries.Items)
+	}
+}
+
 func TestUploadAcceptsRealJPEGAndStoresAVIFOutput(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, rootDir, uidCodec := newImageServiceTestHarness(t)

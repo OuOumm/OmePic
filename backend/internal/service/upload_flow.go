@@ -73,6 +73,11 @@ func (f uploadFlow) beginTransaction() (*uploadTransaction, error) {
 	if strings.TrimSpace(f.input.Token) == "" {
 		return nil, ErrMissingToken
 	}
+	if f.service.tokenService != nil {
+		if err := f.service.tokenService.EnsureTokenAllowed(f.ctx, f.input.Token); err != nil {
+			return nil, err
+		}
+	}
 	if err := f.service.ensureIPAllowed(f.ctx, f.input.IPAddress); err != nil {
 		return nil, err
 	}
@@ -168,6 +173,9 @@ func (tx *uploadTransaction) commitDuplicate(uid string, existing model.ImageRec
 	if err := tx.commitImageRecord(record); err != nil {
 		return UploadOutput{}, err
 	}
+	if err := tx.recordTokenUsage(record); err != nil {
+		return UploadOutput{}, err
+	}
 	return buildUploadOutput(record, tx.flow.input.BaseURL, tx.flow.input.OriginalFilename, true), nil
 }
 
@@ -231,6 +239,9 @@ func (tx *uploadTransaction) commitNewPhysical(physical physicalUploadResult) (U
 	if err := tx.flow.service.md5Mappings().RememberNewPhysical(tx.flow.ctx, tx.md5Key, physical.uid); err != nil {
 		return UploadOutput{}, err
 	}
+	if err := tx.recordTokenUsage(record); err != nil {
+		return UploadOutput{}, err
+	}
 	return buildUploadOutput(record, tx.flow.input.BaseURL, tx.flow.input.OriginalFilename, false), nil
 }
 
@@ -268,6 +279,17 @@ func (tx *uploadTransaction) writeUIDCache(record model.ImageRecord) error {
 		return fmt.Errorf("%w: redis uid write failed", ErrDependencyUnavailable)
 	}
 	return nil
+}
+
+func (tx *uploadTransaction) recordTokenUsage(record model.ImageRecord) error {
+	if tx.flow.service.tokenService == nil {
+		return nil
+	}
+	uploadSize := tx.source.size
+	if uploadSize <= 0 {
+		uploadSize = record.Size
+	}
+	return tx.flow.service.tokenService.RecordUpload(tx.flow.ctx, record.Token, uploadSize, record.IPAddress, record.CreatedAt)
 }
 
 func emptyUploadError(settings RuntimeSettings) error {

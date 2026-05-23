@@ -67,6 +67,25 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
+		`CREATE TABLE IF NOT EXISTS token_usage (
+			token_hash TEXT PRIMARY KEY,
+			token_preview TEXT NOT NULL DEFAULT '',
+			upload_count INTEGER NOT NULL DEFAULT 0,
+			total_bytes INTEGER NOT NULL DEFAULT 0,
+			last_ip TEXT NOT NULL DEFAULT '',
+			last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE TABLE IF NOT EXISTS token_controls (
+			token_hash TEXT PRIMARY KEY,
+			token_preview TEXT NOT NULL DEFAULT '',
+			disabled INTEGER NOT NULL DEFAULT 0,
+			reason TEXT NOT NULL DEFAULT '',
+			disabled_at DATETIME NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
 	}
 	imageIndexes := map[string]string{
 		"idx_images_uid":                `CREATE INDEX IF NOT EXISTS idx_images_uid ON images(uid);`,
@@ -87,6 +106,8 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_announcements_public ON announcements(status, starts_at, ends_at, sort_order, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_hash ON ip_bans(ip_hash);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans(expires_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_token_usage_updated_at ON token_usage(updated_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_token_controls_disabled ON token_controls(disabled, updated_at DESC);`,
 	}
 
 	for _, stmt := range schema {

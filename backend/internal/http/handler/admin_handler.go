@@ -171,6 +171,38 @@ func (h *AdminHandler) AbuseIPDetail(c *gin.Context) {
 	response.Success(c, http.StatusOK, detail)
 }
 
+func (h *AdminHandler) Tokens(c *gin.Context) {
+	result, err := h.service.Tokens(c.Request.Context())
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *AdminHandler) DisableToken(c *gin.Context) {
+	var payload service.TokenDisableInput
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid_input", "invalid token payload")
+			return
+		}
+	}
+	if err := h.service.DisableToken(c.Request.Context(), c.Param("token_hash"), payload.Reason); err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{})
+}
+
+func (h *AdminHandler) EnableToken(c *gin.Context) {
+	if err := h.service.EnableToken(c.Request.Context(), c.Param("token_hash")); err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{})
+}
+
 func (h *AdminHandler) DeleteIPBan(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err := h.service.DeleteIPBan(c.Request.Context(), id); err != nil {

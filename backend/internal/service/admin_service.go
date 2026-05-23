@@ -406,6 +406,18 @@ func (s *AdminService) AbuseIPDetail(ctx context.Context, ipAddress string) (mod
 	return newSecurityAnalysis(s.repo).IPDetail(ctx, ipAddress)
 }
 
+func (s *AdminService) Tokens(ctx context.Context) (TokenListResult, error) {
+	return NewTokenService(s.repo).List(ctx)
+}
+
+func (s *AdminService) DisableToken(ctx context.Context, tokenHash string, reason string) error {
+	return NewTokenService(s.repo).Disable(ctx, tokenHash, reason)
+}
+
+func (s *AdminService) EnableToken(ctx context.Context, tokenHash string) error {
+	return NewTokenService(s.repo).Enable(ctx, tokenHash)
+}
+
 func (s *AdminService) DeleteIPBan(ctx context.Context, id int64) error {
 	if id < 1 {
 		return ErrInvalidInput

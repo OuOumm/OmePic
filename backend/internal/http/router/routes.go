@@ -20,6 +20,7 @@ const (
 	adminIPBansRoute           = "/admin/ip-bans"
 	adminAbuseOverviewRoute    = "/admin/abuse/overview"
 	adminAbuseIPRoute          = "/admin/abuse/ip"
+	adminTokensRoute           = "/admin/tokens"
 	adminConfigRoute           = "/admin/config"
 	adminStorageInstancesRoute = "/admin/config/storage-instances"
 	adminConfigDefaultRoute    = "/admin/config/default"
@@ -53,6 +54,9 @@ var (
 	adminIPBanImagesRouteSpec    = routeSpec{Path: adminIPBansRoute + "/:id/images", Methods: methods(http.MethodDelete)}
 	adminAbuseOverviewRouteSpec  = routeSpec{Path: adminAbuseOverviewRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminAbuseIPRouteSpec        = routeSpec{Path: adminAbuseIPRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminTokensRouteSpec         = routeSpec{Path: adminTokensRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminTokenDisableRouteSpec   = routeSpec{Path: adminTokensRoute + "/:token_hash/disable", Methods: methods(http.MethodPost)}
+	adminTokenEnableRouteSpec    = routeSpec{Path: adminTokensRoute + "/:token_hash/enable", Methods: methods(http.MethodPost)}
 	adminConfigRouteSpec         = routeSpec{Path: adminConfigRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
 	adminStorageInstancesSpec    = routeSpec{Path: adminStorageInstancesRoute, Methods: methods(http.MethodPost)}
 	adminStorageInstanceSpec     = routeSpec{Path: adminStorageInstancesRoute + "/:storageKey", Methods: methods(http.MethodPut, http.MethodDelete)}
@@ -83,6 +87,9 @@ var adminRouteSpecs = []routeSpec{
 	adminIPBanImagesRouteSpec,
 	adminAbuseOverviewRouteSpec,
 	adminAbuseIPRouteSpec,
+	adminTokensRouteSpec,
+	adminTokenDisableRouteSpec,
+	adminTokenEnableRouteSpec,
 	adminConfigRouteSpec,
 	adminStorageInstancesSpec,
 	adminStorageInstanceSpec,
