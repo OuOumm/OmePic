@@ -20,9 +20,12 @@ type uploadFlow struct {
 }
 
 type uploadRuntimePolicy struct {
-	settings     RuntimeSettings
-	maxBytes     int64
-	avifSettings AVIFConversionSettings
+	settings                     RuntimeSettings
+	maxBytes                     int64
+	maxImagePixels               int64
+	avifMaxConcurrency           int
+	avifConversionTimeoutSeconds int
+	avifSettings                 AVIFConversionSettings
 }
 
 // uploadTransaction owns the upload-time resource bundle and commit state machine:
@@ -123,9 +126,12 @@ func (f uploadFlow) beginTransaction() (*uploadTransaction, error) {
 func (f uploadFlow) runtimePolicy() uploadRuntimePolicy {
 	settings := f.service.currentRuntimeSettings()
 	return uploadRuntimePolicy{
-		settings:     settings,
-		maxBytes:     settings.MaxUploadSizeBytes(),
-		avifSettings: avifConversionSettingsFromRuntime(settings),
+		settings:                     settings,
+		maxBytes:                     settings.MaxUploadSizeBytes(),
+		maxImagePixels:               settings.MaxImagePixels,
+		avifMaxConcurrency:           settings.AVIFMaxConcurrency,
+		avifConversionTimeoutSeconds: settings.AVIFConversionTimeoutSeconds,
+		avifSettings:                 avifConversionSettingsFromRuntime(settings),
 	}
 }
 
@@ -193,10 +199,20 @@ func (tx *uploadTransaction) writePhysicalObject(uid string) (physicalUploadResu
 	if err != nil {
 		return physicalUploadResult{}, fmt.Errorf("%w: failed to open upload source", ErrDependencyUnavailable)
 	}
+	if err := validateImagePixelLimit(sourceReader, tx.policy.maxImagePixels); err != nil {
+		_ = sourceReader.Close()
+		return physicalUploadResult{}, err
+	}
+	_ = sourceReader.Close()
+
+	sourceReader, err = tx.source.Open()
+	if err != nil {
+		return physicalUploadResult{}, fmt.Errorf("%w: failed to reopen upload source", ErrDependencyUnavailable)
+	}
 	defer sourceReader.Close()
 
 	objectKey := storage.BuildObjectKey(uid, publicImageExtension)
-	convertedSize, storedPath, err := tx.flow.service.saveConvertedAVIF(tx.flow.ctx, tx.storage.Provider, objectKey, sourceReader, tx.policy.avifSettings)
+	convertedSize, storedPath, err := tx.flow.service.saveConvertedAVIF(tx.flow.ctx, tx.storage.Provider, objectKey, sourceReader, tx.policy.avifSettings, tx.policy.avifMaxConcurrency, tx.policy.avifConversionTimeoutSeconds)
 	if err != nil {
 		return physicalUploadResult{}, err
 	}
@@ -293,10 +309,17 @@ func (c avifStreamConversion) save(ctx context.Context, objectKey string, source
 		saveResultCh <- avifStreamSaveResult{storedPath: storedPath, err: err}
 	}()
 
-	saveResult := <-saveResultCh
-	if saveResult.err != nil {
+	var saveResult avifStreamSaveResult
+	select {
+	case saveResult = <-saveResultCh:
+		if saveResult.err != nil {
+			_ = pipeReader.Close()
+			_ = pipeWriter.CloseWithError(saveResult.err)
+		}
+	case <-ctx.Done():
 		_ = pipeReader.Close()
-		_ = pipeWriter.CloseWithError(saveResult.err)
+		_ = pipeWriter.CloseWithError(ctx.Err())
+		return 0, "", fmt.Errorf("%w: avif conversion timed out", ErrDependencyUnavailable)
 	}
 
 	encodeErr := <-encodeErrCh

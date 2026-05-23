@@ -151,6 +151,39 @@ var runtimeConfigFields = []ConfigField{
 		}),
 	},
 	{
+		Key:     "max_image_pixels",
+		Type:    FieldTypeInt,
+		Default: DefaultMaxImagePixels,
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return int(settings.MaxImagePixels), nil
+		},
+		Set: setIntRuntimeField("max_image_pixels", func(settings *RuntimeSettings, value int) {
+			settings.MaxImagePixels = int64(value)
+		}),
+	},
+	{
+		Key:     "avif_max_concurrency",
+		Type:    FieldTypeInt,
+		Default: DefaultAVIFMaxConcurrency,
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return settings.AVIFMaxConcurrency, nil
+		},
+		Set: setIntRuntimeField("avif_max_concurrency", func(settings *RuntimeSettings, value int) {
+			settings.AVIFMaxConcurrency = value
+		}),
+	},
+	{
+		Key:     "avif_conversion_timeout_seconds",
+		Type:    FieldTypeInt,
+		Default: DefaultAVIFConversionTimeoutSeconds,
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return settings.AVIFConversionTimeoutSeconds, nil
+		},
+		Set: setIntRuntimeField("avif_conversion_timeout_seconds", func(settings *RuntimeSettings, value int) {
+			settings.AVIFConversionTimeoutSeconds = value
+		}),
+	},
+	{
 		Key:     "allow_storage_selection",
 		Type:    FieldTypeBool,
 		Default: true,

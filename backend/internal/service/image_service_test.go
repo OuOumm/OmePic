@@ -816,6 +816,41 @@ func TestUploadCleansNewPhysicalObjectWhenRecordCommitFails(t *testing.T) {
 	}
 }
 
+func TestUploadRejectsImageOverPixelLimitBeforeConversion(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-pixel-limit")
+	service.settings.Reconfigure(defaultRuntimeSettings())
+	settings := service.settings.Current()
+	settings.MaxImagePixels = 3
+	service.settings.Reconfigure(settings)
+
+	conversionCalls := 0
+	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
+		conversionCalls++
+		return encodeAVIFToWriter(source, target, settings)
+	}
+
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "large.png",
+		MIMEType:         "image/png",
+		Bytes:            mustPNGBytes(t, color.RGBA{R: 80, G: 160, B: 40, A: 255}),
+		BaseURL:          "http://localhost:8080",
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for image over pixel limit, got %v", err)
+	}
+	if conversionCalls != 0 {
+		t.Fatalf("expected pixel limit rejection before conversion, got %d calls", conversionCalls)
+	}
+	if records, listErr := repo.ListAllImages(ctx); listErr != nil {
+		t.Fatalf("ListAllImages returned error: %v", listErr)
+	} else if len(records) != 0 {
+		t.Fatalf("expected no image rows after pixel limit rejection, got %d", len(records))
+	}
+}
+
 func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
@@ -959,6 +994,74 @@ func TestUploadSerializesSameStorageMD5WithoutGlobalUploadLock(t *testing.T) {
 	}
 }
 
+func TestSaveConvertedAVIFRespectsTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	service, _, _, _, _ := newImageServiceTestHarness(t)
+	provider := &fakeStreamStorageProvider{}
+	service.encoder = func(io.Reader, io.Writer, AVIFConversionSettings) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+			return nil
+		}
+	}
+
+	start := time.Now()
+	_, _, err := service.saveConvertedAVIF(ctx, provider, "timeout.avif", strings.NewReader("image"), AVIFConversionSettings{Quality: 60, Speed: 8}, DefaultAVIFMaxConcurrency, DefaultAVIFConversionTimeoutSeconds)
+	if err == nil || !containsError(err, ErrDependencyUnavailable) {
+		t.Fatalf("expected timeout to map to dependency unavailable, got %v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("expected timeout to return quickly")
+	}
+}
+
+func TestSaveConvertedAVIFLimitsConcurrency(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, _, _ := newImageServiceTestHarness(t)
+	provider := &fakeStreamStorageProvider{}
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
+		started <- struct{}{}
+		<-release
+		_, err := target.Write([]byte("avif"))
+		return err
+	}
+
+	run := func(name string) <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			_, _, err := service.saveConvertedAVIF(ctx, provider, name, strings.NewReader("image"), AVIFConversionSettings{Quality: 60, Speed: 8}, 1, DefaultAVIFConversionTimeoutSeconds)
+			done <- err
+		}()
+		return done
+	}
+
+	firstDone := run("one.avif")
+	<-started
+	secondDone := run("two.avif")
+	select {
+	case <-started:
+		t.Fatalf("second conversion started before first released")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first conversion failed: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatalf("second conversion did not start after first released")
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second conversion failed: %v", err)
+	}
+}
+
 func TestSaveConvertedAVIFPrefersEncoderInvalidInputOverSaveFailure(t *testing.T) {
 	ctx := context.Background()
 	service, _, _, _, _ := newImageServiceTestHarness(t)
@@ -967,7 +1070,7 @@ func TestSaveConvertedAVIFPrefersEncoderInvalidInputOverSaveFailure(t *testing.T
 		return WithUserMessage(ErrInvalidInput, "bad source image")
 	}
 
-	_, _, err := service.saveConvertedAVIF(ctx, provider, "bad.avif", strings.NewReader("not an image"), AVIFConversionSettings{Quality: 60, Speed: 8})
+	_, _, err := service.saveConvertedAVIF(ctx, provider, "bad.avif", strings.NewReader("not an image"), AVIFConversionSettings{Quality: 60, Speed: 8}, DefaultAVIFMaxConcurrency, DefaultAVIFConversionTimeoutSeconds)
 	if err == nil || !containsError(err, ErrInvalidInput) {
 		t.Fatalf("expected encoder invalid input to take priority over save failure, got %v", err)
 	}

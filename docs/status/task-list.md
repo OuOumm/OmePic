@@ -8,7 +8,7 @@
 
 | # | 任务名称 | 文件路径 | 预估人日 | 状态 | 负责人 |
 |---|----------|----------|----------|------|--------|
-| 1 | 上传资源保护 | `docs/tasks/upload-resource-guard.md` | 2 | 未开始 | TBD |
+| 1 | 上传资源保护 | `docs/tasks/upload-resource-guard.md` | 2 | 已完成 | Implement Agent |
 | 2 | 文件真实性校验 | `docs/tasks/file-authenticity-validation.md` | 2 | 未开始 | TBD |
 | 3 | URL 上传 SSRF 防护 | `docs/tasks/url-upload-ssrf-protection.md` | 3 | 未开始 | TBD |
 | 4 | Token 治理基础 | `docs/tasks/token-governance.md` | 3 | 未开始 | TBD |

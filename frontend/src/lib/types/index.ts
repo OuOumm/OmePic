@@ -135,6 +135,9 @@ export interface RuntimeSettings {
   allowed_mime_types: string[];
   avif_quality: number;
   avif_speed: number;
+  max_image_pixels: number;
+  avif_max_concurrency: number;
+  avif_conversion_timeout_seconds: number;
   allow_storage_selection: boolean;
   maintenance_mode: boolean;
   maintenance_message: string;

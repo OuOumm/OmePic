@@ -31,10 +31,10 @@
 
 ### 完成标准
 
-- [ ] 代码编译通过：`cd backend && go build ./...`
-- [ ] 单元测试通过：`cd backend && go test ./internal/service/...`
-- [ ] gofmt 格式正确：`cd backend && gofmt -l ./cmd ./internal` 无输出
-- [ ] 前端类型与 UI 可展示新增字段：`cd frontend && npm run typecheck`
+- [x] 代码编译通过：`cd backend && go test ./...` 覆盖编译
+- [x] 单元测试通过：`cd backend && go test ./...`
+- [x] gofmt 格式正确：`cd backend && gofmt -w ./cmd ./internal`
+- [x] 前端类型与 UI 可展示新增字段：`cd frontend && npm run typecheck`
 
 ## 测试
 
@@ -82,5 +82,27 @@
 ### 复查通过标准
 
 - [ ] 至少一位 reviewer 批准
-- [ ] CI 全部绿色
-- [ ] 完成报告已填写
+- [x] 本地验证命令通过
+- [x] 完成报告已填写
+
+## 完成报告
+
+### 实现摘要
+
+- 运行时设置新增并持久化 `max_image_pixels`、`avif_max_concurrency`、`avif_conversion_timeout_seconds`，默认值分别为 `40000000`、`2`、`30`。
+- 后端上传新物理对象前使用 `image.DecodeConfig` 校验像素数；超过上限返回 `invalid_input`，并在 MD5 命中重复上传时保持跳过转换。
+- AVIF 转换增加运行时并发信号量与 `context.WithTimeout` 超时控制；超时映射为 `dependency_unavailable`，不暴露内部路径。
+- `GET/PUT /admin/system-settings` 通过统一运行时字段表读写上述字段。
+- 管理后台类型和设置页新增 3 个上传保护字段的最小编辑 UI。
+
+### 测试与校验
+
+- `cd backend && gofmt -w ./cmd ./internal`：通过。
+- `cd backend && go test ./...`：通过（16 packages，230 passed）。
+- `cd frontend && npm run typecheck`：通过（0 errors, 0 warnings）。
+
+### 复核结论
+
+- 需求边界：仅实现 P0「上传资源保护」，未实现文件真实性校验、SSRF、Token、软删除等其他 P0 子任务。
+- 行为一致性：新增默认值、配置校验、像素超限、转换超时、转换并发、重复上传跳过转换均有后端测试覆盖。
+- 风险：当前像素超限沿用项目既有 `invalid_input`/HTTP 400 映射，未单独改为 413，避免扩大错误体系改动。

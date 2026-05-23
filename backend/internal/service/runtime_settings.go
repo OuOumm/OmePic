@@ -21,6 +21,9 @@ const (
 	DefaultUploadRateLimitMaxRequests   = 20
 	DefaultAVIFQuality                  = 60
 	DefaultAVIFSpeed                    = 8
+	DefaultMaxImagePixels               = 40000000
+	DefaultAVIFMaxConcurrency           = 2
+	DefaultAVIFConversionTimeoutSeconds = 30
 	bytesPerMB                          = 1024 * 1024
 )
 
@@ -44,6 +47,9 @@ type RuntimeSettings struct {
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
 	AvifQuality                  int      `json:"avif_quality"`
 	AvifSpeed                    int      `json:"avif_speed"`
+	MaxImagePixels               int64    `json:"max_image_pixels"`
+	AVIFMaxConcurrency           int      `json:"avif_max_concurrency"`
+	AVIFConversionTimeoutSeconds int      `json:"avif_conversion_timeout_seconds"`
 	AllowStorageSelect           bool     `json:"allow_storage_selection"`
 	MaintenanceMode              bool     `json:"maintenance_mode"`
 	MaintenanceMessage           string   `json:"maintenance_message"`
@@ -139,6 +145,9 @@ type RuntimeSettingsUpdateInput struct {
 	AllowedMIMETypes             []string `json:"allowed_mime_types"`
 	AvifQuality                  int      `json:"avif_quality"`
 	AvifSpeed                    int      `json:"avif_speed"`
+	MaxImagePixels               int64    `json:"max_image_pixels"`
+	AVIFMaxConcurrency           int      `json:"avif_max_concurrency"`
+	AVIFConversionTimeoutSeconds int      `json:"avif_conversion_timeout_seconds"`
 	AllowStorageSelect           bool     `json:"allow_storage_selection"`
 	MaintenanceMode              bool     `json:"maintenance_mode"`
 	MaintenanceMessage           string   `json:"maintenance_message"`
@@ -240,6 +249,9 @@ func validateRuntimeSettingsInput(input RuntimeSettingsUpdateInput, strictCloudf
 		AllowedMIMETypes:             input.AllowedMIMETypes,
 		AvifQuality:                  input.AvifQuality,
 		AvifSpeed:                    input.AvifSpeed,
+		MaxImagePixels:               input.MaxImagePixels,
+		AVIFMaxConcurrency:           input.AVIFMaxConcurrency,
+		AVIFConversionTimeoutSeconds: input.AVIFConversionTimeoutSeconds,
 		AllowStorageSelect:           input.AllowStorageSelect,
 		MaintenanceMode:              input.MaintenanceMode,
 		MaintenanceMessage:           strings.TrimSpace(input.MaintenanceMessage),
@@ -279,6 +291,15 @@ func validateRuntimeSettingsInput(input RuntimeSettingsUpdateInput, strictCloudf
 	}
 	if settings.AvifSpeed < 0 || settings.AvifSpeed > 10 {
 		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif speed must be between 0 and 10")
+	}
+	if settings.MaxImagePixels < 1 {
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "max image pixels must be greater than 0")
+	}
+	if settings.AVIFMaxConcurrency < 1 {
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif max concurrency must be greater than 0")
+	}
+	if settings.AVIFConversionTimeoutSeconds < 1 {
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif conversion timeout seconds must be greater than 0")
 	}
 	allowed, err := normalizeMIMETypes(settings.AllowedMIMETypes)
 	if err != nil {

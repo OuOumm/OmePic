@@ -84,8 +84,8 @@ func TestAdminUpdateSystemSettingsRejectsInvalidAVIFSettings(t *testing.T) {
 	handler := NewAdminHandler(newTestAdminService(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	for _, raw := range []string{
-		`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/png"],"avif_quality":101,"avif_speed":8,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`,
-		`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/png"],"avif_quality":60,"avif_speed":11,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`,
+		`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/png"],"avif_quality":101,"avif_speed":8,"max_image_pixels":40000000,"avif_max_concurrency":2,"avif_conversion_timeout_seconds":30,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`,
+		`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/png"],"avif_quality":60,"avif_speed":11,"max_image_pixels":40000000,"avif_max_concurrency":2,"avif_conversion_timeout_seconds":30,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPut, "/admin/system-settings", bytes.NewBufferString(raw))
@@ -118,7 +118,7 @@ func TestAdminUpdateSystemSettingsSuccessIncludesAVIFFields(t *testing.T) {
 	handler := NewAdminHandler(newTestAdminService(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPut, "/admin/system-settings", bytes.NewBufferString(`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/jpeg","image/png"],"avif_quality":77,"avif_speed":5,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`))
+	request := httptest.NewRequest(http.MethodPut, "/admin/system-settings", bytes.NewBufferString(`{"site_name":"OmePic","site_tagline":"Tagline","public_base_url":"","max_upload_size_mb":20,"allowed_mime_types":["image/jpeg","image/png"],"avif_quality":77,"avif_speed":5,"max_image_pixels":123456,"avif_max_concurrency":3,"avif_conversion_timeout_seconds":45,"allow_storage_selection":true,"maintenance_mode":false,"maintenance_message":"","rate_limit_window_minutes":1,"rate_limit_max_requests":120,"upload_rate_limit_window_minutes":10,"upload_rate_limit_max_requests":20}`))
 	request.Header.Set("Content-Type", "application/json")
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = request
@@ -132,8 +132,11 @@ func TestAdminUpdateSystemSettingsSuccessIncludesAVIFFields(t *testing.T) {
 		Success bool `json:"success"`
 		Data    struct {
 			Runtime struct {
-				AvifQuality int `json:"avif_quality"`
-				AvifSpeed   int `json:"avif_speed"`
+				AvifQuality                  int   `json:"avif_quality"`
+				AvifSpeed                    int   `json:"avif_speed"`
+				MaxImagePixels               int64 `json:"max_image_pixels"`
+				AVIFMaxConcurrency           int   `json:"avif_max_concurrency"`
+				AVIFConversionTimeoutSeconds int   `json:"avif_conversion_timeout_seconds"`
 			} `json:"runtime"`
 		} `json:"data"`
 	}
@@ -143,8 +146,8 @@ func TestAdminUpdateSystemSettingsSuccessIncludesAVIFFields(t *testing.T) {
 	if !body.Success {
 		t.Fatalf("expected success response, got %+v", body)
 	}
-	if body.Data.Runtime.AvifQuality != 77 || body.Data.Runtime.AvifSpeed != 5 {
-		t.Fatalf("expected avif fields in response, got %+v", body.Data.Runtime)
+	if body.Data.Runtime.AvifQuality != 77 || body.Data.Runtime.AvifSpeed != 5 || body.Data.Runtime.MaxImagePixels != 123456 || body.Data.Runtime.AVIFMaxConcurrency != 3 || body.Data.Runtime.AVIFConversionTimeoutSeconds != 45 {
+		t.Fatalf("expected avif resource guard fields in response, got %+v", body.Data.Runtime)
 	}
 }
 

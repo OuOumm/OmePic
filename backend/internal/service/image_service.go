@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"omepic/backend/internal/cache"
 	"omepic/backend/internal/config"
@@ -132,6 +134,9 @@ type ImageService struct {
 	generateUID         UIDGenerator
 	validateUID         UIDValidator
 	encoder             func(io.Reader, io.Writer, AVIFConversionSettings) error
+	avifLimiterMu       sync.Mutex
+	avifLimiter         chan struct{}
+	avifLimiterSize     int
 	hashLocks           *keyedMutex
 	imageURLCachePurger ImageURLCachePurger
 }
@@ -430,12 +435,68 @@ func (s *ImageService) prepareUploadSource(input UploadInput, maxBytes int64) (p
 	return preparedUploadSource{tempPath: tempFile.Name(), size: size, originalMD5: hex.EncodeToString(hasher.Sum(nil))}, nil
 }
 
-func (s *ImageService) saveConvertedAVIF(ctx context.Context, provider storage.Provider, objectKey string, source io.Reader, settings AVIFConversionSettings) (int64, string, error) {
-	return avifStreamConversion{
+func (s *ImageService) saveConvertedAVIF(ctx context.Context, provider storage.Provider, objectKey string, source io.Reader, settings AVIFConversionSettings, concurrency int, timeoutSeconds int) (int64, string, error) {
+	if concurrency <= 0 {
+		concurrency = DefaultAVIFMaxConcurrency
+	}
+	release, err := s.acquireAVIFSlot(ctx, concurrency)
+	if err != nil {
+		return 0, "", err
+	}
+	defer release()
+
+	conversionCtx := ctx
+	cancel := func() {}
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = DefaultAVIFConversionTimeoutSeconds
+	}
+	conversionCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+
+	size, path, err := avifStreamConversion{
 		encoder:  s.encoder,
 		provider: provider,
 		settings: settings,
-	}.save(ctx, objectKey, source)
+	}.save(conversionCtx, objectKey, source)
+	if err != nil && errors.Is(conversionCtx.Err(), context.DeadlineExceeded) {
+		return 0, "", fmt.Errorf("%w: avif conversion timed out", ErrDependencyUnavailable)
+	}
+	return size, path, err
+}
+
+func (s *ImageService) acquireAVIFSlot(ctx context.Context, concurrency int) (func(), error) {
+	s.avifLimiterMu.Lock()
+	if s.avifLimiter == nil || s.avifLimiterSize != concurrency {
+		s.avifLimiter = make(chan struct{}, concurrency)
+		s.avifLimiterSize = concurrency
+	}
+	limiter := s.avifLimiter
+	s.avifLimiterMu.Unlock()
+
+	select {
+	case limiter <- struct{}{}:
+		return func() { <-limiter }, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("%w: avif conversion unavailable", ErrDependencyUnavailable)
+	}
+}
+
+func validateImagePixelLimit(source io.Reader, maxPixels int64) error {
+	if maxPixels <= 0 {
+		maxPixels = DefaultMaxImagePixels
+	}
+	config, _, err := image.DecodeConfig(source)
+	if err != nil {
+		return WithUserMessage(ErrInvalidInput, "file type is not allowed")
+	}
+	if config.Width <= 0 || config.Height <= 0 {
+		return WithUserMessage(ErrInvalidInput, "image dimensions are invalid")
+	}
+	pixels := int64(config.Width) * int64(config.Height)
+	if pixels > maxPixels {
+		return WithUserMessage(ErrInvalidInput, fmt.Sprintf("image dimensions exceed the %d pixel limit", maxPixels))
+	}
+	return nil
 }
 
 func buildUploadOutput(record model.ImageRecord, baseURL string, _ string, duplicate bool) UploadOutput {

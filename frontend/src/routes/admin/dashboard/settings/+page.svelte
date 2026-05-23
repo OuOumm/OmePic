@@ -198,6 +198,18 @@
               </span>
               <input class="studio-input" type="number" min="0" max="10" step="1" inputmode="numeric" bind:value={system.runtime.avif_speed} />
             </label>
+            <label class="grid gap-2 text-sm font-black">
+              最大图片像素数
+              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.max_image_pixels} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              AVIF 转换并发上限
+              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.avif_max_concurrency} />
+            </label>
+            <label class="grid gap-2 text-sm font-black md:col-span-2">
+              AVIF 转换超时（秒）
+              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.avif_conversion_timeout_seconds} />
+            </label>
             <label class="flex items-center gap-3 border-y-2 ink-line py-3 font-black md:col-span-2">
               <input type="checkbox" bind:checked={system.runtime.allow_storage_selection} />
               {t(preferences.language, 'admin.settingsAllowSelection')}
