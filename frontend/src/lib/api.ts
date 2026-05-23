@@ -220,6 +220,24 @@ function uploadResponseError(xhr: XMLHttpRequest): ApiError {
   }
 }
 
+export async function uploadImageURL(
+  url: string,
+  token: string,
+  storageKey?: string
+): Promise<UploadResult> {
+  return apiFetch<UploadResult>("/v1/image/url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Token": token,
+    },
+    body: JSON.stringify({
+      url,
+      ...(storageKey ? { storage_key: storageKey } : {}),
+    }),
+  });
+}
+
 export function uploadImageWithProgress(
   file: File,
   token: string,

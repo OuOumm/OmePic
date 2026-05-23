@@ -6,16 +6,16 @@
   import ImageDataTable from '@/components/studio/ImageDataTable.svelte';
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
-  import { deleteImageByUid, getAnnouncements, getRuntimeSettings } from '@/api';
+  import { deleteImageByUid, getAnnouncements, getRuntimeSettings, uploadImageURL } from '@/api';
   import { copyToClipboard } from '@/clipboard';
   import { getClientToken } from '@/client-token';
-  import { deleteUploadFromHistory, getRecentUploads } from '@/indexeddb/upload-history';
+  import { deleteUploadFromHistory, getRecentUploads, saveUploadToHistory } from '@/indexeddb/upload-history';
   import { t } from '@/i18n';
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import { getActiveTasks, enqueueFiles } from '@/stores/upload-queue.svelte';
   import type { Announcement, UploadHistoryRecord } from '@/types';
-  import { imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAbortError, isAllowedImageMimeType, isBlockedImageMimeType, normalizeDownloadFilename, normalizedImageMimeType } from '@/utils';
+  import { bbcodeForImageUrl, imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAbortError, isBlockedImageMimeType, markdownForImageUrl, normalizedImageMimeType, uidFromImageUrl } from '@/utils';
   import { errorMessage } from '@/ui-errors';
 
   let recentUploads = $state.raw<UploadHistoryRecord[]>([]);
@@ -123,36 +123,35 @@
 
     urlUploading = true;
     try {
-      const response = await fetch(parsed.toString());
-      if (!response.ok) throw new Error('Download failed');
-      const redirected = new URL(response.url || parsed.toString());
-      if (redirected.protocol !== 'http:' && redirected.protocol !== 'https:') {
-        toast.error(t(preferences.language, 'upload.invalidUrl'));
-        return;
-      }
-      const maxBytes = preferences.runtimeSettings?.upload.max_upload_size_mb ? preferences.runtimeSettings.upload.max_upload_size_mb * 1024 * 1024 : 0;
-      const contentLength = Number(response.headers.get('Content-Length') ?? 0);
-      if (maxBytes > 0 && Number.isFinite(contentLength) && contentLength > maxBytes) {
-        toast.error(t(preferences.language, 'upload.error'));
-        return;
-      }
-      const blob = await response.blob();
-      if (maxBytes > 0 && blob.size > maxBytes) {
-        toast.error(t(preferences.language, 'upload.error'));
-        return;
-      }
-      const mimeType = response.headers.get('Content-Type') || blob.type;
-      const allowedTypes = preferences.runtimeSettings?.upload.allowed_mime_types ?? [];
-      if (!mimeType.startsWith('image/') || (allowedTypes.length > 0 && !isAllowedImageMimeType(mimeType, allowedTypes))) {
-        toast.error(t(preferences.language, 'upload.urlNotImage'));
-        return;
-      }
-      const filename = normalizeDownloadFilename(decodeURIComponent(redirected.pathname.split('/').pop() ?? ''), 'image');
+      const token = getClientToken();
+      const result = await uploadImageURL(parsed.toString(), token, preferences.selectedStorageKey || undefined);
+      const uid = uidFromImageUrl(result.url);
+      if (!uid) throw new Error(t(preferences.language, 'upload.error'));
+      const createdAt = new Date().toISOString();
+      const selectedKey = preferences.selectedStorageKey.trim();
+      const selectedOption = preferences.runtimeSettings?.storage.options.find((option) => option.storage_key === selectedKey)
+        ?? preferences.runtimeSettings?.storage.options.find((option) => option.is_default)
+        ?? preferences.runtimeSettings?.storage.options[0];
+      await saveUploadToHistory({
+        uid,
+        url: result.url,
+        mime_type: 'image/avif',
+        size: 0,
+        created_at: createdAt,
+        is_duplicate: result.duplicate,
+        storage_key: selectedOption?.storage_key ?? selectedKey,
+        storage_backend: selectedOption?.storage_backend ?? 'local',
+        markdown: markdownForImageUrl(result.url, rawUrl),
+        bbcode: bbcodeForImageUrl(result.url),
+        client_token: token,
+        original_filename: rawUrl,
+        saved_at: createdAt,
+      });
       toast.success(t(preferences.language, 'upload.urlSuccess'));
       urlInput = '';
-      await handleFiles([new File([blob], filename, { type: mimeType.split(';', 1)[0].trim().toLowerCase() })]);
-    } catch {
-      toast.error(t(preferences.language, 'upload.urlDownloadFail'));
+      await loadRecent();
+    } catch (err) {
+      toast.error(errorMessage(err, preferences.language));
     } finally {
       urlUploading = false;
     }

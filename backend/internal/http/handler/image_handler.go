@@ -28,6 +28,11 @@ func NewImageHandler(imageService *service.ImageService, logger *slog.Logger, ip
 	}
 }
 
+type uploadURLRequest struct {
+	URL        string `json:"url"`
+	StorageKey string `json:"storage_key"`
+}
+
 func (h *ImageHandler) Upload(c *gin.Context) {
 	limit := h.service.MaxUploadSizeBytes()
 	fileHeader, err := c.FormFile("file")
@@ -68,6 +73,29 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 	}
 
 	h.logger.Info("image uploaded", "url", result.URL, "duplicate", result.Duplicate)
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *ImageHandler) UploadURL(c *gin.Context) {
+	var req uploadURLRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.URL) == "" {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "url is required")
+		return
+	}
+
+	result, err := h.service.UploadRemoteURL(c.Request.Context(), service.URLUploadInput{
+		URL:        req.URL,
+		Token:      c.GetHeader("X-Token"),
+		IPAddress:  h.clientIP(c),
+		BaseURL:    h.service.EffectivePublicBaseURL(h.requestBaseURL(c)),
+		StorageKey: req.StorageKey,
+	})
+	if err != nil {
+		h.mapJSONError(c, err)
+		return
+	}
+
+	h.logger.Info("image uploaded from url", "url", result.URL, "duplicate", result.Duplicate)
 	response.Success(c, http.StatusOK, result)
 }
 

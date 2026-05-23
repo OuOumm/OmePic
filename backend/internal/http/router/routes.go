@@ -10,6 +10,7 @@ const (
 	runtimeSettingsRoute       = "/v1/runtime-settings"
 	publicAnnouncementsRoute   = "/v1/announcements"
 	imageUploadRoute           = "/v1/image"
+	imageURLUploadRoute        = "/v1/image/url"
 	imageRoutePrefix           = "/i/"
 	adminLoginRoute            = "/admin/login"
 	adminPasswordRoute         = "/admin/password"
@@ -40,6 +41,7 @@ var (
 	runtimeSettingsRouteSpec     = routeSpec{Path: runtimeSettingsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	publicAnnouncementsSpec      = routeSpec{Path: publicAnnouncementsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	imageUploadRouteSpec         = routeSpec{Path: imageUploadRoute, Methods: methods(http.MethodPost)}
+	imageURLUploadRouteSpec      = routeSpec{Path: imageURLUploadRoute, Methods: methods(http.MethodPost)}
 	imageRouteSpec               = routeSpec{Path: imageRoutePrefix + ":uid", Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
 	adminLoginRouteSpec          = routeSpec{Path: adminLoginRoute, Methods: methods(http.MethodPost)}
 	adminPasswordRouteSpec       = routeSpec{Path: adminPasswordRoute, Methods: methods(http.MethodPut)}
@@ -66,6 +68,7 @@ var publicRouteSpecs = []routeSpec{
 	runtimeSettingsRouteSpec,
 	publicAnnouncementsSpec,
 	imageUploadRouteSpec,
+	imageURLUploadRouteSpec,
 	imageRouteSpec,
 	adminLoginRouteSpec,
 }

@@ -60,6 +60,7 @@ func New(deps Dependencies) *gin.Engine {
 	engine.GET(runtimeSettingsRouteSpec.Path, apiLimiter, deps.ImageHandler.RuntimeSettings)
 	engine.GET(publicAnnouncementsSpec.Path, apiLimiter, deps.AnnouncementHandler.PublicList)
 	engine.POST(imageUploadRouteSpec.Path, uploadLimiter, deps.ImageHandler.Upload)
+	engine.POST(imageURLUploadRouteSpec.Path, uploadLimiter, deps.ImageHandler.UploadURL)
 	engine.DELETE(imageRouteSpec.Path, apiLimiter, deps.ImageHandler.Delete)
 	engine.GET(imageRouteSpec.Path, deps.ImageHandler.Serve)
 	engine.POST(adminLoginRouteSpec.Path, apiLimiter, deps.AdminHandler.Login)

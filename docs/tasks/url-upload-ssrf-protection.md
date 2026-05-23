@@ -31,10 +31,10 @@
 
 ### 完成标准
 
-- [ ] 代码编译通过：`cd backend && go build ./...`
-- [ ] 单元测试通过：`cd backend && go test ./internal/util/... ./internal/http/handler/...`
-- [ ] gofmt 格式正确：`cd backend && gofmt -l ./cmd ./internal` 无输出
-- [ ] 前端 URL 上传切换到后端接口：`cd frontend && npm run build:backend`
+- [x] 代码编译通过：`cd backend && go test ./...`（覆盖构建与测试）
+- [x] 单元测试通过：`cd backend && go test ./internal/util/... ./internal/http/handler/...`
+- [x] gofmt 格式正确：`cd backend && gofmt -l ./cmd ./internal` 无输出
+- [x] 前端 URL 上传切换到后端接口：`cd frontend && npm run build:backend`
 
 ## 测试
 
@@ -90,4 +90,50 @@
 
 - [ ] 至少一位 reviewer 批准
 - [ ] CI 全部绿色
-- [ ] 完成报告已填写
+- [x] 完成报告已填写
+
+## 完成报告
+
+### 实施摘要
+
+- 新增 `POST /v1/image/url`，请求体为 `{ "url": string, "storage_key"?: string }`，认证沿用 `X-Token`。
+- 后端通过 `RemoteImageFetcher` 统一抓取远端图片，并将下载流传入 `ImageService.Upload`，继续复用现有 Token、真实 MIME、像素限制、MD5 去重、存储选择与 AVIF 转换策略。
+- URL 安全策略：仅允许 `http/https`，禁止 URL 凭据；默认最多 5 次重定向；每次重定向重新校验目标 URL；拨号阶段解析并拒绝私网、环回、链路本地、组播、未指定、CGNAT 与 IPv6 特殊地址；禁用代理避免绕过 DialContext 检查。
+- 下载保护：使用运行时最大上传大小校验 `Content-Length`，并用 `io.LimitReader(max+1)` 限制读取；下载/连接使用超时控制。
+- 前端 URL 上传不再浏览器直连远端 URL，改为调用后端安全接口，并在成功后写入本地上传历史。
+
+### 修改文件
+
+- `backend/internal/util/url_safety.go`
+- `backend/internal/util/url_safety_test.go`
+- `backend/internal/service/image_service.go`
+- `backend/internal/service/url_upload.go`
+- `backend/internal/http/handler/image_handler.go`
+- `backend/internal/http/handler/url_upload_handler_test.go`
+- `backend/internal/http/router/router.go`
+- `backend/internal/http/router/routes.go`
+- `frontend/src/lib/api.ts`
+- `frontend/src/routes/+page.svelte`
+- `docs/tasks/url-upload-ssrf-protection.md`
+- `docs/status/task-list.md`
+- `docs/status/progress-report.md`
+
+### 验证记录
+
+- `cd backend && gofmt -w ./cmd ./internal`：通过。
+- `cd backend && go test ./internal/util/... ./internal/http/handler/...`：通过，16 个测试通过。
+- `cd backend && go test ./...`：通过，17 个包 243 个测试通过。
+- `cd backend && gofmt -l ./cmd ./internal`：通过，无输出。
+- `cd frontend && npm run typecheck`：通过，0 errors / 0 warnings。
+- `cd frontend && npm run build:backend`：通过，已生成并复制静态产物到 `backend/web/`。
+
+### 复核结论
+
+- 需求一致性：仅实现 URL 上传 SSRF 防护，未实现 Token 治理、默认密码、软删除、审计、健康检查等其他 P0 子任务。
+- 安全一致性：协议、重定向、DNS/连接地址、Content-Length、读取上限与超时均有覆盖；下载结果仍进入普通上传链路接受真实性校验。
+- 范围控制：未修改 `frontend/src/lib/i18n.ts`、`frontend/src/routes/+error.svelte`，未处理既有无关 README/docs 迁移变更。
+
+### 风险与后续
+
+- 当前测试使用 mock 公网 Host + 自定义 Dialer 覆盖成功链路；生产环境真实公网域名解析由安全 DialContext 执行。
+- 可后续在 API 文档恢复/迁移完成后补充公开接口示例（当前工作区存在无关 docs 删除/迁移变更，本子任务未触碰旧 API 文档）。

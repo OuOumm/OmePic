@@ -139,6 +139,7 @@ type ImageService struct {
 	avifLimiterSize     int
 	hashLocks           *keyedMutex
 	imageURLCachePurger ImageURLCachePurger
+	remoteImageFetcher  *RemoteImageFetcher
 }
 
 func NewImageService(
