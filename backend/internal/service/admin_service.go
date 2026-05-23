@@ -467,40 +467,95 @@ func (s *AdminService) UpdateConfig(ctx context.Context, input AdminConfigUpdate
 	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
 		return AdminConfigView{}, err
 	}
-	return s.storageCatalog().ApplyLegacyPatch(ctx, legacyStorageConfigPatch{
+	before, err := s.storageCatalog().View(ctx)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	view, err := s.storageCatalog().ApplyLegacyPatch(ctx, legacyStorageConfigPatch{
 		TargetStorageKey:  trimStringPointer(input.StorageKey),
 		DefaultStorageKey: input.DefaultStorageKey,
 		Update:            storageUpdateFromConfigPatch(input),
 		HasPatch:          hasStorageConfigPatch(input),
 	})
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	if err := s.recordConfigAuditLog(ctx, configAuditScopeStorage, before, view); err != nil {
+		return AdminConfigView{}, err
+	}
+	return view, nil
 }
 
 func (s *AdminService) CreateStorageConfig(ctx context.Context, input AdminStorageConfigCreateInput) (AdminConfigView, error) {
 	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
 		return AdminConfigView{}, err
 	}
-	return s.storageCatalog().Create(ctx, input)
+	before, err := s.storageCatalog().View(ctx)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	view, err := s.storageCatalog().Create(ctx, input)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	if err := s.recordConfigAuditLog(ctx, configAuditScopeStorage, before, view); err != nil {
+		return AdminConfigView{}, err
+	}
+	return view, nil
 }
 
 func (s *AdminService) UpdateStorageConfig(ctx context.Context, storageKey string, input AdminStorageConfigUpdateInput) (AdminConfigView, error) {
 	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
 		return AdminConfigView{}, err
 	}
-	return s.storageCatalog().Patch(ctx, storageKey, input)
+	before, err := s.storageCatalog().View(ctx)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	view, err := s.storageCatalog().Patch(ctx, storageKey, input)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	if err := s.recordConfigAuditLog(ctx, configAuditScopeStorage, before, view); err != nil {
+		return AdminConfigView{}, err
+	}
+	return view, nil
 }
 
 func (s *AdminService) DeleteStorageConfig(ctx context.Context, storageKey string) (AdminConfigView, error) {
 	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
 		return AdminConfigView{}, err
 	}
-	return s.storageCatalog().Delete(ctx, storageKey)
+	before, err := s.storageCatalog().View(ctx)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	view, err := s.storageCatalog().Delete(ctx, storageKey)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	if err := s.recordConfigAuditLog(ctx, configAuditScopeStorage, before, view); err != nil {
+		return AdminConfigView{}, err
+	}
+	return view, nil
 }
 
 func (s *AdminService) SetDefaultStorageConfig(ctx context.Context, storageKey string) (AdminConfigView, error) {
 	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
 		return AdminConfigView{}, err
 	}
-	return s.storageCatalog().SetDefault(ctx, storageKey)
+	before, err := s.storageCatalog().View(ctx)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	view, err := s.storageCatalog().SetDefault(ctx, storageKey)
+	if err != nil {
+		return AdminConfigView{}, err
+	}
+	if err := s.recordConfigAuditLog(ctx, configAuditScopeStorage, before, view); err != nil {
+		return AdminConfigView{}, err
+	}
+	return view, nil
 }
 
 func (s *AdminService) GetSystemSettings(ctx context.Context) (AdminSystemSettingsView, error) {
@@ -532,6 +587,9 @@ func (s *AdminService) UpdateSystemSettings(ctx context.Context, input RuntimeSe
 	}
 	if s.settings != nil {
 		s.settings.Reconfigure(settings)
+	}
+	if err := s.recordConfigAuditLog(ctx, configAuditScopeRuntime, maskRuntimeSettingsForAudit(current), maskRuntimeSettingsForAudit(settings)); err != nil {
+		return AdminSystemSettingsView{}, err
 	}
 	return s.loadSystemSettingsView(ctx)
 }

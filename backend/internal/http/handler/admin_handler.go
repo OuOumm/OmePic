@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -231,13 +232,36 @@ func (h *AdminHandler) GetConfig(c *gin.Context) {
 	response.Success(c, http.StatusOK, view)
 }
 
+func (h *AdminHandler) AuditLogs(c *gin.Context) {
+	page, err := parsePositiveIntQuery(c.Query("page"), 1)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid page")
+		return
+	}
+	pageSize, err := parsePositiveIntQuery(c.Query("page_size"), 20)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid page_size")
+		return
+	}
+	logs, err := h.service.ListConfigAuditLogs(c.Request.Context(), service.AdminConfigAuditLogFilter{
+		Scope:    c.Query("scope"),
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, logs)
+}
+
 func (h *AdminHandler) UpdateConfig(c *gin.Context) {
 	var payload service.AdminConfigUpdateInput
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid config payload")
 		return
 	}
-	view, err := h.service.UpdateConfig(c.Request.Context(), payload)
+	view, err := h.service.UpdateConfig(auditRequestContext(c), payload)
 	if err != nil {
 		h.mapError(c, err)
 		return
@@ -251,7 +275,7 @@ func (h *AdminHandler) CreateStorageConfig(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid config payload")
 		return
 	}
-	view, err := h.service.CreateStorageConfig(c.Request.Context(), payload)
+	view, err := h.service.CreateStorageConfig(auditRequestContext(c), payload)
 	if err != nil {
 		h.mapError(c, err)
 		return
@@ -265,7 +289,7 @@ func (h *AdminHandler) UpdateStorageConfig(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid config payload")
 		return
 	}
-	view, err := h.service.UpdateStorageConfig(c.Request.Context(), c.Param("storageKey"), payload)
+	view, err := h.service.UpdateStorageConfig(auditRequestContext(c), c.Param("storageKey"), payload)
 	if err != nil {
 		h.mapError(c, err)
 		return
@@ -274,7 +298,7 @@ func (h *AdminHandler) UpdateStorageConfig(c *gin.Context) {
 }
 
 func (h *AdminHandler) DeleteStorageConfig(c *gin.Context) {
-	view, err := h.service.DeleteStorageConfig(c.Request.Context(), c.Param("storageKey"))
+	view, err := h.service.DeleteStorageConfig(auditRequestContext(c), c.Param("storageKey"))
 	if err != nil {
 		h.mapError(c, err)
 		return
@@ -288,7 +312,7 @@ func (h *AdminHandler) SetDefaultStorageConfig(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid config payload")
 		return
 	}
-	view, err := h.service.SetDefaultStorageConfig(c.Request.Context(), payload.StorageKey)
+	view, err := h.service.SetDefaultStorageConfig(auditRequestContext(c), payload.StorageKey)
 	if err != nil {
 		h.mapError(c, err)
 		return
@@ -311,7 +335,7 @@ func (h *AdminHandler) UpdateSystemSettings(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid config payload")
 		return
 	}
-	settings, err := h.service.UpdateSystemSettings(c.Request.Context(), payload)
+	settings, err := h.service.UpdateSystemSettings(auditRequestContext(c), payload)
 	if err != nil {
 		h.mapError(c, err)
 		return
@@ -332,6 +356,28 @@ func (h *AdminHandler) mapError(c *gin.Context, err error) {
 			Message: service.UserMessage(err, "forbidden"),
 		},
 	})
+}
+
+func auditRequestContext(c *gin.Context) context.Context {
+	return service.WithAuditActor(c.Request.Context(), service.AuditActor{
+		Name: "admin",
+		IP:   c.ClientIP(),
+	})
+}
+
+func parsePositiveIntQuery(value string, fallback int) (int, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, err
+	}
+	if parsed < 1 {
+		return 0, strconv.ErrSyntax
+	}
+	return parsed, nil
 }
 
 func parseOptionalTime(value string) (time.Time, error) {

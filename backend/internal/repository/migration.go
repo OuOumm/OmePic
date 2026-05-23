@@ -86,6 +86,15 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
+		`CREATE TABLE IF NOT EXISTS config_audit_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			actor TEXT NOT NULL DEFAULT '',
+			actor_ip TEXT NOT NULL DEFAULT '',
+			config_scope TEXT NOT NULL,
+			before_snapshot TEXT NOT NULL,
+			after_snapshot TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
 	}
 	imageIndexes := map[string]string{
 		"idx_images_uid":                `CREATE INDEX IF NOT EXISTS idx_images_uid ON images(uid);`,
@@ -108,6 +117,8 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans(expires_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_token_usage_updated_at ON token_usage(updated_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_token_controls_disabled ON token_controls(disabled, updated_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_scope_created ON config_audit_logs(config_scope, created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_created ON config_audit_logs(created_at DESC);`,
 	}
 
 	for _, stmt := range schema {

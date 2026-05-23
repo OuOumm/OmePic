@@ -82,6 +82,7 @@ func New(deps Dependencies) *gin.Engine {
 	admin.GET(adminPath(adminTokensRouteSpec.Path), deps.AdminHandler.Tokens)
 	admin.POST(adminPath(adminTokenDisableRouteSpec.Path), deps.AdminHandler.DisableToken)
 	admin.POST(adminPath(adminTokenEnableRouteSpec.Path), deps.AdminHandler.EnableToken)
+	admin.GET(adminPath(adminAuditLogsRouteSpec.Path), deps.AdminHandler.AuditLogs)
 	admin.GET(adminPath(adminConfigRouteSpec.Path), deps.AdminHandler.GetConfig)
 	admin.POST(adminPath(adminConfigRouteSpec.Path), deps.AdminHandler.UpdateConfig)
 	admin.POST(adminPath(adminStorageInstancesSpec.Path), deps.AdminHandler.CreateStorageConfig)

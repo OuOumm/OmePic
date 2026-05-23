@@ -21,6 +21,7 @@ const (
 	adminAbuseOverviewRoute    = "/admin/abuse/overview"
 	adminAbuseIPRoute          = "/admin/abuse/ip"
 	adminTokensRoute           = "/admin/tokens"
+	adminAuditLogsRoute        = "/admin/audit-logs"
 	adminConfigRoute           = "/admin/config"
 	adminStorageInstancesRoute = "/admin/config/storage-instances"
 	adminConfigDefaultRoute    = "/admin/config/default"
@@ -57,6 +58,7 @@ var (
 	adminTokensRouteSpec         = routeSpec{Path: adminTokensRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminTokenDisableRouteSpec   = routeSpec{Path: adminTokensRoute + "/:token_hash/disable", Methods: methods(http.MethodPost)}
 	adminTokenEnableRouteSpec    = routeSpec{Path: adminTokensRoute + "/:token_hash/enable", Methods: methods(http.MethodPost)}
+	adminAuditLogsRouteSpec      = routeSpec{Path: adminAuditLogsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminConfigRouteSpec         = routeSpec{Path: adminConfigRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
 	adminStorageInstancesSpec    = routeSpec{Path: adminStorageInstancesRoute, Methods: methods(http.MethodPost)}
 	adminStorageInstanceSpec     = routeSpec{Path: adminStorageInstancesRoute + "/:storageKey", Methods: methods(http.MethodPut, http.MethodDelete)}
@@ -90,6 +92,7 @@ var adminRouteSpecs = []routeSpec{
 	adminTokensRouteSpec,
 	adminTokenDisableRouteSpec,
 	adminTokenEnableRouteSpec,
+	adminAuditLogsRouteSpec,
 	adminConfigRouteSpec,
 	adminStorageInstancesSpec,
 	adminStorageInstanceSpec,

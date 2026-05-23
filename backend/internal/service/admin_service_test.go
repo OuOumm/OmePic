@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"path/filepath"
@@ -260,6 +261,43 @@ func TestUpdateConfigPatchesDefaultStorageInstance(t *testing.T) {
 	}
 }
 
+func TestUpdateSystemSettingsCreatesMaskedAuditLog(t *testing.T) {
+	ctx := context.Background()
+	adminService, _ := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
+
+	input := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
+	input.SiteName = "Audited Site"
+	input.CloudflareZoneID = "zone-secret"
+	input.CloudflareAPIToken = "token-secret"
+	_, err := adminService.UpdateSystemSettings(WithAuditActor(ctx, AuditActor{Name: "admin", IP: "203.0.113.10"}), input)
+	if err != nil {
+		t.Fatalf("UpdateSystemSettings returned error: %v", err)
+	}
+
+	logs, err := adminService.ListConfigAuditLogs(ctx, AdminConfigAuditLogFilter{Scope: "runtime", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListConfigAuditLogs returned error: %v", err)
+	}
+	if logs.Total != 1 || len(logs.Items) != 1 {
+		t.Fatalf("expected one runtime audit log, got %+v", logs)
+	}
+	log := logs.Items[0]
+	if log.Actor != "admin" || log.ActorIP != "203.0.113.10" {
+		t.Fatalf("unexpected actor metadata: %+v", log)
+	}
+	if strings.Contains(log.AfterSnapshot, "token-secret") {
+		t.Fatalf("audit snapshot leaked sensitive values: %s", log.AfterSnapshot)
+	}
+	var after map[string]any
+	if err := json.Unmarshal([]byte(log.AfterSnapshot), &after); err != nil {
+		t.Fatalf("after snapshot is not valid JSON: %v", err)
+	}
+	if after["site_name"] != "Audited Site" {
+		t.Fatalf("expected site_name in audit snapshot, got %+v", after)
+	}
+}
+
 func TestUpdateConfigSwitchesDefaultStorageInstance(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
@@ -348,6 +386,45 @@ func TestUpdateConfigRejectsEmptyDefaultBeforePatch(t *testing.T) {
 	}
 	if stored.Name != original.Name {
 		t.Fatalf("expected config patch to be rejected before save, got name %q", stored.Name)
+	}
+}
+
+func TestStorageConfigChangesCreateMaskedAuditLogs(t *testing.T) {
+	ctx := context.Background()
+	adminService, _ := newAdminServiceTestHarness(t)
+	unlockAdminHighRiskSettings(t, ctx, adminService)
+
+	_, err := adminService.CreateStorageConfig(WithAuditActor(ctx, AuditActor{IP: "198.51.100.20"}), AdminStorageConfigCreateInput{
+		StorageKey:       "s3-audit",
+		Name:             "S3 Audit",
+		Backend:          config.StorageBackendS3,
+		S3Endpoint:       "127.0.0.1:9000",
+		S3Region:         "auto",
+		S3Bucket:         "bucket",
+		S3AccessKey:      "access-secret",
+		S3SecretKey:      "secret-secret",
+		S3ForcePathStyle: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateStorageConfig returned error: %v", err)
+	}
+
+	logs, err := adminService.ListConfigAuditLogs(ctx, AdminConfigAuditLogFilter{Scope: "storage", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListConfigAuditLogs returned error: %v", err)
+	}
+	if logs.Total != 1 || len(logs.Items) != 1 {
+		t.Fatalf("expected one storage audit log, got %+v", logs)
+	}
+	log := logs.Items[0]
+	if log.Actor != "admin" || log.ActorIP != "198.51.100.20" {
+		t.Fatalf("unexpected actor metadata: %+v", log)
+	}
+	if strings.Contains(log.AfterSnapshot, "access-secret") || strings.Contains(log.AfterSnapshot, "secret-secret") {
+		t.Fatalf("storage audit snapshot leaked secret values: %s", log.AfterSnapshot)
+	}
+	if !strings.Contains(log.AfterSnapshot, "s3-audit") {
+		t.Fatalf("expected storage key in audit snapshot: %s", log.AfterSnapshot)
 	}
 }
 
