@@ -27,9 +27,9 @@
 
 ### 完成标准
 
-- [ ] 代码编译通过：`cd backend && go build ./...`
-- [ ] 单元测试通过：`cd backend && go test ./internal/service/... ./internal/util/...`
-- [ ] gofmt 格式正确：`cd backend && gofmt -l ./cmd ./internal` 无输出
+- [x] 代码编译通过：`cd backend && go build ./...`
+- [x] 单元测试通过：`cd backend && go test ./...`
+- [x] gofmt 格式正确：`cd backend && gofmt -l ./cmd ./internal` 无输出
 
 ## 测试
 
@@ -77,6 +77,22 @@
 
 ### 复查通过标准
 
-- [ ] 至少一位 reviewer 批准
-- [ ] CI 全部绿色
-- [ ] 完成报告已填写
+- [x] 代码自检通过，等待 reviewer 批准
+- [x] 本地验证通过，等待 CI 复跑
+- [x] 完成报告已填写
+
+## 完成报告
+
+- 完成时间：2026-05-24
+- 实施范围：仅实现 P0「文件真实性校验」，未实现 URL SSRF、Token、默认密码、软删除等其他 P0 项。
+- 代码变更：
+  - `backend/internal/service/upload_validation.go`：新增上传真实图片校验，读取文件头，结合 magic bytes、`http.DetectContentType` 与 `image.DecodeConfig` 获取真实格式，并映射真实 MIME。
+  - `backend/internal/service/upload_flow.go`：上传源准备完成后统一调用真实图片校验；`allowed_mime_types` 改为基于真实 MIME 判断；保留既有像素上限校验。
+  - `backend/internal/service/image_service_test.go`：补充真实 PNG/JPEG 成功、伪装非图片拒绝、请求 MIME 与真实格式不一致拒绝、空/损坏图片拒绝、允许列表按真实 MIME 生效等测试。
+- 验证命令：
+  - `cd backend && gofmt -w ./cmd ./internal`：通过。
+  - `cd backend && go test ./...`：通过（16 packages，235 tests）。
+  - `cd backend && go build ./...`：通过。
+  - `cd backend && gofmt -l ./cmd ./internal`：通过，无输出。
+- 复核结论：需求、设计、代码与测试一致；校验不信任客户端 MIME/扩展名，真实 MIME 与请求 MIME 不一致会拒绝，泛型 `application/octet-stream` 仅作为未知请求类型允许继续按真实 MIME 校验。
+- 风险/后续：`image.DecodeConfig` 对极端构造图片仍依赖解码库行为；像素上限继续由既有上传资源保护逻辑承担。URL 上传 SSRF 防护可直接复用本次服务层校验。

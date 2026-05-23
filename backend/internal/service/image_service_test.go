@@ -7,6 +7,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"log/slog"
@@ -389,6 +390,146 @@ func (r fakeUploadStorageResolver) ForKey(string) (storage.ResolvedProvider, err
 
 func (r fakeUploadStorageResolver) Reconfigure([]config.RuntimeStorageConfig) error {
 	return nil
+}
+
+func TestUploadAcceptsRealJPEGAndStoresAVIFOutput(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, rootDir, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-jpeg")
+
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "sample.jpg",
+		MIMEType:         "image/jpeg",
+		Bytes:            mustJPEGBytes(t, color.RGBA{R: 220, G: 80, B: 32, A: 255}),
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("Upload returned error: %v", err)
+	}
+
+	record, err := repo.FindByUID(ctx, "uid-jpeg")
+	if err != nil {
+		t.Fatalf("FindByUID returned error: %v", err)
+	}
+	storedBytes, err := os.ReadFile(filepath.Join(rootDir, filepath.FromSlash(record.FilePath)))
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	if _, err := avif.Decode(bytes.NewReader(storedBytes)); err != nil {
+		t.Fatalf("expected stored bytes to decode as avif: %v", err)
+	}
+}
+
+func TestUploadRejectsNonImageDisguisedAsPNG(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-fake")
+
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "fake.png",
+		MIMEType:         "image/png",
+		Bytes:            []byte("MZ\x90\x00not actually an image"),
+		BaseURL:          "http://localhost:8080",
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for disguised non-image, got %v", err)
+	}
+	if records, listErr := repo.ListAllImages(ctx); listErr != nil {
+		t.Fatalf("ListAllImages returned error: %v", listErr)
+	} else if len(records) != 0 {
+		t.Fatalf("expected no image rows after rejected upload, got %d", len(records))
+	}
+}
+
+func TestUploadRejectsRequestedMIMEMismatch(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-mismatch")
+
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/jpeg",
+		Bytes:            mustPNGBytes(t, color.RGBA{R: 20, G: 80, B: 180, A: 255}),
+		BaseURL:          "http://localhost:8080",
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for MIME mismatch, got %v", err)
+	}
+	if records, listErr := repo.ListAllImages(ctx); listErr != nil {
+		t.Fatalf("ListAllImages returned error: %v", listErr)
+	} else if len(records) != 0 {
+		t.Fatalf("expected no image rows after rejected upload, got %d", len(records))
+	}
+}
+
+func TestUploadRejectsEmptyAndCorruptImages(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-empty", "uid-corrupt")
+
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "empty.png",
+		MIMEType:         "image/png",
+		Bytes:            []byte{},
+		BaseURL:          "http://localhost:8080",
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for empty image, got %v", err)
+	}
+
+	_, err = service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "corrupt.png",
+		MIMEType:         "image/png",
+		Bytes:            []byte("\x89PNG\r\n\x1a\ntruncated"),
+		BaseURL:          "http://localhost:8080",
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for corrupt image, got %v", err)
+	}
+	if records, listErr := repo.ListAllImages(ctx); listErr != nil {
+		t.Fatalf("ListAllImages returned error: %v", listErr)
+	} else if len(records) != 0 {
+		t.Fatalf("expected no image rows after rejected uploads, got %d", len(records))
+	}
+}
+
+func TestUploadAllowedMIMETypesUseDetectedRealMIME(t *testing.T) {
+	ctx := context.Background()
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-png", "uid-jpeg")
+	settings := defaultRuntimeSettings()
+	settings.AllowedMIMETypes = []string{"image/png"}
+	service.settings.Reconfigure(settings)
+
+	_, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "unknown.bin",
+		MIMEType:         "application/octet-stream",
+		Bytes:            mustPNGBytes(t, color.RGBA{R: 90, G: 180, B: 20, A: 255}),
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("expected real PNG to pass allowed_mime_types despite generic request MIME, got %v", err)
+	}
+
+	_, err = service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "unknown.bin",
+		MIMEType:         "application/octet-stream",
+		Bytes:            mustJPEGBytes(t, color.RGBA{R: 90, G: 40, B: 20, A: 255}),
+		BaseURL:          "http://localhost:8080",
+	})
+	if err == nil || !containsError(err, ErrInvalidInput) {
+		t.Fatalf("expected real JPEG to be rejected when only PNG is allowed, got %v", err)
+	}
+	if record, findErr := repo.FindByUID(ctx, "uid-png"); findErr != nil || record.UID != "uid-png" {
+		t.Fatalf("expected first PNG upload to persist, record=%+v err=%v", record, findErr)
+	}
 }
 
 func TestUploadConvertsToAVIFAndBuildsAVIFURL(t *testing.T) {
@@ -1916,6 +2057,23 @@ func mustPNGBytes(t *testing.T, fill color.Color) []byte {
 	var output bytes.Buffer
 	if err := png.Encode(&output, img); err != nil {
 		t.Fatalf("png.Encode returned error: %v", err)
+	}
+	return output.Bytes()
+}
+
+func mustJPEGBytes(t *testing.T, fill color.Color) []byte {
+	t.Helper()
+
+	img := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			img.Set(x, y, fill)
+		}
+	}
+
+	var output bytes.Buffer
+	if err := jpeg.Encode(&output, img, nil); err != nil {
+		t.Fatalf("jpeg.Encode returned error: %v", err)
 	}
 	return output.Bytes()
 }

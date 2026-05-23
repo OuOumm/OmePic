@@ -96,8 +96,8 @@ func (f uploadFlow) beginTransaction() (*uploadTransaction, error) {
 	if source.size == 0 {
 		return nil, emptyUploadError(policy.settings)
 	}
-	if !runtimeSettingsAllowsMIME(policy.settings, f.input.MIMEType) {
-		return nil, WithUserMessage(ErrInvalidInput, "file MIME type is not allowed")
+	if _, err := verifyUploadImageSource(source, f.input.MIMEType, policy.settings); err != nil {
+		return nil, err
 	}
 
 	resolved, err := f.service.resolveUploadStorage(f.input.StorageKey, policy.settings.AllowStorageSelect)
