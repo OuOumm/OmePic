@@ -129,11 +129,20 @@ func (r *Repository) Migrate(ctx context.Context) error {
 	if err := r.ensureImageColumn(ctx, "storage_key", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	if hasDeletedAt, err := testTableColumnExists(ctx, r.db, "images", "deleted_at"); err != nil {
-		return err
-	} else if hasDeletedAt {
-		imageIndexes["idx_images_deleted_created_at"] = `CREATE INDEX IF NOT EXISTS idx_images_deleted_created_at ON images(deleted_at, created_at DESC);`
+	for _, column := range []struct {
+		name string
+		ddl  string
+	}{
+		{name: "deleted_at", ddl: "DATETIME NULL"},
+		{name: "deleted_by", ddl: "TEXT NOT NULL DEFAULT ''"},
+		{name: "delete_reason", ddl: "TEXT NOT NULL DEFAULT ''"},
+		{name: "purge_after", ddl: "DATETIME NULL"},
+	} {
+		if err := r.ensureImageColumn(ctx, column.name, column.ddl); err != nil {
+			return err
+		}
 	}
+	imageIndexes["idx_images_deleted_created_at"] = `CREATE INDEX IF NOT EXISTS idx_images_deleted_created_at ON images(deleted_at, created_at DESC);`
 	for name, stmt := range imageIndexes {
 		if err := r.ensureIndex(ctx, name, stmt); err != nil {
 			return err

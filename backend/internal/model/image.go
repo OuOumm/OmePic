@@ -3,29 +3,37 @@ package model
 import "time"
 
 type ImageRecord struct {
-	ID             int64     `json:"id"`
-	UID            string    `json:"uid"`
-	Token          string    `json:"token"`
-	StorageKey     string    `json:"storage_key"`
-	StorageBackend string    `json:"storage_backend"`
-	FilePath       string    `json:"file_path"`
-	MIMEType       string    `json:"mime_type"`
-	Size           int64     `json:"size"`
-	MD5Hash        string    `json:"md5_hash"`
-	IPAddress      string    `json:"ip_address"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             int64      `json:"id"`
+	UID            string     `json:"uid"`
+	Token          string     `json:"token"`
+	StorageKey     string     `json:"storage_key"`
+	StorageBackend string     `json:"storage_backend"`
+	FilePath       string     `json:"file_path"`
+	MIMEType       string     `json:"mime_type"`
+	Size           int64      `json:"size"`
+	MD5Hash        string     `json:"md5_hash"`
+	IPAddress      string     `json:"ip_address"`
+	CreatedAt      time.Time  `json:"created_at"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
+	DeletedBy      string     `json:"deleted_by,omitempty"`
+	DeleteReason   string     `json:"delete_reason,omitempty"`
+	PurgeAfter     *time.Time `json:"purge_after,omitempty"`
 }
 
 type CachedImage struct {
-	UID            string    `json:"uid"`
-	Token          string    `json:"token"`
-	StorageKey     string    `json:"storage_key"`
-	StorageBackend string    `json:"storage_backend"`
-	FilePath       string    `json:"file_path"`
-	MIMEType       string    `json:"mime_type"`
-	Size           int64     `json:"size"`
-	MD5Hash        string    `json:"md5_hash"`
-	CreatedAt      time.Time `json:"created_at"`
+	UID            string     `json:"uid"`
+	Token          string     `json:"token"`
+	StorageKey     string     `json:"storage_key"`
+	StorageBackend string     `json:"storage_backend"`
+	FilePath       string     `json:"file_path"`
+	MIMEType       string     `json:"mime_type"`
+	Size           int64      `json:"size"`
+	MD5Hash        string     `json:"md5_hash"`
+	CreatedAt      time.Time  `json:"created_at"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
+	DeletedBy      string     `json:"deleted_by,omitempty"`
+	DeleteReason   string     `json:"delete_reason,omitempty"`
+	PurgeAfter     *time.Time `json:"purge_after,omitempty"`
 }
 
 func CachedImageFromRecord(record ImageRecord) CachedImage {

@@ -72,6 +72,8 @@ func New(deps Dependencies) *gin.Engine {
 	admin.GET(adminPath(adminStatusRouteSpec.Path), deps.AdminHandler.Status)
 	admin.GET(adminPath(adminImagesRouteSpec.Path), deps.AdminHandler.Images)
 	admin.DELETE(adminPath(adminImagesRouteSpec.Path), deps.AdminHandler.DeleteImages)
+	admin.GET(adminPath(adminImagesTrashSpec.Path), deps.AdminHandler.TrashImages)
+	admin.POST(adminPath(adminImageRestoreSpec.Path), deps.AdminHandler.RestoreImage)
 	admin.POST(adminPath(adminCloudflarePurgeSpec.Path), deps.AdminHandler.PurgeCloudflareImageCache)
 	admin.GET(adminPath(adminIPBansRouteSpec.Path), deps.AdminHandler.IPBans)
 	admin.POST(adminPath(adminIPBansRouteSpec.Path), deps.AdminHandler.CreateIPBan)

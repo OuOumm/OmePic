@@ -90,6 +90,26 @@ func (h *AdminHandler) Images(c *gin.Context) {
 	response.Success(c, http.StatusOK, result)
 }
 
+func (h *AdminHandler) TrashImages(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	search := strings.TrimSpace(c.Query("search"))
+	result, err := h.service.TrashImages(c.Request.Context(), page, pageSize, search)
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *AdminHandler) RestoreImage(c *gin.Context) {
+	if err := h.service.RestoreImage(c.Request.Context(), c.Param("uid")); err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{})
+}
+
 func (h *AdminHandler) DeleteImages(c *gin.Context) {
 	var payload struct {
 		UIDs []string `json:"uids"`

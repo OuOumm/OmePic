@@ -1542,6 +1542,91 @@ func TestDeleteRetainsPhysicalFileAfterLastReferenceDeletion(t *testing.T) {
 	}
 }
 
+func TestSoftDeleteMakesPublicAccess404TrashRestoreRebuildsCacheAndSameMD5UploadsNewObject(t *testing.T) {
+	ctx := context.Background()
+	service, repo, cacheStore, _, uidCodec := newImageServiceTestHarness(t)
+	uidCodec.Queue("uid-deleted", "uid-new")
+
+	sourceBytes := mustPNGBytes(t, color.RGBA{R: 40, G: 80, B: 200, A: 255})
+	first, err := service.Upload(ctx, UploadInput{
+		Token:            "token-a",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("first upload returned error: %v", err)
+	}
+	if first.Duplicate {
+		t.Fatalf("expected first upload to create a new object")
+	}
+	firstRecord, err := repo.FindByUID(ctx, "uid-deleted")
+	if err != nil {
+		t.Fatalf("FindByUID first returned error: %v", err)
+	}
+	md5Key := model.NewMD5MappingKey(firstRecord.StorageKey, firstRecord.MD5Hash)
+
+	if err := service.Delete(ctx, "uid-deleted"+publicImageExtension, "token-a", false, ""); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if _, err := service.Open(ctx, "uid-deleted"+publicImageExtension); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected deleted public image to return ErrNotFound, got %v", err)
+	}
+	if _, err := repo.FindByUID(ctx, "uid-deleted"); !repository.IsNotFound(err) {
+		t.Fatalf("expected active lookup to miss deleted row, got %v", err)
+	}
+	deleted, err := repo.FindDeletedByUID(ctx, "uid-deleted")
+	if err != nil {
+		t.Fatalf("FindDeletedByUID returned error: %v", err)
+	}
+	if deleted.DeletedAt == nil || deleted.PurgeAfter == nil {
+		t.Fatalf("expected delete metadata to be set, got %+v", deleted)
+	}
+	if got, ok := cacheStore.cachedMD5(md5Key); ok || got != "" {
+		t.Fatalf("expected md5 cache to clear after deleting only active row, got %q", got)
+	}
+	if cacheStore.hasCachedImage("uid-deleted") {
+		t.Fatalf("expected uid cache to clear after soft delete")
+	}
+
+	second, err := service.Upload(ctx, UploadInput{
+		Token:            "token-b",
+		OriginalFilename: "sample.png",
+		MIMEType:         "image/png",
+		Bytes:            sourceBytes,
+		BaseURL:          "http://localhost:8080",
+	})
+	if err != nil {
+		t.Fatalf("second upload returned error: %v", err)
+	}
+	if second.Duplicate {
+		t.Fatalf("expected same MD5 upload after soft delete to create a new object")
+	}
+	secondRecord, err := repo.FindByUID(ctx, "uid-new")
+	if err != nil {
+		t.Fatalf("FindByUID second returned error: %v", err)
+	}
+	if secondRecord.FilePath == firstRecord.FilePath {
+		t.Fatalf("expected new physical object after soft delete, got shared path %q", secondRecord.FilePath)
+	}
+
+	if err := service.restoreRecord(ctx, *deleted); err != nil {
+		t.Fatalf("restoreRecord returned error: %v", err)
+	}
+	restoredOpen, err := service.Open(ctx, "uid-deleted"+publicImageExtension)
+	if err != nil {
+		t.Fatalf("expected restored image to be publicly accessible, got %v", err)
+	}
+	_ = restoredOpen.Reader.Close()
+	if !cacheStore.hasCachedImage("uid-deleted") {
+		t.Fatalf("expected restore to rebuild uid cache")
+	}
+	if got, ok := cacheStore.cachedMD5(md5Key); !ok || got == "" {
+		t.Fatalf("expected restore to rebuild md5 cache, got %q ok=%v", got, ok)
+	}
+}
+
 func TestUploadRepairsStaleMD5MappingWhenCachedUIDBelongsToDifferentMD5(t *testing.T) {
 	ctx := context.Background()
 	service, repo, cacheStore, _, uidCodec := newImageServiceTestHarness(t)
