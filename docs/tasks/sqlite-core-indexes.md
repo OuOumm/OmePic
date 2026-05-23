@@ -100,8 +100,8 @@
   - `idx_images_ip_created_at ON images(ip_address, created_at DESC)`
   - `idx_images_storage_created_at ON images(storage_key, created_at DESC)`
 - 迁移保持幂等，并能将同名旧定义索引安全替换为本任务要求的新定义。
-- `idx_images_deleted_created_at ON images(deleted_at, created_at DESC)` 已实现为条件迁移：仅当 `images.deleted_at` 已存在时创建；当前 schema 尚未落地软删除列，因此不会提前新增该列，该索引会随软删除任务落地后自动创建。
-- 在 `backend/internal/repository/repository_test.go` 增加迁移测试，覆盖：重复迁移幂等、核心索引存在且定义正确、当前无 `deleted_at` 时不创建软删除索引、存在 `deleted_at` 时创建软删除索引。
+- `idx_images_deleted_created_at ON images(deleted_at, created_at DESC)` 已实现为条件迁移：仅当 `images.deleted_at` 已存在时创建；P0「软删除与回收站」落地后，该列已由迁移补齐，重复运行迁移会创建该索引。
+- 在 `backend/internal/repository/repository_test.go` 增加迁移测试，覆盖：重复迁移幂等、核心索引存在且定义正确、无 `deleted_at` 时不创建软删除索引、存在 `deleted_at` 时创建软删除索引。
 
 ### 测试与校验记录
 
@@ -113,6 +113,6 @@
 ### 复核结论
 
 - 需求一致性：已按 P0「SQLite 核心索引」范围补齐要求索引；未实现其他 P0 子任务。
-- Schema 边界：未提前新增 `deleted_at` 等软删除字段，符合“仅当当前 schema 已有 `deleted_at` 才创建索引”的要求。
-- 测试一致性：新增测试明确验证迁移幂等、索引存在，以及当前不创建 `deleted_at` 索引的行为。
-- 风险/后续：保留旧单列索引以避免影响既有查询；软删除任务新增 `deleted_at` 后，重复运行迁移将自动创建 `idx_images_deleted_created_at`。
+- Schema 边界：本子任务未提前新增 `deleted_at` 等软删除字段；后续 P0「软删除与回收站」已补齐该列并触发条件索引创建。
+- 测试一致性：新增测试明确验证迁移幂等、索引存在，以及 `deleted_at` 条件索引的创建行为。
+- 风险/后续：保留旧单列索引以避免影响既有查询；后续可结合真实慢查询再评估冗余索引清理。

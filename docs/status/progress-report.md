@@ -25,7 +25,7 @@
 | Token 治理基础 | 已完成 | 完成 | 通过 | 通过 | 新增 token_usage/token_controls、SHA-256 token hash、上传前禁用检查、上传后使用统计及管理员禁用/恢复 API；`go test ./...`、`gofmt -l ./cmd ./internal` 通过 |
 | 默认密码安全改造 | 已完成 | 完成 | 通过 | 通过 | 持久化默认密码状态；默认密码下禁止 runtime/storage 高危配置变更但允许改密；`go test ./...`、`gofmt -l ./cmd ./internal`、`npm run typecheck`、`npm run build:backend` 通过 |
 | 软删除与回收站 | 已完成 | 完成 | 通过 | 通过 | 新增软删除字段、回收站列表/恢复 API、默认查询排除已删除记录、删除/恢复 Redis UID 与 scoped MD5 映射修复；`go test ./...`、`gofmt -l ./cmd ./internal` 通过 |
-| SQLite 核心索引 | 已完成 | 完成 | 通过 | 通过 | 已补齐核心索引；`deleted_at` 索引等待软删除列落地后自动创建 |
+| SQLite 核心索引 | 已完成 | 完成 | 通过 | 通过 | 已补齐核心索引；软删除列落地后 `deleted_at` 复合索引已由幂等迁移覆盖 |
 | 配置审计日志 MVP | 已完成 | 完成 | 通过 | 通过 | 新增 config_audit_logs、runtime/storage 配置变更 before/after 审计、管理员查询 API 与敏感字段遮罩；`go test ./...`、`gofmt -l ./cmd ./internal` 通过 |
 | 存储健康检查 MVP | 已完成 | 完成 | 通过 | 通过 | 新增 storage_health_checks、手动检测/列表 API、后台 5 分钟心跳、小对象写读删探测与连续失败计数；`go test ./...`、`gofmt -l ./cmd ./internal` 通过 |
 
