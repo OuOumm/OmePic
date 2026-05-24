@@ -1,17 +1,17 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { CircleAlert, KeyRound, Save, TriangleAlert } from 'lucide-svelte';
-  import { adminChangePassword, adminGetAuditLogs, adminGetConfig, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
+  import { adminChangePassword, adminGetConfig, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
   import AnnouncementManager from '@/components/studio/AnnouncementManager.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import StorageInstanceManager from '@/components/studio/StorageInstanceManager.svelte';
   import { t } from '@/i18n';
-  import { formatDate, formatMegabytes, isAbortError } from '@/utils';
+  import { formatMegabytes, isAbortError } from '@/utils';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import { runAsyncAction, toastApiError } from '@/ui-errors';
   import { isValidAdminPasswordStrength } from '@/password-policy';
-  import type { AdminAuditScope, AdminConfig, AdminConfigAuditLog, AdminSystemSettings } from '@/types';
+  import type { AdminConfig, AdminSystemSettings } from '@/types';
 
   let config = $state.raw<AdminConfig | null>(null);
   let system = $state<AdminSystemSettings | null>(null);
@@ -22,16 +22,10 @@
   let cloudflarePurgeUrl = $state('');
   let oldPassword = $state('');
   let newPassword = $state('');
-  let auditLogs = $state.raw<AdminConfigAuditLog[]>([]);
-  let auditTotal = $state(0);
-  let auditPage = $state(1);
-  let auditPageSize = $state(20);
-  let auditScope = $state<AdminAuditScope>('');
 
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
   const cloudflarePurgeConfigured = $derived(system?.readonly.service.cloudflare_purge_configured ?? false);
-  const auditTotalPages = $derived(Math.max(1, Math.ceil(auditTotal / auditPageSize)));
   const securityWarnings = $derived.by(() => {
     const warnings: string[] = [];
     if (!system) return warnings;
@@ -46,25 +40,8 @@
     return Array.isArray(runtimeTypes) ? runtimeTypes.join(', ') : '';
   }
 
-  async function loadAudit(signal?: AbortSignal) {
-    if (!preferences.adminToken) return;
-    try {
-      const result = await adminGetAuditLogs(preferences.adminToken, auditPage, auditPageSize, auditScope, signal);
-      if (signal?.aborted) return;
-      auditLogs = Array.isArray(result.items) ? result.items : [];
-      auditTotal = result.total;
-    } catch (err) {
-      if (isAbortError(err)) return;
-      toastApiError(err, preferences.language);
-    }
-  }
-
   async function load(signal?: AbortSignal) {
     if (!preferences.adminToken || activeTab === 'announcements') return;
-    if (activeTab === 'audit') {
-      await loadAudit(signal);
-      return;
-    }
     try {
       [config, system] = await Promise.all([adminGetConfig(preferences.adminToken, signal), adminGetSystemSettings(preferences.adminToken, signal)]);
       if (signal?.aborted) return;
@@ -123,15 +100,6 @@
     });
   }
 
-  function formatSnapshot(value: string) {
-    if (!value) return '—';
-    try {
-      return JSON.stringify(JSON.parse(value), null, 2);
-    } catch {
-      return value;
-    }
-  }
-
   async function purgeCloudflareCache() {
     const token = preferences.adminToken;
     const url = cloudflarePurgeUrl.trim();
@@ -148,9 +116,6 @@
     });
   }
 
-  $effect(() => {
-    if (auditScope === '' || auditScope === 'runtime' || auditScope === 'storage') auditPage = 1;
-  });
 
   $effect(() => {
     const controller = new AbortController();
@@ -166,49 +131,6 @@
     {#if config}
       <StorageInstanceManager {config} onChange={(next) => (config = next)} />
     {/if}
-  {:else if activeTab === 'audit'}
-    <PageTitle eyebrow={t(preferences.language, 'admin.submenuAuditLogs')} title={t(preferences.language, 'admin.auditLogsTitle')} subtitle={t(preferences.language, 'admin.auditLogsDescription')} tone="blue" />
-    <div class="grid gap-3 border-b-[3px] ink-line pb-4 md:grid-cols-[auto_auto_1fr] md:items-center">
-      <label class="grid gap-2 text-sm font-black">
-        {t(preferences.language, 'admin.auditScope')}
-        <select class="studio-input" bind:value={auditScope}>
-          <option value="">{t(preferences.language, 'admin.auditScopeAll')}</option>
-          <option value="runtime">{t(preferences.language, 'admin.submenuRuntime')}</option>
-          <option value="storage">{t(preferences.language, 'admin.submenuStorage')}</option>
-        </select>
-      </label>
-      <label class="grid gap-2 text-sm font-black">
-        {t(preferences.language, 'admin.imagesPageSize')}
-        <select class="studio-input" bind:value={auditPageSize}>
-          <option value={10}>10</option>
-          <option value={20}>20</option>
-          <option value={50}>50</option>
-        </select>
-      </label>
-      <p class="self-end text-sm font-black md:text-right">{t(preferences.language, 'admin.auditTotal', { total: auditTotal })}</p>
-    </div>
-    <div class="grid gap-4">
-      {#each auditLogs as item (item.id)}
-        <article class="grid gap-3 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4">
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 ink-line pb-2">
-            <div class="flex flex-wrap items-center gap-2"><span class="tape-label" style="background:hsl(var(--marker-blue))">{item.config_scope}</span><span class="font-black">{item.actor || 'admin'}</span><span class="text-sm font-bold text-[hsl(var(--ink-muted))]">{item.actor_ip || '—'}</span></div>
-            <time class="text-sm font-bold text-[hsl(var(--ink-muted))]">{formatDate(item.created_at, preferences.language)}</time>
-          </div>
-          <div class="grid gap-3 lg:grid-cols-2">
-            <div class="min-w-0"><h3 class="mb-2 font-black">{t(preferences.language, 'admin.auditBefore')}</h3><pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words border-2 ink-line bg-[hsl(var(--paper-deep))] p-3 text-xs">{formatSnapshot(item.before_snapshot)}</pre></div>
-            <div class="min-w-0"><h3 class="mb-2 font-black">{t(preferences.language, 'admin.auditAfter')}</h3><pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words border-2 ink-line bg-[hsl(var(--paper-deep))] p-3 text-xs">{formatSnapshot(item.after_snapshot)}</pre></div>
-          </div>
-        </article>
-      {/each}
-    </div>
-    {#if auditLogs.length === 0}
-      <div class="grid min-h-32 place-items-center border-[3px] border-dashed ink-line px-3 text-center"><p class="font-black">{t(preferences.language, 'admin.auditEmpty')}</p></div>
-    {/if}
-    <div class="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-t-[3px] ink-line pt-3">
-      <button class="studio-button px-3 py-1.5 text-sm" disabled={auditPage <= 1} onclick={() => { auditPage -= 1; }}>{t(preferences.language, 'admin.imagesPrev')}</button>
-      <span class="min-w-0 justify-center text-center text-sm font-black">{t(preferences.language, 'admin.imagesPageStatus', { page: auditPage, totalPages: auditTotalPages })}</span>
-      <button class="studio-button px-3 py-1.5 text-sm" disabled={auditPage >= auditTotalPages} onclick={() => { auditPage += 1; }}>{t(preferences.language, 'admin.imagesNext')}</button>
-    </div>
   {:else if activeTab === 'runtime'}
     {#if system}
       <PageTitle eyebrow={t(preferences.language, 'admin.submenuRuntime')} title={t(preferences.language, 'admin.runtimeTitle')} subtitle={t(preferences.language, 'admin.runtimeDescription')} tone="yellow" />

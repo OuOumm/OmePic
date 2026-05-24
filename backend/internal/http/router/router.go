@@ -81,7 +81,6 @@ func New(deps Dependencies) *gin.Engine {
 	admin.DELETE(adminPath(adminIPBanImagesRouteSpec.Path), deps.AdminHandler.DeleteIPBanImages)
 	admin.GET(adminPath(adminAbuseOverviewRouteSpec.Path), deps.AdminHandler.AbuseOverview)
 	admin.GET(adminPath(adminAbuseIPRouteSpec.Path), deps.AdminHandler.AbuseIPDetail)
-	admin.GET(adminPath(adminAuditLogsRouteSpec.Path), deps.AdminHandler.AuditLogs)
 	admin.GET(adminPath(adminConfigRouteSpec.Path), deps.AdminHandler.GetConfig)
 	admin.POST(adminPath(adminConfigRouteSpec.Path), deps.AdminHandler.UpdateConfig)
 	admin.GET(adminPath(adminStorageHealthSpec.Path), deps.AdminHandler.StorageHealth)

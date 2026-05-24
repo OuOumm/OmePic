@@ -5,7 +5,6 @@ import {
   adminCheckStorageHealth,
   adminCreateStorageInstance,
   adminDeleteImages,
-  adminGetAuditLogs,
   adminGetImages,
   adminGetStorageHealth,
   adminGetStorageHealthHistory,
@@ -223,11 +222,8 @@ describe("admin API helpers", () => {
     );
   });
 
-  it("uses audit log and storage health contracts", async () => {
+  it("uses storage health contracts", async () => {
     vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse(200, { success: true, data: { items: [], total: 0 } })
-      )
       .mockResolvedValueOnce(jsonResponse(200, { success: true, data: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { success: true, data: [] }))
       .mockResolvedValueOnce(
@@ -238,7 +234,6 @@ describe("admin API helpers", () => {
       )
       .mockResolvedValueOnce(jsonResponse(200, { success: true, data: [] }));
 
-    await adminGetAuditLogs("admin-token", 2, 20, "runtime");
     await adminGetStorageHealth("admin-token");
     await adminGetStorageHealthHistory("admin-token", "local", "2026-05-24T00:00:00Z");
     await adminCheckStorageHealth("admin-token", "local");
@@ -246,14 +241,6 @@ describe("admin API helpers", () => {
 
     expect(fetch).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:8080/admin/audit-logs?page=2&page_size=20&scope=runtime",
-      expect.objectContaining({
-        cache: "no-store",
-        headers: { Authorization: "Bearer admin-token" },
-      })
-    );
-    expect(fetch).toHaveBeenNthCalledWith(
-      2,
       "http://localhost:8080/admin/storage/health",
       expect.objectContaining({
         cache: "no-store",
@@ -261,7 +248,7 @@ describe("admin API helpers", () => {
       })
     );
     expect(fetch).toHaveBeenNthCalledWith(
-      3,
+      2,
       "http://localhost:8080/admin/storage/local/health-history?since=2026-05-24T00%3A00%3A00Z",
       expect.objectContaining({
         cache: "no-store",
@@ -269,7 +256,7 @@ describe("admin API helpers", () => {
       })
     );
     expect(fetch).toHaveBeenNthCalledWith(
-      4,
+      3,
       "http://localhost:8080/admin/storage/local/health-check",
       {
         cache: "no-store",
@@ -278,7 +265,7 @@ describe("admin API helpers", () => {
       }
     );
     expect(fetch).toHaveBeenNthCalledWith(
-      5,
+      4,
       "http://localhost:8080/admin/storage/health-check-all",
       {
         cache: "no-store",

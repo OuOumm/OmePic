@@ -118,25 +118,6 @@ export interface AdminTrashImagesResponse {
   page_size: number;
 }
 
-export type AdminAuditScope = "" | "runtime" | "storage";
-
-export interface AdminConfigAuditLog {
-  id: number;
-  actor: string;
-  actor_ip: string;
-  config_scope: string;
-  before_snapshot: string;
-  after_snapshot: string;
-  created_at: string;
-}
-
-export interface AdminConfigAuditLogResponse {
-  items: AdminConfigAuditLog[];
-  page: number;
-  page_size: number;
-  total: number;
-}
-
 export interface AdminStorageHealthCheck {
   id: number;
   storage_key: string;

@@ -67,15 +67,6 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
-		`CREATE TABLE IF NOT EXISTS config_audit_logs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			actor TEXT NOT NULL DEFAULT '',
-			actor_ip TEXT NOT NULL DEFAULT '',
-			config_scope TEXT NOT NULL,
-			before_snapshot TEXT NOT NULL,
-			after_snapshot TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);`,
 		`CREATE TABLE IF NOT EXISTS storage_health_checks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			storage_key TEXT NOT NULL,
@@ -107,8 +98,6 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_announcements_public ON announcements(status, starts_at, ends_at, sort_order, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_hash ON ip_bans(ip_hash);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans(expires_at);`,
-		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_scope_created ON config_audit_logs(config_scope, created_at DESC);`,
-		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_created ON config_audit_logs(created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_storage_key ON storage_health_checks(storage_key, last_check_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_status ON storage_health_checks(status, last_check_at DESC);`,
 	}
@@ -123,6 +112,9 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`DROP INDEX IF EXISTS idx_token_controls_disabled`,
 		`DROP TABLE IF EXISTS token_usage`,
 		`DROP TABLE IF EXISTS token_controls`,
+		`DROP INDEX IF EXISTS idx_config_audit_logs_scope_created`,
+		`DROP INDEX IF EXISTS idx_config_audit_logs_created`,
+		`DROP TABLE IF EXISTS config_audit_logs`,
 	} {
 		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
 			return err

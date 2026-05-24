@@ -6,8 +6,6 @@ import type {
   AdminStatus,
   AdminImagesResponse,
   AdminTrashImagesResponse,
-  AdminConfigAuditLogResponse,
-  AdminAuditScope,
   AdminStorageHealthCheck,
   AdminConfig,
   StorageInstance,
@@ -596,24 +594,6 @@ export async function adminSetDefaultStorage(
     method: "POST",
     headers: adminHeaders(token),
     body: JSON.stringify({ storage_key: storageKey }),
-  });
-}
-
-export async function adminGetAuditLogs(
-  token: string,
-  page: number,
-  pageSize: number,
-  scope?: AdminAuditScope,
-  signal?: AbortSignal
-): Promise<AdminConfigAuditLogResponse> {
-  return apiFetch<AdminConfigAuditLogResponse>("/admin/audit-logs", {
-    headers: adminAuthHeaders(token),
-    signal,
-    params: {
-      page: String(page),
-      page_size: String(pageSize),
-      ...(scope ? { scope } : {}),
-    },
   });
 }
 
