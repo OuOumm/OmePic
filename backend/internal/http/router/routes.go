@@ -16,8 +16,6 @@ const (
 	adminPasswordRoute             = "/admin/password"
 	adminStatusRoute               = "/admin/status"
 	adminImagesRoute               = "/admin/images"
-	adminImagesTrashRoute          = "/admin/images/trash"
-	adminImageRestoreRoute         = "/admin/images/:uid/restore"
 	adminCloudflarePurgeRoute      = "/admin/cloudflare/purge-image-cache"
 	adminIPBansRoute               = "/admin/ip-bans"
 	adminAbuseOverviewRoute        = "/admin/abuse/overview"
@@ -53,8 +51,6 @@ var (
 	adminPasswordRouteSpec        = routeSpec{Path: adminPasswordRoute, Methods: methods(http.MethodPut)}
 	adminStatusRouteSpec          = routeSpec{Path: adminStatusRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminImagesRouteSpec          = routeSpec{Path: adminImagesRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
-	adminImagesTrashSpec          = routeSpec{Path: adminImagesTrashRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminImageRestoreSpec         = routeSpec{Path: adminImageRestoreRoute, Methods: methods(http.MethodPost)}
 	adminCloudflarePurgeSpec      = routeSpec{Path: adminCloudflarePurgeRoute, Methods: methods(http.MethodPost)}
 	adminIPBansRouteSpec          = routeSpec{Path: adminIPBansRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
 	adminIPBanByIDRouteSpec       = routeSpec{Path: adminIPBansRoute + "/:id", Methods: methods(http.MethodDelete)}
@@ -89,8 +85,6 @@ var adminRouteSpecs = []routeSpec{
 	adminPasswordRouteSpec,
 	adminStatusRouteSpec,
 	adminImagesRouteSpec,
-	adminImagesTrashSpec,
-	adminImageRestoreSpec,
 	adminCloudflarePurgeSpec,
 	adminIPBansRouteSpec,
 	adminIPBanByIDRouteSpec,

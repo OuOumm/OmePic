@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"omepic/backend/internal/config"
 	"omepic/backend/internal/model"
@@ -85,42 +84,6 @@ func TestMigrateCreatesCoreImageIndexesIdempotently(t *testing.T) {
 		}
 	}
 
-	got, err := imageIndexSQL(ctx, repo, "idx_images_deleted_created_at")
-	if err != nil {
-		t.Fatalf("imageIndexSQL(idx_images_deleted_created_at) returned error: %v", err)
-	}
-	want := "CREATE INDEX idx_images_deleted_created_at ON images(deleted_at, created_at DESC)"
-	if normalizeIndexSQL(got) != normalizeIndexSQL(want) {
-		t.Fatalf("deleted_at index mismatch:\nwant %s\n got %s", want, got)
-	}
-}
-
-func TestMigrateCreatesSoftDeleteColumnsIdempotently(t *testing.T) {
-	ctx := context.Background()
-	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = repo.Close()
-	})
-
-	if err := repo.Migrate(ctx); err != nil {
-		t.Fatalf("first Migrate returned error: %v", err)
-	}
-	if err := repo.Migrate(ctx); err != nil {
-		t.Fatalf("second Migrate returned error: %v", err)
-	}
-
-	for _, column := range []string{"deleted_at", "deleted_by", "delete_reason", "purge_after"} {
-		exists, err := testTableColumnExists(ctx, repo.db, "images", column)
-		if err != nil {
-			t.Fatalf("testTableColumnExists(%s) returned error: %v", column, err)
-		}
-		if !exists {
-			t.Fatalf("expected images.%s to exist", column)
-		}
-	}
 }
 
 func TestInsertImagePersistsStorageKeyWithoutOriginalFilenameColumn(t *testing.T) {
@@ -158,63 +121,6 @@ func TestInsertImagePersistsStorageKeyWithoutOriginalFilenameColumn(t *testing.T
 	}
 	if stored.MIMEType != "image/avif" || stored.FilePath != "2026/04/two.avif" || stored.StorageKey != "local-default" {
 		t.Fatalf("stored row mismatch: %+v", stored)
-	}
-}
-
-func TestSoftDeleteExcludesDefaultQueriesAndSupportsTrashRestore(t *testing.T) {
-	ctx := context.Background()
-	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-	t.Cleanup(func() { _ = repo.Close() })
-	if err := repo.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate returned error: %v", err)
-	}
-
-	record := model.ImageRecord{
-		UID:            "uid-trash",
-		Token:          "token-trash",
-		StorageKey:     "local-default",
-		StorageBackend: config.StorageBackendLocal,
-		FilePath:       "2026/05/trash.avif",
-		MIMEType:       "image/avif",
-		Size:           10,
-		MD5Hash:        "hash-trash",
-		IPAddress:      "127.0.0.1",
-	}
-	if err := repo.InsertImage(ctx, record); err != nil {
-		t.Fatalf("InsertImage returned error: %v", err)
-	}
-	if err := repo.SoftDeleteByUID(ctx, record.UID, "admin", "cleanup", time.Now().UTC().Add(24*time.Hour)); err != nil {
-		t.Fatalf("SoftDeleteByUID returned error: %v", err)
-	}
-	if _, err := repo.FindByUID(ctx, record.UID); !IsNotFound(err) {
-		t.Fatalf("expected active FindByUID to miss soft-deleted row, got %v", err)
-	}
-	if count, err := repo.CountByMD5AndStorageKey(ctx, record.MD5Hash, record.StorageKey); err != nil || count != 0 {
-		t.Fatalf("expected active md5 count 0, count=%d err=%v", count, err)
-	}
-	items, total, err := repo.SearchImages(ctx, 1, 20, "uid-trash")
-	if err != nil || total != 0 || len(items) != 0 {
-		t.Fatalf("expected default search to exclude deleted rows, total=%d len=%d err=%v", total, len(items), err)
-	}
-	trash, total, err := repo.SearchDeletedImages(ctx, 1, 20, "uid-trash")
-	if err != nil || total != 1 || len(trash) != 1 {
-		t.Fatalf("expected trash search to include deleted row, total=%d len=%d err=%v", total, len(trash), err)
-	}
-	if trash[0].DeletedAt == nil || trash[0].DeletedBy != "admin" || trash[0].DeleteReason != "cleanup" || trash[0].PurgeAfter == nil {
-		t.Fatalf("trash metadata mismatch: %+v", trash[0])
-	}
-	if err := repo.RestoreByUID(ctx, record.UID); err != nil {
-		t.Fatalf("RestoreByUID returned error: %v", err)
-	}
-	restored, err := repo.FindByUID(ctx, record.UID)
-	if err != nil {
-		t.Fatalf("FindByUID after restore returned error: %v", err)
-	}
-	if restored.DeletedAt != nil || restored.PurgeAfter != nil || restored.DeletedBy != "" || restored.DeleteReason != "" {
-		t.Fatalf("expected restore to clear delete metadata, got %+v", restored)
 	}
 }
 

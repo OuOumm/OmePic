@@ -32,17 +32,6 @@ export interface AdminImage {
   md5_hash: string;
   ip_address: string;
   created_at: string;
-  deleted_at?: string | null;
-  deleted_by?: string;
-  delete_reason?: string;
-  purge_after?: string | null;
-}
-
-export interface AdminTrashImage extends AdminImage {
-  deleted_at?: string | null;
-  deleted_by?: string;
-  delete_reason?: string;
-  purge_after?: string | null;
 }
 
 export interface AdminIPBan {
@@ -111,12 +100,6 @@ export interface AdminImagesResponse {
   page_size: number;
 }
 
-export interface AdminTrashImagesResponse {
-  items: AdminTrashImage[];
-  total: number;
-  page: number;
-  page_size: number;
-}
 
 export interface AdminStorageHealthCheck {
   id: number;

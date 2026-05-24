@@ -591,12 +591,11 @@ func (s *ImageService) purgeImageURLCachesForRecords(ctx context.Context, record
 }
 
 func (s *ImageService) deleteRecord(ctx context.Context, record model.ImageRecord) error {
-	purgeAfter := time.Now().UTC().Add(30 * 24 * time.Hour)
-	if err := s.repo.SoftDeleteByUID(ctx, record.UID, "admin", "", purgeAfter); err != nil {
+	if err := s.repo.DeleteByUID(ctx, record.UID); err != nil {
 		if repository.IsNotFound(err) {
 			return ErrNotFound
 		}
-		return fmt.Errorf("%w: soft delete record failed", ErrDependencyUnavailable)
+		return fmt.Errorf("%w: delete record failed", ErrDependencyUnavailable)
 	}
 
 	if err := s.imageCache.DeleteImage(ctx, record.UID); err != nil {
@@ -607,29 +606,6 @@ func (s *ImageService) deleteRecord(ctx context.Context, record model.ImageRecor
 		return err
 	}
 
-	return nil
-}
-
-func (s *ImageService) restoreRecord(ctx context.Context, record model.ImageRecord) error {
-	if err := s.repo.RestoreByUID(ctx, record.UID); err != nil {
-		if repository.IsNotFound(err) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("%w: restore record failed", ErrDependencyUnavailable)
-	}
-	restored, err := s.repo.FindByUID(ctx, record.UID)
-	if err != nil {
-		if repository.IsNotFound(err) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("%w: restored record lookup failed", ErrDependencyUnavailable)
-	}
-	if err := s.imageCache.SetImage(ctx, *restored); err != nil {
-		return fmt.Errorf("%w: redis uid restore failed", ErrDependencyUnavailable)
-	}
-	if err := s.md5Mappings().BackfillFromRecord(ctx, *restored); err != nil {
-		return err
-	}
 	return nil
 }
 

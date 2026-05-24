@@ -5,7 +5,6 @@ import type {
   UploadResult,
   AdminStatus,
   AdminImagesResponse,
-  AdminTrashImagesResponse,
   AdminStorageHealthCheck,
   AdminConfig,
   StorageInstance,
@@ -421,33 +420,6 @@ export async function adminDeleteImages(
   });
 }
 
-export async function adminGetTrashImages(
-  token: string,
-  page: number,
-  pageSize: number,
-  search?: string,
-  signal?: AbortSignal
-): Promise<AdminTrashImagesResponse> {
-  return apiFetch<AdminTrashImagesResponse>("/admin/images/trash", {
-    headers: adminHeaders(token),
-    signal,
-    params: {
-      page: String(page),
-      pageSize: String(pageSize),
-      ...(search ? { search } : {}),
-    },
-  });
-}
-
-export async function adminRestoreImage(
-  token: string,
-  uid: string
-): Promise<void> {
-  await apiFetch<Record<string, never> | null>(`/admin/images/${uid}/restore`, {
-    method: "POST",
-    headers: adminAuthHeaders(token),
-  });
-}
 
 export async function adminPurgeCloudflareImageCache(
   token: string,

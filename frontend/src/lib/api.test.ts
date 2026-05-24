@@ -8,10 +8,8 @@ import {
   adminGetImages,
   adminGetStorageHealth,
   adminGetStorageHealthHistory,
-  adminGetTrashImages,
   adminGetStatus,
   adminPurgeCloudflareImageCache,
-  adminRestoreImage,
   adminUpdateSystemSettings,
   deleteImageByUid,
   getRuntimeSettings,
@@ -190,37 +188,6 @@ describe("admin API helpers", () => {
     });
   });
 
-  it("uses trash listing and restore contracts", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse(200, { success: true, data: { items: [], total: 0 } })
-      )
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
-
-    await adminGetTrashImages("admin-token", 3, 10, "deleted");
-    await adminRestoreImage("admin-token", "uid-1");
-
-    expect(fetch).toHaveBeenNthCalledWith(
-      1,
-      "http://localhost:8080/admin/images/trash?page=3&pageSize=10&search=deleted",
-      expect.objectContaining({
-        cache: "no-store",
-        headers: {
-          Authorization: "Bearer admin-token",
-          "Content-Type": "application/json",
-        },
-      })
-    );
-    expect(fetch).toHaveBeenNthCalledWith(
-      2,
-      "http://localhost:8080/admin/images/uid-1/restore",
-      {
-        cache: "no-store",
-        method: "POST",
-        headers: { Authorization: "Bearer admin-token" },
-      }
-    );
-  });
 
   it("uses storage health contracts", async () => {
     vi.mocked(fetch)

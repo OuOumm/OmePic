@@ -13,7 +13,7 @@
 | 3 | URL 上传 SSRF 防护 | `docs/tasks/url-upload-ssrf-protection.md` | 3 | 已完成 | Implement Agent |
 | 4 | Token 治理基础 | `docs/tasks/token-governance.md` | 3 | 已完成 | Implement Agent |
 | 5 | 默认密码安全改造 | `docs/tasks/default-password-hardening.md` | 1.5 | 已完成 | Implement Agent |
-| 6 | 软删除与回收站 | `docs/tasks/soft-delete-recycle-bin.md` | 4 | 已完成 | Implement Agent |
+| 6 | 软删除与回收站 | `docs/tasks/soft-delete-recycle-bin.md` | 4 | 已取消/已移除 | Implement Agent |
 | 7 | SQLite 核心索引 | `docs/tasks/sqlite-core-indexes.md` | 1.5 | 已完成 | Implement Agent |
 | 8 | 配置审计日志 MVP | `docs/tasks/config-audit-log.md` | 3 | 已完成 | Implement Agent |
 | 9 | 存储健康检查 MVP | `docs/tasks/storage-health-check.md` | 4 | 已完成 | Implement Agent |
@@ -63,7 +63,7 @@ P0 任务群（安全与稳定性基线）
 ├── url-upload-ssrf-protection ← file-authenticity-validation（共享 MIME 校验）
 ├── token-governance ← 无依赖
 ├── default-password-hardening ← 无依赖
-├── soft-delete-recycle-bin ← sqlite-core-indexes（索引包含软删除列）
+├── soft-delete-recycle-bin ← 已取消/已移除（用户确认不需要回收站）
 ├── sqlite-core-indexes ← 无依赖
 ├── config-audit-log ← 无依赖
 └── storage-health-check ← 无依赖

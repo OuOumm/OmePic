@@ -26,7 +26,6 @@
    - `CREATE INDEX IF NOT EXISTS idx_images_token_created_at ON images(token, created_at DESC)`
    - `CREATE INDEX IF NOT EXISTS idx_images_ip_created_at ON images(ip_address, created_at DESC)`
    - `CREATE INDEX IF NOT EXISTS idx_images_storage_created_at ON images(storage_key, created_at DESC)`
-   - `CREATE INDEX IF NOT EXISTS idx_images_deleted_created_at ON images(deleted_at, created_at DESC)`（配合软删除）
 2. 迁移保持幂等：`CREATE INDEX IF NOT EXISTS`。
 3. 确认现有查询的 WHERE/ORDER BY 能利用新索引。
 4. 大表场景验证索引对查询性能的提升。
@@ -100,8 +99,8 @@
   - `idx_images_ip_created_at ON images(ip_address, created_at DESC)`
   - `idx_images_storage_created_at ON images(storage_key, created_at DESC)`
 - 迁移保持幂等，并能将同名旧定义索引安全替换为本任务要求的新定义。
-- `idx_images_deleted_created_at ON images(deleted_at, created_at DESC)` 已实现为条件迁移：仅当 `images.deleted_at` 已存在时创建；P0「软删除与回收站」落地后，该列已由迁移补齐，重复运行迁移会创建该索引。
-- 在 `backend/internal/repository/repository_test.go` 增加迁移测试，覆盖：重复迁移幂等、核心索引存在且定义正确、无 `deleted_at` 时不创建软删除索引、存在 `deleted_at` 时创建软删除索引。
+- 用户确认取消回收站功能后，已移除 deleted_at 相关索引要求与实现。
+- 在 `backend/internal/repository/repository_test.go` 增加迁移测试，覆盖：重复迁移幂等、核心索引存在且定义正确。
 
 ### 测试与校验记录
 
@@ -113,6 +112,6 @@
 ### 复核结论
 
 - 需求一致性：已按 P0「SQLite 核心索引」范围补齐要求索引；未实现其他 P0 子任务。
-- Schema 边界：本子任务未提前新增 `deleted_at` 等软删除字段；后续 P0「软删除与回收站」已补齐该列并触发条件索引创建。
-- 测试一致性：新增测试明确验证迁移幂等、索引存在，以及 `deleted_at` 条件索引的创建行为。
+- Schema 边界：用户确认取消回收站功能后，当前 schema 不包含删除元数据字段。
+- 测试一致性：新增测试明确验证迁移幂等与核心索引存在。
 - 风险/后续：保留旧单列索引以避免影响既有查询；后续可结合真实慢查询再评估冗余索引清理。

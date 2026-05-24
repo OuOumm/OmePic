@@ -19,11 +19,7 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			size INTEGER,
 			md5_hash TEXT NOT NULL,
 			ip_address TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			deleted_at DATETIME NULL,
-			deleted_by TEXT NOT NULL DEFAULT '',
-			delete_reason TEXT NOT NULL DEFAULT '',
-			purge_after DATETIME NULL
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 		`CREATE TABLE IF NOT EXISTS config (
 			key TEXT PRIMARY KEY,
@@ -95,7 +91,6 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_images_token_created_at ON images(token, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_ip_created_at ON images(ip_address, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_storage_created_at ON images(storage_key, created_at DESC);`,
-		`CREATE INDEX IF NOT EXISTS idx_images_deleted_created_at ON images(deleted_at, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_storage_configs_default ON storage_configs(is_default);`,
 		`CREATE INDEX IF NOT EXISTS idx_announcements_public ON announcements(status, starts_at, ends_at, sort_order, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_hash ON ip_bans(ip_hash);`,

@@ -76,20 +76,16 @@ type AdminImageList struct {
 }
 
 type AdminImageItem struct {
-	ID             int64      `json:"id"`
-	UID            string     `json:"uid"`
-	Token          string     `json:"token"`
-	StorageKey     string     `json:"storage_key"`
-	StorageBackend string     `json:"storage_backend"`
-	MIMEType       string     `json:"mime_type"`
-	Size           int64      `json:"size"`
-	MD5Hash        string     `json:"md5_hash"`
-	IPAddress      string     `json:"ip_address"`
-	CreatedAt      time.Time  `json:"created_at"`
-	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
-	DeletedBy      string     `json:"deleted_by,omitempty"`
-	DeleteReason   string     `json:"delete_reason,omitempty"`
-	PurgeAfter     *time.Time `json:"purge_after,omitempty"`
+	ID             int64     `json:"id"`
+	UID            string    `json:"uid"`
+	Token          string    `json:"token"`
+	StorageKey     string    `json:"storage_key"`
+	StorageBackend string    `json:"storage_backend"`
+	MIMEType       string    `json:"mime_type"`
+	Size           int64     `json:"size"`
+	MD5Hash        string    `json:"md5_hash"`
+	IPAddress      string    `json:"ip_address"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type AdminIPBanCreateInput struct {
@@ -329,42 +325,7 @@ func adminImageItemFromRecord(item model.ImageRecord) AdminImageItem {
 		MD5Hash:        item.MD5Hash,
 		IPAddress:      item.IPAddress,
 		CreatedAt:      item.CreatedAt,
-		DeletedAt:      item.DeletedAt,
-		DeletedBy:      item.DeletedBy,
-		DeleteReason:   item.DeleteReason,
-		PurgeAfter:     item.PurgeAfter,
 	}
-}
-
-func (s *AdminService) TrashImages(ctx context.Context, page int, pageSize int, search string) (AdminImageList, error) {
-	items, total, err := s.repo.SearchDeletedImages(ctx, page, pageSize, search)
-	if err != nil {
-		return AdminImageList{}, fmt.Errorf("%w: trash image list query failed", ErrDependencyUnavailable)
-	}
-
-	viewItems := make([]AdminImageItem, 0, len(items))
-	for _, item := range items {
-		viewItems = append(viewItems, adminImageItemFromRecord(item))
-	}
-	return AdminImageList{Items: viewItems, Page: page, PageSize: pageSize, Total: total}, nil
-}
-
-func (s *AdminService) RestoreImage(ctx context.Context, uid string) error {
-	if s.imageService == nil {
-		return fmt.Errorf("%w: image service is not configured", ErrDependencyUnavailable)
-	}
-	normalizedUID, err := s.imageService.normalizeStoredUID(uid)
-	if err != nil {
-		return err
-	}
-	record, err := s.repo.FindDeletedByUID(ctx, normalizedUID)
-	if err != nil {
-		if repository.IsNotFound(err) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("%w: trash image lookup failed", ErrDependencyUnavailable)
-	}
-	return s.imageService.restoreRecord(ctx, *record)
 }
 
 func (s *AdminService) DeleteImages(ctx context.Context, uids []string) error {
