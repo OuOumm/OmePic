@@ -6,16 +6,16 @@
   import ImageDataTable from '@/components/studio/ImageDataTable.svelte';
   import ImagePreviewDialog from '@/components/studio/ImagePreviewDialog.svelte';
   import StorageInspector from '@/components/studio/StorageInspector.svelte';
-  import { deleteImageByUid, getAnnouncements, getRuntimeSettings, uploadImageURL } from '@/api';
+  import { deleteImageByUid, getAnnouncements, getRuntimeSettings } from '@/api';
   import { copyToClipboard } from '@/clipboard';
   import { getClientToken } from '@/client-token';
-  import { deleteUploadFromHistory, getRecentUploads, saveUploadToHistory } from '@/indexeddb/upload-history';
+  import { deleteUploadFromHistory, getRecentUploads } from '@/indexeddb/upload-history';
   import { t } from '@/i18n';
   import { preferences, setRuntimeSettings, setSelectedStorageKey } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import { getActiveTasks, enqueueFiles } from '@/stores/upload-queue.svelte';
   import type { Announcement, UploadHistoryRecord } from '@/types';
-  import { bbcodeForImageUrl, imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAbortError, isBlockedImageMimeType, markdownForImageUrl, normalizedImageMimeType, uidFromImageUrl } from '@/utils';
+  import { imageAcceptFromMimeTypes, imageUrlAllowedOrigins, isAbortError, isBlockedImageMimeType, normalizeDownloadFilename, normalizedImageMimeType } from '@/utils';
   import { errorMessage } from '@/ui-errors';
 
   let recentUploads = $state.raw<UploadHistoryRecord[]>([]);
@@ -105,6 +105,57 @@
     if (uploaded) await loadRecent();
   }
 
+  function maxUploadBytes(): number {
+    const maxMB = preferences.runtimeSettings?.upload.max_upload_size_mb ?? 0;
+    return maxMB > 0 ? maxMB * 1024 * 1024 : 0;
+  }
+
+  function imageExtensionFromMime(mimeType: string): string {
+    switch (normalizedImageMimeType(mimeType)) {
+      case 'image/jpeg':
+        return '.jpg';
+      case 'image/png':
+        return '.png';
+      case 'image/gif':
+        return '.gif';
+      case 'image/webp':
+        return '.webp';
+      case 'image/avif':
+        return '.avif';
+      default:
+        return '';
+    }
+  }
+
+  function filenameFromURL(url: URL, mimeType: string): string {
+    const rawName = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? '');
+    const fallback = `remote-image${imageExtensionFromMime(mimeType)}`;
+    const normalized = normalizeDownloadFilename(rawName, fallback);
+    return /\.[a-z0-9]{2,5}$/i.test(normalized) ? normalized : `${normalized}${imageExtensionFromMime(mimeType)}`;
+  }
+
+  async function downloadURLImage(url: URL): Promise<File> {
+    const response = await fetch(url.toString(), { cache: 'no-store' });
+    if (!response.ok) throw new Error(t(preferences.language, 'upload.error'));
+
+    const maxBytes = maxUploadBytes();
+    const contentLength = Number(response.headers.get('Content-Length') ?? 0);
+    if (maxBytes > 0 && Number.isFinite(contentLength) && contentLength > maxBytes) {
+      throw new Error(t(preferences.language, 'upload.error'));
+    }
+
+    const blob = await response.blob();
+    if (maxBytes > 0 && blob.size > maxBytes) throw new Error(t(preferences.language, 'upload.error'));
+
+    const mimeType = normalizedImageMimeType(blob.type || response.headers.get('Content-Type') || '');
+    if (!mimeType.startsWith('image/') || isBlockedImageMimeType(mimeType)) {
+      throw new Error(t(preferences.language, 'upload.error'));
+    }
+
+    const body = blob.type === mimeType ? blob : blob.slice(0, blob.size, mimeType);
+    return new File([body], filenameFromURL(url, mimeType), { type: mimeType, lastModified: Date.now() });
+  }
+
   async function handleUrlUpload() {
     const rawUrl = urlInput.trim();
     if (!rawUrl) return;
@@ -123,33 +174,13 @@
 
     urlUploading = true;
     try {
-      const token = getClientToken();
-      const result = await uploadImageURL(parsed.toString(), token, preferences.selectedStorageKey || undefined);
-      const uid = uidFromImageUrl(result.url);
-      if (!uid) throw new Error(t(preferences.language, 'upload.error'));
-      const createdAt = new Date().toISOString();
-      const selectedKey = preferences.selectedStorageKey.trim();
-      const selectedOption = preferences.runtimeSettings?.storage.options.find((option) => option.storage_key === selectedKey)
-        ?? preferences.runtimeSettings?.storage.options.find((option) => option.is_default)
-        ?? preferences.runtimeSettings?.storage.options[0];
-      await saveUploadToHistory({
-        uid,
-        url: result.url,
-        mime_type: 'image/avif',
-        size: 0,
-        created_at: createdAt,
-        is_duplicate: result.duplicate,
-        storage_key: selectedOption?.storage_key ?? selectedKey,
-        storage_backend: selectedOption?.storage_backend ?? 'local',
-        markdown: markdownForImageUrl(result.url, rawUrl),
-        bbcode: bbcodeForImageUrl(result.url),
-        client_token: token,
-        original_filename: rawUrl,
-        saved_at: createdAt,
-      });
-      toast.success(t(preferences.language, 'upload.urlSuccess'));
-      urlInput = '';
-      await loadRecent();
+      const file = await downloadURLImage(parsed);
+      const uploaded = await enqueueFiles([file], maintenanceMode);
+      if (uploaded) {
+        toast.success(t(preferences.language, 'upload.urlSuccess'));
+        urlInput = '';
+        await loadRecent();
+      }
     } catch (err) {
       toast.error(errorMessage(err, preferences.language));
     } finally {

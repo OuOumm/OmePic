@@ -1,40 +1,48 @@
-# 任务：URL 上传 SSRF 防护
+# 任务：URL 上传前端下载改造（取消后端下载）
 
 ## 关联的整改/扩展条目
 
-- 源设计文档 `docs/debug/remediation-extension-design/rectification-and-extension-design.md` **§1.3 安全短板与整改建议** — "URL 上传可能引入 SSRF"
-- **§4.2 P0：URL 上传 SSRF 防护** — "禁止私网地址、限制跳转、下载大小、超时、DNS 重绑定防护"
+- 源设计文档 `docs/debug/remediation-extension-design/rectification-and-extension-design.md` 原 **§4.2 P0：URL 上传 SSRF 防护**。
+- 2026-05-25 用户调整：**URL 上传改为前端下载图片然后上传到后端，而不是在后端进行下载**。
 
 ## 预估人日
 
-3 人日
+3 人日（原估算；实现方向已调整）
+
+## 当前结论
+
+- 后端不再提供 `POST /v1/image/url`，也不再主动请求用户提供的远端 URL。
+- URL 上传由浏览器端执行 `fetch(url)`，将响应转换为 `File` 后复用现有 `POST /v1/image` multipart 上传链路。
+- 后端仍通过现有文件上传链路执行 Token、真实 MIME、像素、大小、AVIF 转换、去重、存储与缓存修复等校验。
+- 因后端不再访问用户提供的 URL，后端 SSRF 攻击面被移除；浏览器端下载仍受浏览器 CORS/网络策略约束。
 
 ## 开发
 
-### 需要修改/新增的模块或文件
+### 已移除范围
 
-- `backend/internal/http/handler/upload_url.go`（新增）— `POST /v1/image/url` 处理器
-- `backend/internal/util/url_safety.go`（新增）— URL 安全校验工具
-- `backend/internal/http/router/router.go` — 注册新路由
-- `frontend/src/lib/api.ts` — URL 上传改调后端安全接口
-- `frontend/src/routes/+page.svelte` — URL 上传逻辑调整
+- 后端 `POST /v1/image/url` 路由与 handler。
+- 后端 `RemoteImageFetcher`、`UploadRemoteURL`、URL 下载超时/跳转/DNS 解析逻辑。
+- 后端 `backend/internal/util/url_safety.go` 与对应测试。
+- 后端 URL 上传 handler 集成测试。
+- 前端 `uploadImageURL()` API helper。
 
-### 关键实现点
+### 当前实现范围
 
-1. 新增后端 `POST /v1/image/url`，前端 URL 上传改为调用后端，由后端统一复用上传策略。
-2. URL 抓取保护：仅允许 `http` / `https` 协议。
-3. 限制跳转次数（默认 5 次），每次跳转重新校验目标地址。
-4. DNS 解析后拒绝私网（10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16）、环回（127.0.0.0/8, ::1）、链路本地（169.254.0.0/16, fe80::/10）、组播、未指定、CGNAT（100.64.0.0/10）地址。
-5. 下载超时、Content-Length 限制和读取上限使用运行时最大上传大小。
-6. 下载结果进入 `ImageService.Upload`，继续执行 Token、MIME、像素、去重和存储校验。
-7. 使用 `http.Client` 自定义 `CheckRedirect` 和 `DialContext` 实现 DNS 后检查。
+- `frontend/src/routes/+page.svelte`：
+  - 校验 URL scheme 仅允许 `http` / `https`。
+  - 前端 `fetch` 远端图片。
+  - 校验响应状态、Content-Length / Blob 大小、图片 MIME 与 SVG 阻断规则。
+  - 根据 URL path 与 MIME 生成临时文件名。
+  - 将 Blob 包装为 `File` 后调用 `enqueueFiles([file], maintenanceMode)`，复用现有上传队列与历史记录逻辑。
+- `frontend/src/lib/api.ts`：移除后端 URL 上传 helper，仅保留 multipart 文件上传。
+- `backend/internal/http/router/routes.go` / `router.go`：移除 `/v1/image/url` 注册。
 
 ### 完成标准
 
-- [x] 代码编译通过：`cd backend && go test ./...`（覆盖构建与测试）
-- [x] 单元测试通过：`cd backend && go test ./internal/util/... ./internal/http/handler/...`
-- [x] gofmt 格式正确：`cd backend && gofmt -l ./cmd ./internal` 无输出
-- [x] 前端 URL 上传切换到后端接口：`cd frontend && npm run build:backend`
+- [x] 后端代码中不存在 `/v1/image/url`、`UploadRemoteURL`、`RemoteImageFetcher` 等后端下载入口。
+- [x] 前端 URL 上传不再调用后端 URL 接口。
+- [x] URL 下载成功后进入现有上传队列，并复用文件上传接口。
+- [x] 本地验证通过。
 
 ## 测试
 
@@ -42,98 +50,71 @@
 
 | 类型 | 场景 | 预期结果 |
 |------|------|----------|
-| 正向 | 从公网 URL 上传图片 | 正常下载并完成上传 |
-| 正向 | URL 重定向到另一个公网图片 | 跟随重定向成功 |
-| 异常 | URL 为 http://127.0.0.1/... | 拒绝，返回 SSRF 防护错误 |
-| 异常 | URL 为 http://169.254.169.254/...（云元数据） | 拒绝 |
-| 异常 | URL 为 http://192.168.1.1/...（内网） | 拒绝 |
-| 异常 | URL 为 http://10.0.0.1/...（内网） | 拒绝 |
-| 异常 | URL 重定向到内网地址 | 拒绝（跳转时重新检查） |
-| 异常 | 下载超时（远端不响应） | 返回超时错误 |
-| 异常 | Content-Length 超过限制 | 拒绝，提示文件过大 |
-| 边界 | 跳转恰好 5 次 | 成功 |
-| 边界 | 跳转第 6 次 | 拒绝，提示重定向过多 |
-| 边界 | ftp:// 协议 URL | 拒绝，仅允许 http/https |
+| 正向 | 输入可由浏览器访问且 CORS 允许的图片 URL | 浏览器下载为 File，并通过 multipart 上传成功 |
+| 异常 | URL 非 http/https | 前端提示 URL 无效 |
+| 异常 | 远端响应非 2xx | 前端提示上传失败 |
+| 异常 | 响应体超过运行时上传大小限制 | 前端拒绝并提示错误 |
+| 异常 | 响应 MIME 非图片或为 SVG | 前端拒绝并提示错误 |
+| 回归 | 后端访问 `/v1/image/url` | 不再注册该接口 |
 
-### 必须覆盖的测试类型
+### 验证命令
 
-- 单元测试：URL 安全校验工具（IP 解析、私网判断、协议检查）
-- 集成测试：完整 URL 上传链路（mock HTTP 服务器模拟各种场景）
-- 安全测试：DNS rebinding 模拟、SSRF bypass 尝试
-
-### 测试通过标准
-
-- `cd backend && go test ./...` 全部通过
-- 前端 URL 上传功能正常调用后端接口
+- `cd backend && gofmt -w ./cmd ./internal && go test ./...`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run typecheck`
+- `cd frontend && npm run test`
+- `cd frontend && npm run build:backend`
 
 ## 复查
 
 ### 代码审查关注点
 
-- DNS 解析后地址检查是否在每次拨号时执行（防止 DNS rebinding）
-- 跳转次数限制是否正确实现
-- 大文件下载是否有流式处理，避免内存溢出
-- 错误消息不暴露内部网络拓扑
+- 后端不得再主动请求用户输入的 URL。
+- 前端 URL 上传必须复用现有文件上传队列与历史记录逻辑，避免出现第二套上传结果处理。
+- 文件大小/MIME 的前端预校验不得替代后端真实文件校验；后端仍是最终安全边界。
+- 删除 `/v1/image/url` 后，路由列表与 API helper 不得残留旧接口。
 
 ### 安全检查
 
-- 所有私网/特殊地址段是否完整覆盖（IPv4 + IPv6）
-- 是否存在 TOCTOU 竞态（DNS 解析与连接建立之间）
-- 下载的文件是否经过与普通上传相同的完整性校验
-
-### 文档更新要求
-
-- 新增 API 文档：`POST /v1/image/url` 接口说明
-- 安全文档说明 SSRF 防护策略
-
-### 复查通过标准
-
-- [ ] 至少一位 reviewer 批准
-- [ ] CI 全部绿色
-- [x] 完成报告已填写
+- 后端 SSRF 面已通过移除后端 URL 下载能力消除。
+- 浏览器端下载受同源/CORS/浏览器网络策略约束。
+- 后端仍对最终上传文件执行真实 MIME、像素、大小与允许类型校验。
 
 ## 完成报告
 
 ### 实施摘要
 
-- 新增 `POST /v1/image/url`，请求体为 `{ "url": string, "storage_key"?: string }`，认证沿用 `X-Token`。
-- 后端通过 `RemoteImageFetcher` 统一抓取远端图片，并将下载流传入 `ImageService.Upload`，继续复用现有 Token、真实 MIME、像素限制、MD5 去重、存储选择与 AVIF 转换策略。
-- URL 安全策略：仅允许 `http/https`，禁止 URL 凭据；默认最多 5 次重定向；每次重定向重新校验目标 URL；拨号阶段解析并拒绝私网、环回、链路本地、组播、未指定、CGNAT 与 IPv6 特殊地址；禁用代理避免绕过 DialContext 检查。
-- 下载保护：使用运行时最大上传大小校验 `Content-Length`，并用 `io.LimitReader(max+1)` 限制读取；下载/连接使用超时控制。
-- 前端 URL 上传不再浏览器直连远端 URL，改为调用后端安全接口，并在成功后写入本地上传历史。
+- 按用户要求，URL 上传已改为前端下载图片后上传到后端。
+- 移除了后端 URL 下载 API、远端抓取服务、URL 安全工具和相关测试。
+- 前端 URL 输入现在通过浏览器 `fetch` 获取图片 Blob，转换为 `File` 后进入现有上传队列。
+- 文件最终仍通过 `POST /v1/image` multipart 上传，复用后端既有安全校验与存储链路。
 
 ### 修改文件
 
-- `backend/internal/util/url_safety.go`
-- `backend/internal/util/url_safety_test.go`
-- `backend/internal/service/image_service.go`
-- `backend/internal/service/url_upload.go`
 - `backend/internal/http/handler/image_handler.go`
-- `backend/internal/http/handler/url_upload_handler_test.go`
 - `backend/internal/http/router/router.go`
 - `backend/internal/http/router/routes.go`
+- `backend/internal/service/image_service.go`
+- `backend/internal/service/url_upload.go`（删除）
+- `backend/internal/http/handler/url_upload_handler_test.go`（删除）
+- `backend/internal/util/url_safety.go`（删除）
+- `backend/internal/util/url_safety_test.go`（删除）
 - `frontend/src/lib/api.ts`
 - `frontend/src/routes/+page.svelte`
 - `docs/tasks/url-upload-ssrf-protection.md`
-- `docs/status/task-list.md`
 - `docs/status/progress-report.md`
+- `.trellis/tasks/05-22-remediation-extension-implementation/design.md`
+- `.trellis/tasks/05-22-remediation-extension-implementation/implement.md`
 
 ### 验证记录
 
-- `cd backend && gofmt -w ./cmd ./internal`：通过。
-- `cd backend && go test ./internal/util/... ./internal/http/handler/...`：通过，16 个测试通过。
-- `cd backend && go test ./...`：通过，17 个包 243 个测试通过。
-- `cd backend && gofmt -l ./cmd ./internal`：通过，无输出。
+- `cd backend && gofmt -w ./cmd ./internal && go test ./...`：通过，16 个 package / 242 项后端测试通过。
+- `cd frontend && npm run lint`：通过，无 ESLint 问题。
 - `cd frontend && npm run typecheck`：通过，0 errors / 0 warnings。
-- `cd frontend && npm run build:backend`：通过，已生成并复制静态产物到 `backend/web/`。
+- `cd frontend && npm run test`：通过，10 个测试文件 / 55 项测试通过。
+- `cd frontend && npm run build:backend`：通过，前端构建并复制到 `backend/web/`。
 
 ### 复核结论
 
-- 需求一致性：仅实现 URL 上传 SSRF 防护，未实现 Token 治理、默认密码、软删除、审计、健康检查等其他 P0 子任务。
-- 安全一致性：协议、重定向、DNS/连接地址、Content-Length、读取上限与超时均有覆盖；下载结果仍进入普通上传链路接受真实性校验。
-- 范围控制：未修改 `frontend/src/lib/i18n.ts`、`frontend/src/routes/+error.svelte`，未处理既有无关 README/docs 迁移变更。
-
-### 风险与后续
-
-- 当前测试使用 mock 公网 Host + 自定义 Dialer 覆盖成功链路；生产环境真实公网域名解析由安全 DialContext 执行。
-- 可后续在 API 文档恢复/迁移完成后补充公开接口示例（当前工作区存在无关 docs 删除/迁移变更，本子任务未触碰旧 API 文档）。
+- 需求已更新为“前端下载图片然后上传到后端”，当前实现与需求一致。
+- 代码侧已确认后端不再存在 URL 下载接口、远端抓取服务或 URL 安全抓取工具；前端不再调用 `/v1/image/url`。

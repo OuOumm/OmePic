@@ -21,7 +21,7 @@
 |------|------|------|------|------|------|
 | 上传资源保护 | 已完成 | 完成 | 通过 | 通过 | 新增像素上限、AVIF 并发与超时保护；`go test ./...`、`npm run typecheck` 通过 |
 | 文件真实性校验 | 已完成 | 完成 | 通过 | 通过 | 服务层新增真实图片/MIME 交叉校验；`go test ./...`、`go build ./...`、`gofmt -l ./cmd ./internal` 通过 |
-| URL 上传 SSRF 防护 | 已完成 | 完成 | 通过 | 通过 | 新增 `POST /v1/image/url` 后端安全抓取；协议、重定向、DNS/连接地址、Content-Length、读取上限与超时均已限制；`go test ./...`、`gofmt -l ./cmd ./internal`、`npm run typecheck`、`npm run build:backend` 通过 |
+| URL 上传前端下载改造 | 已完成 | 完成 | 通过 | 通过 | 用户要求不再由后端下载 URL；已移除 `POST /v1/image/url` 与后端远端抓取逻辑，前端改为浏览器下载图片后复用 multipart 上传；后端 242 项测试、前端 lint/typecheck/55 项测试/build 均通过 |
 | Token 治理基础 | 已完成 | 完成 | 通过 | 通过 | 新增 token_usage/token_controls、SHA-256 token hash、上传前禁用检查、上传后使用统计及管理员禁用/恢复 API；`go test ./...`、`gofmt -l ./cmd ./internal` 通过 |
 | 默认密码安全改造 | 已完成 | 完成 | 通过 | 通过 | 持久化默认密码状态；默认密码下禁止 runtime/storage 高危配置变更但允许改密；`go test ./...`、`gofmt -l ./cmd ./internal`、`npm run typecheck`、`npm run build:backend` 通过 |
 | 软删除与回收站 | 已取消/已移除 | 完成 | 通过 | 通过 | 用户确认不需要回收站；已移除软删除字段、回收站/恢复 API、前端入口与相关测试，删除改回直接删除数据库记录；后端 250 项测试、前端 lint/typecheck/55 项测试/build 均通过 |
@@ -69,7 +69,7 @@
 1. **SQLite 核心索引** — 已完成（基础设施先行，无依赖）
 2. **上传资源保护** — 已完成
 3. **文件真实性校验** — 已完成
-4. **URL 上传 SSRF 防护** — 已完成
+4. **URL 上传前端下载改造** — 已完成
 5. **默认密码安全改造** — 已完成
 6. **Token 治理基础** — 已完成
 7. **配置审计日志 MVP** — 已完成
