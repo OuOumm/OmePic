@@ -67,25 +67,6 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
-		`CREATE TABLE IF NOT EXISTS token_usage (
-			token_hash TEXT PRIMARY KEY,
-			token_preview TEXT NOT NULL DEFAULT '',
-			upload_count INTEGER NOT NULL DEFAULT 0,
-			total_bytes INTEGER NOT NULL DEFAULT 0,
-			last_ip TEXT NOT NULL DEFAULT '',
-			last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);`,
-		`CREATE TABLE IF NOT EXISTS token_controls (
-			token_hash TEXT PRIMARY KEY,
-			token_preview TEXT NOT NULL DEFAULT '',
-			disabled INTEGER NOT NULL DEFAULT 0,
-			reason TEXT NOT NULL DEFAULT '',
-			disabled_at DATETIME NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);`,
 		`CREATE TABLE IF NOT EXISTS config_audit_logs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			actor TEXT NOT NULL DEFAULT '',
@@ -126,8 +107,6 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_announcements_public ON announcements(status, starts_at, ends_at, sort_order, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_hash ON ip_bans(ip_hash);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans(expires_at);`,
-		`CREATE INDEX IF NOT EXISTS idx_token_usage_updated_at ON token_usage(updated_at DESC);`,
-		`CREATE INDEX IF NOT EXISTS idx_token_controls_disabled ON token_controls(disabled, updated_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_scope_created ON config_audit_logs(config_scope, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_created ON config_audit_logs(created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_storage_key ON storage_health_checks(storage_key, last_check_at DESC);`,
@@ -135,6 +114,16 @@ func (r *Repository) Migrate(ctx context.Context) error {
 	}
 
 	for _, stmt := range schema {
+		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_token_usage_updated_at`,
+		`DROP INDEX IF EXISTS idx_token_controls_disabled`,
+		`DROP TABLE IF EXISTS token_usage`,
+		`DROP TABLE IF EXISTS token_controls`,
+	} {
 		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
 			return err
 		}

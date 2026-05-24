@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { Archive, BarChart3, ClipboardList, Gauge, Image, KeyRound, LogOut, Megaphone, Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-svelte';
+  import { Archive, BarChart3, ClipboardList, Gauge, Image, LogOut, Megaphone, Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-svelte';
   import { adminGetStatus } from '@/api';
   import { t } from '@/i18n';
   import { clearAdminToken, preferences } from '@/stores/preferences.svelte';
@@ -28,7 +28,6 @@
   ]);
   const securityTabs = $derived([
     { href: '/admin/dashboard/security?tab=abuse', tab: 'abuse', label: t(preferences.language, 'admin.submenuAbuse'), icon: ShieldCheck },
-    { href: '/admin/dashboard/security?tab=tokens', tab: 'tokens', label: t(preferences.language, 'admin.submenuTokens'), icon: KeyRound },
     { href: '/admin/dashboard/security?tab=rate-limit', tab: 'rate-limit', label: t(preferences.language, 'admin.submenuRateLimit'), icon: Gauge }
   ]);
   const imageTabs = $derived([

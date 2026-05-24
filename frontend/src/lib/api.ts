@@ -6,7 +6,6 @@ import type {
   AdminStatus,
   AdminImagesResponse,
   AdminTrashImagesResponse,
-  AdminTokenListResponse,
   AdminConfigAuditLogResponse,
   AdminAuditScope,
   AdminStorageHealthCheck,
@@ -538,44 +537,6 @@ export async function adminGetAbuseIPDetail(
     signal,
     params: { ip },
   });
-}
-
-export async function adminGetTokens(
-  token: string,
-  signal?: AbortSignal
-): Promise<AdminTokenListResponse> {
-  return apiFetch<AdminTokenListResponse>("/admin/tokens", {
-    headers: adminAuthHeaders(token),
-    signal,
-  });
-}
-
-export async function adminDisableToken(
-  token: string,
-  tokenHash: string,
-  reason: string
-): Promise<void> {
-  await apiFetch<Record<string, never> | null>(
-    `/admin/tokens/${tokenHash}/disable`,
-    {
-      method: "POST",
-      headers: adminHeaders(token),
-      body: JSON.stringify({ reason }),
-    }
-  );
-}
-
-export async function adminEnableToken(
-  token: string,
-  tokenHash: string
-): Promise<void> {
-  await apiFetch<Record<string, never> | null>(
-    `/admin/tokens/${tokenHash}/enable`,
-    {
-      method: "POST",
-      headers: adminAuthHeaders(token),
-    }
-  );
 }
 
 export async function adminGetConfig(

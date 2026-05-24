@@ -118,24 +118,6 @@ export interface AdminTrashImagesResponse {
   page_size: number;
 }
 
-export interface AdminTokenGovernanceEntry {
-  token_hash: string;
-  token_preview: string;
-  upload_count: number;
-  total_bytes: number;
-  last_ip: string;
-  last_used_at: string;
-  disabled: boolean;
-  reason: string;
-  disabled_at: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AdminTokenListResponse {
-  items: AdminTokenGovernanceEntry[];
-}
-
 export type AdminAuditScope = "" | "runtime" | "storage";
 
 export interface AdminConfigAuditLog {

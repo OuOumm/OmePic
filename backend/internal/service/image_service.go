@@ -140,7 +140,6 @@ type ImageService struct {
 	hashLocks           *keyedMutex
 	imageURLCachePurger ImageURLCachePurger
 	remoteImageFetcher  *RemoteImageFetcher
-	tokenService        *TokenService
 }
 
 func NewImageService(
@@ -196,10 +195,6 @@ func NewImageServiceWithCaches(
 
 func (s *ImageService) SetImageURLCachePurger(purger ImageURLCachePurger) {
 	s.imageURLCachePurger = purger
-}
-
-func (s *ImageService) SetTokenService(tokenService *TokenService) {
-	s.tokenService = tokenService
 }
 
 func (s *ImageService) Upload(ctx context.Context, input UploadInput) (UploadOutput, error) {

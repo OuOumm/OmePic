@@ -22,7 +22,6 @@ const (
 	adminIPBansRoute               = "/admin/ip-bans"
 	adminAbuseOverviewRoute        = "/admin/abuse/overview"
 	adminAbuseIPRoute              = "/admin/abuse/ip"
-	adminTokensRoute               = "/admin/tokens"
 	adminAuditLogsRoute            = "/admin/audit-logs"
 	adminConfigRoute               = "/admin/config"
 	adminStorageHealthRoute        = "/admin/storage/health"
@@ -63,9 +62,6 @@ var (
 	adminIPBanImagesRouteSpec     = routeSpec{Path: adminIPBansRoute + "/:id/images", Methods: methods(http.MethodDelete)}
 	adminAbuseOverviewRouteSpec   = routeSpec{Path: adminAbuseOverviewRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminAbuseIPRouteSpec         = routeSpec{Path: adminAbuseIPRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminTokensRouteSpec          = routeSpec{Path: adminTokensRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminTokenDisableRouteSpec    = routeSpec{Path: adminTokensRoute + "/:token_hash/disable", Methods: methods(http.MethodPost)}
-	adminTokenEnableRouteSpec     = routeSpec{Path: adminTokensRoute + "/:token_hash/enable", Methods: methods(http.MethodPost)}
 	adminAuditLogsRouteSpec       = routeSpec{Path: adminAuditLogsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
 	adminConfigRouteSpec          = routeSpec{Path: adminConfigRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
 	adminStorageHealthSpec        = routeSpec{Path: adminStorageHealthRoute, Methods: methods(http.MethodGet, http.MethodHead)}
@@ -103,9 +99,6 @@ var adminRouteSpecs = []routeSpec{
 	adminIPBanImagesRouteSpec,
 	adminAbuseOverviewRouteSpec,
 	adminAbuseIPRouteSpec,
-	adminTokensRouteSpec,
-	adminTokenDisableRouteSpec,
-	adminTokenEnableRouteSpec,
 	adminAuditLogsRouteSpec,
 	adminConfigRouteSpec,
 	adminStorageHealthSpec,

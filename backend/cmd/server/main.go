@@ -94,9 +94,7 @@ func main() {
 		logger.Warn("admin password is still using the documented first-boot default 'admin123' — change it immediately in production")
 	}
 
-	tokenService := service.NewTokenService(repo)
 	imageService := service.NewImageService(repo, imageCache, storageManager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger)
-	imageService.SetTokenService(tokenService)
 	adminService := service.NewAdminService(repo, storageManager, settingsManager, imageService, cfg.JWTSecret, service.AdminEnvMetadata{
 		HTTPAddr:         cfg.HTTPAddr,
 		DatabasePath:     cfg.DatabasePath,

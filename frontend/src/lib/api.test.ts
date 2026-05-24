@@ -5,13 +5,10 @@ import {
   adminCheckStorageHealth,
   adminCreateStorageInstance,
   adminDeleteImages,
-  adminDisableToken,
-  adminEnableToken,
   adminGetAuditLogs,
   adminGetImages,
   adminGetStorageHealth,
   adminGetStorageHealthHistory,
-  adminGetTokens,
   adminGetTrashImages,
   adminGetStatus,
   adminPurgeCloudflareImageCache,
@@ -218,50 +215,6 @@ describe("admin API helpers", () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       "http://localhost:8080/admin/images/uid-1/restore",
-      {
-        cache: "no-store",
-        method: "POST",
-        headers: { Authorization: "Bearer admin-token" },
-      }
-    );
-  });
-
-  it("uses token governance request contracts", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        jsonResponse(200, { success: true, data: { items: [] } })
-      )
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
-
-    await adminGetTokens("admin-token");
-    await adminDisableToken("admin-token", "a".repeat(64), "abuse");
-    await adminEnableToken("admin-token", "a".repeat(64));
-
-    expect(fetch).toHaveBeenNthCalledWith(
-      1,
-      "http://localhost:8080/admin/tokens",
-      expect.objectContaining({
-        cache: "no-store",
-        headers: { Authorization: "Bearer admin-token" },
-      })
-    );
-    expect(fetch).toHaveBeenNthCalledWith(
-      2,
-      `http://localhost:8080/admin/tokens/${"a".repeat(64)}/disable`,
-      {
-        cache: "no-store",
-        method: "POST",
-        headers: {
-          Authorization: "Bearer admin-token",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ reason: "abuse" }),
-      }
-    );
-    expect(fetch).toHaveBeenNthCalledWith(
-      3,
-      `http://localhost:8080/admin/tokens/${"a".repeat(64)}/enable`,
       {
         cache: "no-store",
         method: "POST",
