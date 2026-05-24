@@ -28,10 +28,7 @@
   let auditPageSize = $state(20);
   let auditScope = $state<AdminAuditScope>('');
 
-  const activeTab = $derived.by(() => {
-    const tab = page.url.searchParams.get('tab') ?? 'runtime';
-    return tab === 'health' ? 'storage' : tab;
-  });
+  const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
   const cloudflarePurgeConfigured = $derived(system?.readonly.service.cloudflare_purge_configured ?? false);
   const auditTotalPages = $derived(Math.max(1, Math.ceil(auditTotal / auditPageSize)));

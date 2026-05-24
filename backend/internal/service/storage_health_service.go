@@ -103,6 +103,21 @@ func (s *StorageHealthService) CheckAll(ctx context.Context) ([]model.StorageHea
 	return checks, nil
 }
 
+func (s *StorageHealthService) History(ctx context.Context, storageKey string, since time.Time) ([]model.StorageHealthCheck, error) {
+	storageKey = strings.TrimSpace(storageKey)
+	if storageKey == "" {
+		return nil, ErrInvalidInput
+	}
+	if since.IsZero() {
+		since = time.Now().UTC().Add(-24 * time.Hour)
+	}
+	checks, err := s.repo.ListStorageHealthHistory(ctx, storageKey, since.UTC())
+	if err != nil {
+		return nil, fmt.Errorf("%w: storage health history failed", ErrDependencyUnavailable)
+	}
+	return checks, nil
+}
+
 func (s *StorageHealthService) StartHeartbeat(ctx context.Context, interval time.Duration) func() {
 	if interval <= 0 {
 		interval = StorageHealthDefaultInterval

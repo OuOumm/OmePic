@@ -6,6 +6,7 @@
     adminCreateStorageInstance,
     adminDeleteStorageInstance,
     adminGetStorageHealth,
+    adminGetStorageHealthHistory,
     adminSetDefaultStorage,
     adminUpdateStorageInstance,
   } from '@/api';
@@ -23,11 +24,8 @@
     onChange: (config: AdminConfig) => void;
   };
 
-  type HealthSample = {
-    status: string;
-    latency_ms: number;
-    checked_at: string;
-  };
+  const healthTrendHours = 24;
+  const healthAutoCheckIntervalMs = 5 * 60 * 1000;
 
   const blank: StorageInstance = {
     storage_key: '',
@@ -57,7 +55,7 @@
   let healthChecks = $state.raw<AdminStorageHealthCheck[]>([]);
   let checkingStorageKey = $state<string | null>(null);
   let healthDetail = $state<AdminStorageHealthCheck | null>(null);
-  let healthHistory = $state<Record<string, HealthSample[]>>({});
+  let healthHistory = $state<Record<string, AdminStorageHealthCheck[]>>({});
 
   const healthByKey = $derived.by(() => {
     const byKey: Record<string, AdminStorageHealthCheck> = {};
@@ -112,17 +110,30 @@
 
   function applyHealthChecks(next: AdminStorageHealthCheck[]) {
     healthChecks = next;
-    const nextHistory = { ...healthHistory };
-    for (const check of next) {
-      const sample: HealthSample = {
-        status: check.status,
-        latency_ms: check.latency_ms,
-        checked_at: check.last_check_at || new Date().toISOString(),
-      };
-      nextHistory[check.storage_key] = [...(nextHistory[check.storage_key] ?? []), sample].slice(-12);
-    }
-    healthHistory = nextHistory;
     if (healthDetail) healthDetail = next.find((item) => item.storage_key === healthDetail?.storage_key) ?? healthDetail;
+  }
+
+  function healthHistorySince() {
+    return new Date(Date.now() - healthTrendHours * 60 * 60 * 1000).toISOString();
+  }
+
+  async function loadHealthHistory(storageKey: string, signal?: AbortSignal) {
+    const token = preferences.adminToken;
+    if (!token) return;
+    const history = await adminGetStorageHealthHistory(token, storageKey, healthHistorySince(), signal);
+    if (signal?.aborted) return;
+    healthHistory = { ...healthHistory, [storageKey]: Array.isArray(history) ? history : [] };
+  }
+
+  async function loadAllHealthHistory(signal?: AbortSignal) {
+    const token = preferences.adminToken;
+    if (!token) return;
+    const entries = await Promise.all(config.storage_configs.map(async (item) => {
+      const history = await adminGetStorageHealthHistory(token, item.storage_key, healthHistorySince(), signal);
+      return [item.storage_key, Array.isArray(history) ? history : []] as const;
+    }));
+    if (signal?.aborted) return;
+    healthHistory = { ...healthHistory, ...Object.fromEntries(entries) };
   }
 
   async function loadHealth(signal?: AbortSignal) {
@@ -132,6 +143,7 @@
       const checks = await adminGetStorageHealth(token, signal);
       if (signal?.aborted) return;
       applyHealthChecks(Array.isArray(checks) ? checks : []);
+      await loadAllHealthHistory(signal);
     } catch (err) {
       if (isAbortError(err)) return;
       toastApiError(err, preferences.language);
@@ -152,6 +164,7 @@
         byKey[check.storage_key] = check;
         applyHealthChecks(Object.values(byKey));
         healthDetail = check;
+        void loadHealthHistory(check.storage_key);
       },
     });
   }
@@ -164,7 +177,10 @@
       setBusy: (value) => (checkingStorageKey = value ? '*' : null),
       successMessage: t(preferences.language, 'admin.storageHealthCheckSuccess'),
       action: () => adminCheckAllStorageHealth(token),
-      onSuccess: (checks) => applyHealthChecks(Array.isArray(checks) ? checks : []),
+      onSuccess: async (checks) => {
+        applyHealthChecks(Array.isArray(checks) ? checks : []);
+        await loadAllHealthHistory();
+      },
     });
   }
 
@@ -225,21 +241,51 @@
     return check.status === 'healthy' ? 'green' : 'danger';
   }
 
+  async function autoCheckAllStorage() {
+    const token = preferences.adminToken;
+    if (!token || checkingStorageKey !== null) return;
+    checkingStorageKey = '*';
+    try {
+      const checks = await adminCheckAllStorageHealth(token);
+      applyHealthChecks(Array.isArray(checks) ? checks : []);
+      await loadAllHealthHistory();
+    } catch {
+      // 自动检测静默失败，避免后台页面每 5 分钟弹出错误提示。
+    } finally {
+      checkingStorageKey = null;
+    }
+  }
+
+  function trendSamples(storageKey: string) {
+    return healthHistory[storageKey] ?? [];
+  }
+
+  function trendPoint(sample: AdminStorageHealthCheck, maxLatency: number) {
+    const windowStart = Date.now() - healthTrendHours * 60 * 60 * 1000;
+    const checkedAt = new Date(sample.last_check_at || sample.updated_at || sample.created_at).getTime();
+    const x = ((checkedAt - windowStart) / (healthTrendHours * 60 * 60 * 1000)) * 100;
+    const y = sample.status === 'healthy' ? 84 - (sample.latency_ms / maxLatency) * 56 : 86;
+    return { x: Math.max(0, Math.min(100, x)), y: Math.max(8, Math.min(88, y)) };
+  }
+
   function trendPoints(storageKey: string) {
-    const samples = healthHistory[storageKey] ?? [];
+    const samples = trendSamples(storageKey);
     if (samples.length === 0) return '';
     const maxLatency = Math.max(1, ...samples.map((item) => item.latency_ms));
-    return samples.map((sample, index) => {
-      const x = samples.length === 1 ? 50 : (index / (samples.length - 1)) * 100;
-      const y = sample.status === 'healthy' ? 84 - (sample.latency_ms / maxLatency) * 56 : 86;
-      return `${x.toFixed(1)},${Math.max(8, Math.min(88, y)).toFixed(1)}`;
+    return samples.map((sample) => {
+      const point = trendPoint(sample, maxLatency);
+      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
     }).join(' ');
   }
 
   $effect(() => {
     const controller = new AbortController();
     void loadHealth(controller.signal);
-    return () => controller.abort();
+    const timer = window.setInterval(() => void autoCheckAllStorage(), healthAutoCheckIntervalMs);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
   });
 </script>
 
@@ -249,7 +295,7 @@
     <div class="mt-6 mb-4 flex flex-col gap-3 border-b-[3px] ink-line pb-3 sm:flex-row sm:items-center sm:justify-between">
       <p class="text-sm font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.storageHealthInlineHint')}</p>
       <div class="flex flex-col gap-2 sm:flex-row">
-        <button class="studio-button" type="button" disabled={checkingStorageKey !== null} onclick={checkAllStorage}><RefreshCw class="size-4" />{checkingStorageKey === '*' ? t(preferences.language, 'common.loading') : t(preferences.language, 'admin.storageHealthCheckAll')}</button>
+        <button class="studio-button p-2" type="button" disabled={checkingStorageKey !== null} onclick={checkAllStorage} title={t(preferences.language, 'admin.storageHealthCheckAll')} aria-label={t(preferences.language, 'admin.storageHealthCheckAll')}><RefreshCw class={`size-4 ${checkingStorageKey === '*' ? 'animate-spin' : ''}`} /></button>
         <button class="studio-button" data-tone="blue" type="button" onclick={startCreate}><Plus class="size-4" />{t(preferences.language, 'admin.storageNew')}</button>
       </div>
     </div>
@@ -260,8 +306,8 @@
             <th class="px-2 py-2" scope="col">{t(preferences.language, 'admin.storageName')}</th>
             <th class="w-[180px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageKey')}</th>
             <th class="w-[110px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageBackend')}</th>
-            <th class="w-[170px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageHealthStatus')}</th>
-            <th class="w-[260px] px-2 py-2 text-right" scope="col">{t(preferences.language, 'admin.imagesTableActions')}</th>
+            <th class="w-[130px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageHealthStatus')}</th>
+            <th class="w-[230px] px-2 py-2 text-right" scope="col">{t(preferences.language, 'admin.imagesTableActions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -272,14 +318,13 @@
               <td class="min-w-0 px-2 py-2"><span class="block truncate text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</span></td>
               <td class="px-2 py-2 font-black uppercase">{item.storage_backend}</td>
               <td class="px-2 py-2">
-                <button class="studio-button min-w-28 px-2 py-1.5 text-xs" data-tone={healthTone(health)} type="button" onclick={() => (healthDetail = health ?? { id: 0, storage_key: item.storage_key, status: 'unknown', last_check_at: '', latency_ms: 0, error_message: t(preferences.language, 'admin.storageHealthNotChecked'), consecutive_failures: 0, created_at: '', updated_at: '' })}>
-                  <Activity class="size-4" />{healthLabel(health)}
+                <button class="studio-button min-w-20 justify-center px-2.5 py-1.5 text-xs" data-tone={healthTone(health)} type="button" onclick={() => (healthDetail = health ?? { id: 0, storage_key: item.storage_key, status: 'unknown', last_check_at: '', latency_ms: 0, error_message: t(preferences.language, 'admin.storageHealthNotChecked'), consecutive_failures: 0, created_at: '', updated_at: '' })}>
+                  <Activity class="size-3.5" />{healthLabel(health)}
                 </button>
-                <span class="mt-1 block text-xs font-bold text-[hsl(var(--ink-muted))]">{health?.last_check_at ? formatDate(health.last_check_at, preferences.language) : t(preferences.language, 'admin.storageHealthNotChecked')}</span>
               </td>
               <td class="px-2 py-2">
                 <div class="flex flex-nowrap justify-end gap-2">
-                  <button class="studio-button px-2 py-1.5 text-xs" type="button" disabled={checkingStorageKey !== null} onclick={() => checkOneStorage(item.storage_key)}><RefreshCw class="size-4" />{checkingStorageKey === item.storage_key ? t(preferences.language, 'common.loading') : t(preferences.language, 'admin.storageHealthCheckOne')}</button>
+                  <button class="studio-button p-2" type="button" disabled={checkingStorageKey !== null} onclick={() => checkOneStorage(item.storage_key)} title={t(preferences.language, 'admin.storageHealthCheckOne')} aria-label={t(preferences.language, 'admin.storageHealthCheckOne')}><RefreshCw class={`size-4 ${checkingStorageKey === item.storage_key ? 'animate-spin' : ''}`} /></button>
                   <button class="studio-button px-2 py-1.5" type="button" onclick={() => startEdit(item)} aria-label={t(preferences.language, 'announcement.edit')}><Edit3 class="size-4" /></button>
                   <button class="studio-button px-2 py-1.5 text-xs" data-tone="green" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => setDefault(item.storage_key)}>{t(preferences.language, 'common.default')}</button>
                   <button class="studio-button px-2 py-1.5" data-tone="danger" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => (deleteTarget = item)} aria-label={t(preferences.language, 'common.delete')}><Trash2 class="size-4" /></button>
@@ -382,12 +427,10 @@
             <line x1="0" y1="16" x2="100" y2="16" stroke="currentColor" stroke-opacity="0.16" stroke-width="1" />
             {#if trendPoints(healthDetail.storage_key)}
               <polyline points={trendPoints(healthDetail.storage_key)} fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />
-              {#each healthHistory[healthDetail.storage_key] ?? [] as sample, index (sample.checked_at + index)}
-                {@const samples = healthHistory[healthDetail.storage_key] ?? []}
-                {@const maxLatency = Math.max(1, ...samples.map((item) => item.latency_ms))}
-                {@const x = samples.length === 1 ? 50 : (index / (samples.length - 1)) * 100}
-                {@const y = sample.status === 'healthy' ? 84 - (sample.latency_ms / maxLatency) * 56 : 86}
-                <circle cx={x} cy={Math.max(8, Math.min(88, y))} r="3.2" fill={sample.status === 'healthy' ? 'hsl(var(--marker-green))' : 'hsl(var(--marker-pink))'} stroke="currentColor" stroke-width="1.5" />
+              {#each trendSamples(healthDetail.storage_key) as sample (sample.id)}
+                {@const maxLatency = Math.max(1, ...trendSamples(healthDetail.storage_key).map((item) => item.latency_ms))}
+                {@const point = trendPoint(sample, maxLatency)}
+                <circle cx={point.x} cy={point.y} r="3.2" fill={sample.status === 'healthy' ? 'hsl(var(--marker-green))' : 'hsl(var(--marker-pink))'} stroke="currentColor" stroke-width="1.5" />
               {/each}
             {:else}
               <text x="50" y="52" text-anchor="middle" class="fill-current text-[8px] font-black">{t(preferences.language, 'admin.storageHealthNoTrend')}</text>
@@ -398,7 +441,7 @@
           <div class="mt-4 border-2 ink-line bg-[hsl(var(--marker-pink))] p-3 text-[hsl(var(--marker-ink))]"><h3 class="font-black">{t(preferences.language, 'admin.storageHealthError')}</h3><p class="mt-2 break-words text-sm font-bold">{healthDetail.error_message}</p></div>
         {/if}
         <div class="mt-5 flex justify-end">
-          <button class="studio-button" type="button" disabled={checkingStorageKey !== null} onclick={() => checkOneStorage(healthDetail?.storage_key ?? '')}><RefreshCw class="size-4" />{t(preferences.language, 'admin.storageHealthCheckOne')}</button>
+          <button class="studio-button p-2" type="button" disabled={checkingStorageKey !== null || !healthDetail?.storage_key} onclick={() => healthDetail?.storage_key && checkOneStorage(healthDetail.storage_key)} title={t(preferences.language, 'admin.storageHealthCheckOne')} aria-label={t(preferences.language, 'admin.storageHealthCheckOne')}><RefreshCw class={`size-4 ${checkingStorageKey === healthDetail?.storage_key ? 'animate-spin' : ''}`} /></button>
         </div>
       </section>
     </div>

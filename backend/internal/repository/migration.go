@@ -97,7 +97,7 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		);`,
 		`CREATE TABLE IF NOT EXISTS storage_health_checks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			storage_key TEXT UNIQUE NOT NULL,
+			storage_key TEXT NOT NULL,
 			status TEXT NOT NULL,
 			last_check_at DATETIME NOT NULL,
 			latency_ms INTEGER NOT NULL DEFAULT 0,
@@ -130,14 +130,17 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_token_controls_disabled ON token_controls(disabled, updated_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_scope_created ON config_audit_logs(config_scope, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_config_audit_logs_created ON config_audit_logs(created_at DESC);`,
-		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_storage_key ON storage_health_checks(storage_key);`,
-		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_status ON storage_health_checks(status, updated_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_storage_key ON storage_health_checks(storage_key, last_check_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_status ON storage_health_checks(status, last_check_at DESC);`,
 	}
 
 	for _, stmt := range schema {
 		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
+	}
+	if err := r.ensureStorageHealthHistoryTable(ctx); err != nil {
+		return err
 	}
 	if err := r.ensureImageColumn(ctx, "storage_key", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
@@ -167,6 +170,48 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (r *Repository) ensureStorageHealthHistoryTable(ctx context.Context) error {
+	var tableSQL string
+	err := r.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'storage_health_checks'`).Scan(&tableSQL)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(strings.ToUpper(tableSQL), "STORAGE_KEY TEXT UNIQUE") {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_storage_health_checks_storage_key`,
+		`DROP INDEX IF EXISTS idx_storage_health_checks_status`,
+		`DROP TABLE IF EXISTS storage_health_checks_legacy`,
+		`ALTER TABLE storage_health_checks RENAME TO storage_health_checks_legacy`,
+		`CREATE TABLE storage_health_checks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			storage_key TEXT NOT NULL,
+			status TEXT NOT NULL,
+			last_check_at DATETIME NOT NULL,
+			latency_ms INTEGER NOT NULL DEFAULT 0,
+			error_message TEXT NOT NULL DEFAULT '',
+			consecutive_failures INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`INSERT INTO storage_health_checks(id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at)
+			SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks_legacy`,
+		`DROP TABLE storage_health_checks_legacy`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) ensureIndex(ctx context.Context, name string, ddl string) error {

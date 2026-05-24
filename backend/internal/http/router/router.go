@@ -88,6 +88,7 @@ func New(deps Dependencies) *gin.Engine {
 	admin.GET(adminPath(adminConfigRouteSpec.Path), deps.AdminHandler.GetConfig)
 	admin.POST(adminPath(adminConfigRouteSpec.Path), deps.AdminHandler.UpdateConfig)
 	admin.GET(adminPath(adminStorageHealthSpec.Path), deps.AdminHandler.StorageHealth)
+	admin.GET(adminPath(adminStorageHealthHistorySpec.Path), deps.AdminHandler.StorageHealthHistory)
 	admin.POST(adminPath(adminStorageHealthKeySpec.Path), deps.AdminHandler.CheckStorageHealth)
 	admin.POST(adminPath(adminStorageHealthAllSpec.Path), deps.AdminHandler.CheckAllStorageHealth)
 	admin.POST(adminPath(adminStorageInstancesSpec.Path), deps.AdminHandler.CreateStorageConfig)

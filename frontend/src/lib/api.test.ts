@@ -10,6 +10,7 @@ import {
   adminGetAuditLogs,
   adminGetImages,
   adminGetStorageHealth,
+  adminGetStorageHealthHistory,
   adminGetTokens,
   adminGetTrashImages,
   adminGetStatus,
@@ -275,6 +276,7 @@ describe("admin API helpers", () => {
         jsonResponse(200, { success: true, data: { items: [], total: 0 } })
       )
       .mockResolvedValueOnce(jsonResponse(200, { success: true, data: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: [] }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
           success: true,
@@ -285,6 +287,7 @@ describe("admin API helpers", () => {
 
     await adminGetAuditLogs("admin-token", 2, 20, "runtime");
     await adminGetStorageHealth("admin-token");
+    await adminGetStorageHealthHistory("admin-token", "local", "2026-05-24T00:00:00Z");
     await adminCheckStorageHealth("admin-token", "local");
     await adminCheckAllStorageHealth("admin-token");
 
@@ -306,6 +309,14 @@ describe("admin API helpers", () => {
     );
     expect(fetch).toHaveBeenNthCalledWith(
       3,
+      "http://localhost:8080/admin/storage/local/health-history?since=2026-05-24T00%3A00%3A00Z",
+      expect.objectContaining({
+        cache: "no-store",
+        headers: { Authorization: "Bearer admin-token" },
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
       "http://localhost:8080/admin/storage/local/health-check",
       {
         cache: "no-store",
@@ -314,7 +325,7 @@ describe("admin API helpers", () => {
       }
     );
     expect(fetch).toHaveBeenNthCalledWith(
-      4,
+      5,
       "http://localhost:8080/admin/storage/health-check-all",
       {
         cache: "no-store",

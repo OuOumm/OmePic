@@ -613,6 +613,10 @@ func (s *AdminService) CheckAllStorageHealth(ctx context.Context) ([]model.Stora
 	return NewStorageHealthService(s.repo, s.storage, nil).CheckAll(ctx)
 }
 
+func (s *AdminService) StorageHealthHistory(ctx context.Context, storageKey string, since time.Time) ([]model.StorageHealthCheck, error) {
+	return NewStorageHealthService(s.repo, s.storage, nil).History(ctx, storageKey, since)
+}
+
 func (s *AdminService) GetSystemSettings(ctx context.Context) (AdminSystemSettingsView, error) {
 	return s.loadSystemSettingsView(ctx)
 }

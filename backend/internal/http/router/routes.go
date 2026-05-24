@@ -6,32 +6,33 @@ import (
 )
 
 const (
-	healthRoute                = "/health"
-	runtimeSettingsRoute       = "/v1/runtime-settings"
-	publicAnnouncementsRoute   = "/v1/announcements"
-	imageUploadRoute           = "/v1/image"
-	imageURLUploadRoute        = "/v1/image/url"
-	imageRoutePrefix           = "/i/"
-	adminLoginRoute            = "/admin/login"
-	adminPasswordRoute         = "/admin/password"
-	adminStatusRoute           = "/admin/status"
-	adminImagesRoute           = "/admin/images"
-	adminImagesTrashRoute      = "/admin/images/trash"
-	adminImageRestoreRoute     = "/admin/images/:uid/restore"
-	adminCloudflarePurgeRoute  = "/admin/cloudflare/purge-image-cache"
-	adminIPBansRoute           = "/admin/ip-bans"
-	adminAbuseOverviewRoute    = "/admin/abuse/overview"
-	adminAbuseIPRoute          = "/admin/abuse/ip"
-	adminTokensRoute           = "/admin/tokens"
-	adminAuditLogsRoute        = "/admin/audit-logs"
-	adminConfigRoute           = "/admin/config"
-	adminStorageHealthRoute    = "/admin/storage/health"
-	adminStorageHealthKeyRoute = "/admin/storage/:key/health-check"
-	adminStorageHealthAllRoute = "/admin/storage/health-check-all"
-	adminStorageInstancesRoute = "/admin/config/storage-instances"
-	adminConfigDefaultRoute    = "/admin/config/default"
-	adminSystemSettingsRoute   = "/admin/system-settings"
-	adminAnnouncementsRoute    = "/admin/announcements"
+	healthRoute                    = "/health"
+	runtimeSettingsRoute           = "/v1/runtime-settings"
+	publicAnnouncementsRoute       = "/v1/announcements"
+	imageUploadRoute               = "/v1/image"
+	imageURLUploadRoute            = "/v1/image/url"
+	imageRoutePrefix               = "/i/"
+	adminLoginRoute                = "/admin/login"
+	adminPasswordRoute             = "/admin/password"
+	adminStatusRoute               = "/admin/status"
+	adminImagesRoute               = "/admin/images"
+	adminImagesTrashRoute          = "/admin/images/trash"
+	adminImageRestoreRoute         = "/admin/images/:uid/restore"
+	adminCloudflarePurgeRoute      = "/admin/cloudflare/purge-image-cache"
+	adminIPBansRoute               = "/admin/ip-bans"
+	adminAbuseOverviewRoute        = "/admin/abuse/overview"
+	adminAbuseIPRoute              = "/admin/abuse/ip"
+	adminTokensRoute               = "/admin/tokens"
+	adminAuditLogsRoute            = "/admin/audit-logs"
+	adminConfigRoute               = "/admin/config"
+	adminStorageHealthRoute        = "/admin/storage/health"
+	adminStorageHealthHistoryRoute = "/admin/storage/:key/health-history"
+	adminStorageHealthKeyRoute     = "/admin/storage/:key/health-check"
+	adminStorageHealthAllRoute     = "/admin/storage/health-check-all"
+	adminStorageInstancesRoute     = "/admin/config/storage-instances"
+	adminConfigDefaultRoute        = "/admin/config/default"
+	adminSystemSettingsRoute       = "/admin/system-settings"
+	adminAnnouncementsRoute        = "/admin/announcements"
 )
 
 type routeSpec struct {
@@ -44,39 +45,40 @@ func methods(values ...string) []string {
 }
 
 var (
-	healthRouteSpec              = routeSpec{Path: healthRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	runtimeSettingsRouteSpec     = routeSpec{Path: runtimeSettingsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	publicAnnouncementsSpec      = routeSpec{Path: publicAnnouncementsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	imageUploadRouteSpec         = routeSpec{Path: imageUploadRoute, Methods: methods(http.MethodPost)}
-	imageURLUploadRouteSpec      = routeSpec{Path: imageURLUploadRoute, Methods: methods(http.MethodPost)}
-	imageRouteSpec               = routeSpec{Path: imageRoutePrefix + ":uid", Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
-	adminLoginRouteSpec          = routeSpec{Path: adminLoginRoute, Methods: methods(http.MethodPost)}
-	adminPasswordRouteSpec       = routeSpec{Path: adminPasswordRoute, Methods: methods(http.MethodPut)}
-	adminStatusRouteSpec         = routeSpec{Path: adminStatusRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminImagesRouteSpec         = routeSpec{Path: adminImagesRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
-	adminImagesTrashSpec         = routeSpec{Path: adminImagesTrashRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminImageRestoreSpec        = routeSpec{Path: adminImageRestoreRoute, Methods: methods(http.MethodPost)}
-	adminCloudflarePurgeSpec     = routeSpec{Path: adminCloudflarePurgeRoute, Methods: methods(http.MethodPost)}
-	adminIPBansRouteSpec         = routeSpec{Path: adminIPBansRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
-	adminIPBanByIDRouteSpec      = routeSpec{Path: adminIPBansRoute + "/:id", Methods: methods(http.MethodDelete)}
-	adminIPBanImagesRouteSpec    = routeSpec{Path: adminIPBansRoute + "/:id/images", Methods: methods(http.MethodDelete)}
-	adminAbuseOverviewRouteSpec  = routeSpec{Path: adminAbuseOverviewRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminAbuseIPRouteSpec        = routeSpec{Path: adminAbuseIPRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminTokensRouteSpec         = routeSpec{Path: adminTokensRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminTokenDisableRouteSpec   = routeSpec{Path: adminTokensRoute + "/:token_hash/disable", Methods: methods(http.MethodPost)}
-	adminTokenEnableRouteSpec    = routeSpec{Path: adminTokensRoute + "/:token_hash/enable", Methods: methods(http.MethodPost)}
-	adminAuditLogsRouteSpec      = routeSpec{Path: adminAuditLogsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminConfigRouteSpec         = routeSpec{Path: adminConfigRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
-	adminStorageHealthSpec       = routeSpec{Path: adminStorageHealthRoute, Methods: methods(http.MethodGet, http.MethodHead)}
-	adminStorageHealthKeySpec    = routeSpec{Path: adminStorageHealthKeyRoute, Methods: methods(http.MethodPost)}
-	adminStorageHealthAllSpec    = routeSpec{Path: adminStorageHealthAllRoute, Methods: methods(http.MethodPost)}
-	adminStorageInstancesSpec    = routeSpec{Path: adminStorageInstancesRoute, Methods: methods(http.MethodPost)}
-	adminStorageInstanceSpec     = routeSpec{Path: adminStorageInstancesRoute + "/:storageKey", Methods: methods(http.MethodPut, http.MethodDelete)}
-	adminConfigDefaultSpec       = routeSpec{Path: adminConfigDefaultRoute, Methods: methods(http.MethodPost)}
-	adminSystemSettingsSpec      = routeSpec{Path: adminSystemSettingsRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPut)}
-	adminAnnouncementsSpec       = routeSpec{Path: adminAnnouncementsRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
-	adminAnnouncementSpec        = routeSpec{Path: adminAnnouncementsRoute + "/:id", Methods: methods(http.MethodPut, http.MethodDelete)}
-	adminAnnouncementArchiveSpec = routeSpec{Path: adminAnnouncementsRoute + "/:id/archive", Methods: methods(http.MethodPost)}
+	healthRouteSpec               = routeSpec{Path: healthRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	runtimeSettingsRouteSpec      = routeSpec{Path: runtimeSettingsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	publicAnnouncementsSpec       = routeSpec{Path: publicAnnouncementsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	imageUploadRouteSpec          = routeSpec{Path: imageUploadRoute, Methods: methods(http.MethodPost)}
+	imageURLUploadRouteSpec       = routeSpec{Path: imageURLUploadRoute, Methods: methods(http.MethodPost)}
+	imageRouteSpec                = routeSpec{Path: imageRoutePrefix + ":uid", Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
+	adminLoginRouteSpec           = routeSpec{Path: adminLoginRoute, Methods: methods(http.MethodPost)}
+	adminPasswordRouteSpec        = routeSpec{Path: adminPasswordRoute, Methods: methods(http.MethodPut)}
+	adminStatusRouteSpec          = routeSpec{Path: adminStatusRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminImagesRouteSpec          = routeSpec{Path: adminImagesRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodDelete)}
+	adminImagesTrashSpec          = routeSpec{Path: adminImagesTrashRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminImageRestoreSpec         = routeSpec{Path: adminImageRestoreRoute, Methods: methods(http.MethodPost)}
+	adminCloudflarePurgeSpec      = routeSpec{Path: adminCloudflarePurgeRoute, Methods: methods(http.MethodPost)}
+	adminIPBansRouteSpec          = routeSpec{Path: adminIPBansRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
+	adminIPBanByIDRouteSpec       = routeSpec{Path: adminIPBansRoute + "/:id", Methods: methods(http.MethodDelete)}
+	adminIPBanImagesRouteSpec     = routeSpec{Path: adminIPBansRoute + "/:id/images", Methods: methods(http.MethodDelete)}
+	adminAbuseOverviewRouteSpec   = routeSpec{Path: adminAbuseOverviewRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminAbuseIPRouteSpec         = routeSpec{Path: adminAbuseIPRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminTokensRouteSpec          = routeSpec{Path: adminTokensRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminTokenDisableRouteSpec    = routeSpec{Path: adminTokensRoute + "/:token_hash/disable", Methods: methods(http.MethodPost)}
+	adminTokenEnableRouteSpec     = routeSpec{Path: adminTokensRoute + "/:token_hash/enable", Methods: methods(http.MethodPost)}
+	adminAuditLogsRouteSpec       = routeSpec{Path: adminAuditLogsRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminConfigRouteSpec          = routeSpec{Path: adminConfigRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
+	adminStorageHealthSpec        = routeSpec{Path: adminStorageHealthRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminStorageHealthHistorySpec = routeSpec{Path: adminStorageHealthHistoryRoute, Methods: methods(http.MethodGet, http.MethodHead)}
+	adminStorageHealthKeySpec     = routeSpec{Path: adminStorageHealthKeyRoute, Methods: methods(http.MethodPost)}
+	adminStorageHealthAllSpec     = routeSpec{Path: adminStorageHealthAllRoute, Methods: methods(http.MethodPost)}
+	adminStorageInstancesSpec     = routeSpec{Path: adminStorageInstancesRoute, Methods: methods(http.MethodPost)}
+	adminStorageInstanceSpec      = routeSpec{Path: adminStorageInstancesRoute + "/:storageKey", Methods: methods(http.MethodPut, http.MethodDelete)}
+	adminConfigDefaultSpec        = routeSpec{Path: adminConfigDefaultRoute, Methods: methods(http.MethodPost)}
+	adminSystemSettingsSpec       = routeSpec{Path: adminSystemSettingsRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPut)}
+	adminAnnouncementsSpec        = routeSpec{Path: adminAnnouncementsRoute, Methods: methods(http.MethodGet, http.MethodHead, http.MethodPost)}
+	adminAnnouncementSpec         = routeSpec{Path: adminAnnouncementsRoute + "/:id", Methods: methods(http.MethodPut, http.MethodDelete)}
+	adminAnnouncementArchiveSpec  = routeSpec{Path: adminAnnouncementsRoute + "/:id/archive", Methods: methods(http.MethodPost)}
 )
 
 var publicRouteSpecs = []routeSpec{
@@ -107,6 +109,7 @@ var adminRouteSpecs = []routeSpec{
 	adminAuditLogsRouteSpec,
 	adminConfigRouteSpec,
 	adminStorageHealthSpec,
+	adminStorageHealthHistorySpec,
 	adminStorageHealthKeySpec,
 	adminStorageHealthAllSpec,
 	adminStorageInstancesSpec,

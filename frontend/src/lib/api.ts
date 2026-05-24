@@ -666,6 +666,24 @@ export async function adminGetStorageHealth(
   });
 }
 
+export async function adminGetStorageHealthHistory(
+  token: string,
+  storageKey: string,
+  since?: string,
+  signal?: AbortSignal
+): Promise<AdminStorageHealthCheck[]> {
+  return apiFetch<AdminStorageHealthCheck[]>(
+    `/admin/storage/${encodeURIComponent(storageKey)}/health-history`,
+    {
+      headers: adminAuthHeaders(token),
+      signal,
+      params: {
+        ...(since ? { since } : {}),
+      },
+    }
+  );
+}
+
 export async function adminCheckStorageHealth(
   token: string,
   storageKey: string

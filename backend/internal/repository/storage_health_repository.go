@@ -31,16 +31,9 @@ func (r *Repository) UpsertStorageHealthCheck(ctx context.Context, check model.S
 	}
 	check.UpdatedAt = check.LastCheckAt
 
-	_, err = r.db.ExecContext(ctx, `INSERT INTO storage_health_checks(
+	result, err := r.db.ExecContext(ctx, `INSERT INTO storage_health_checks(
 		storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at
-	) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(storage_key) DO UPDATE SET
-		status = excluded.status,
-		last_check_at = excluded.last_check_at,
-		latency_ms = excluded.latency_ms,
-		error_message = excluded.error_message,
-		consecutive_failures = excluded.consecutive_failures,
-		updated_at = excluded.updated_at`,
+	) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 		check.StorageKey,
 		check.Status,
 		formatTime(check.LastCheckAt),
@@ -53,16 +46,49 @@ func (r *Repository) UpsertStorageHealthCheck(ctx context.Context, check model.S
 	if err != nil {
 		return model.StorageHealthCheck{}, err
 	}
-	return r.GetStorageHealthCheck(ctx, check.StorageKey)
+	id, err := result.LastInsertId()
+	if err != nil {
+		return model.StorageHealthCheck{}, err
+	}
+	return r.GetStorageHealthCheckByID(ctx, id)
 }
 
 func (r *Repository) GetStorageHealthCheck(ctx context.Context, storageKey string) (model.StorageHealthCheck, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks WHERE storage_key = ?`, storageKey)
+	row := r.db.QueryRowContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks WHERE storage_key = ? ORDER BY last_check_at DESC, id DESC LIMIT 1`, storageKey)
+	return scanStorageHealthCheck(row)
+}
+
+func (r *Repository) GetStorageHealthCheckByID(ctx context.Context, id int64) (model.StorageHealthCheck, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks WHERE id = ?`, id)
 	return scanStorageHealthCheck(row)
 }
 
 func (r *Repository) ListStorageHealthChecks(ctx context.Context) ([]model.StorageHealthCheck, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks ORDER BY storage_key ASC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT h.id, h.storage_key, h.status, h.last_check_at, h.latency_ms, h.error_message, h.consecutive_failures, h.created_at, h.updated_at
+		FROM storage_health_checks h
+		WHERE h.id IN (SELECT MAX(id) FROM storage_health_checks GROUP BY storage_key)
+		ORDER BY h.storage_key ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	checks := make([]model.StorageHealthCheck, 0)
+	for rows.Next() {
+		check, err := scanStorageHealthCheck(rows)
+		if err != nil {
+			return nil, err
+		}
+		checks = append(checks, check)
+	}
+	return checks, rows.Err()
+}
+
+func (r *Repository) ListStorageHealthHistory(ctx context.Context, storageKey string, since time.Time) ([]model.StorageHealthCheck, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at
+		FROM storage_health_checks
+		WHERE storage_key = ? AND last_check_at >= ?
+		ORDER BY last_check_at ASC, id ASC`, storageKey, formatTime(since))
 	if err != nil {
 		return nil, err
 	}

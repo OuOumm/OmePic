@@ -349,6 +349,20 @@ func (h *AdminHandler) StorageHealth(c *gin.Context) {
 	response.Success(c, http.StatusOK, checks)
 }
 
+func (h *AdminHandler) StorageHealthHistory(c *gin.Context) {
+	since, err := parseOptionalTime(c.Query("since"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_input", "invalid since time")
+		return
+	}
+	checks, err := h.service.StorageHealthHistory(c.Request.Context(), c.Param("key"), since)
+	if err != nil {
+		h.mapError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, checks)
+}
+
 func (h *AdminHandler) CheckStorageHealth(c *gin.Context) {
 	check, err := h.service.CheckStorageHealth(c.Request.Context(), c.Param("key"))
 	if err != nil {
