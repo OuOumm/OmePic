@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { Activity, Archive, BarChart3, ClipboardList, Gauge, Image, KeyRound, LogOut, Megaphone, Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-svelte';
+  import { Archive, BarChart3, ClipboardList, Gauge, Image, KeyRound, LogOut, Megaphone, Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-svelte';
   import { adminGetStatus } from '@/api';
   import { t } from '@/i18n';
   import { clearAdminToken, preferences } from '@/stores/preferences.svelte';
@@ -23,7 +23,6 @@
   const settingsTabs = $derived([
     { href: '/admin/dashboard/settings?tab=runtime', tab: 'runtime', label: t(preferences.language, 'admin.submenuRuntime'), icon: SlidersHorizontal },
     { href: '/admin/dashboard/settings?tab=storage', tab: 'storage', label: t(preferences.language, 'admin.submenuStorage'), icon: Server },
-    { href: '/admin/dashboard/settings?tab=health', tab: 'health', label: t(preferences.language, 'admin.submenuStorageHealth'), icon: Activity },
     { href: '/admin/dashboard/settings?tab=audit', tab: 'audit', label: t(preferences.language, 'admin.submenuAuditLogs'), icon: ClipboardList },
     { href: '/admin/dashboard/settings?tab=announcements', tab: 'announcements', label: t(preferences.language, 'admin.submenuAnnouncements'), icon: Megaphone }
   ]);

@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { Edit3, Plus, Save, Trash2, X } from 'lucide-svelte';
+  import { Activity, Edit3, Plus, RefreshCw, Save, Trash2, X } from 'lucide-svelte';
   import {
+    adminCheckAllStorageHealth,
+    adminCheckStorageHealth,
     adminCreateStorageInstance,
     adminDeleteStorageInstance,
+    adminGetStorageHealth,
     adminSetDefaultStorage,
     adminUpdateStorageInstance,
   } from '@/api';
@@ -11,12 +14,19 @@
   import { t } from '@/i18n';
   import PageTitle from './PageTitle.svelte';
   import { preferences } from '@/stores/preferences.svelte';
-  import { runAsyncAction } from '@/ui-errors';
-  import type { AdminConfig, StorageInstance } from '@/types';
+  import { formatDate, isAbortError } from '@/utils';
+  import { runAsyncAction, toastApiError } from '@/ui-errors';
+  import type { AdminConfig, AdminStorageHealthCheck, StorageInstance } from '@/types';
 
   type Props = {
     config: AdminConfig;
     onChange: (config: AdminConfig) => void;
+  };
+
+  type HealthSample = {
+    status: string;
+    latency_ms: number;
+    checked_at: string;
   };
 
   const blank: StorageInstance = {
@@ -44,6 +54,16 @@
   let deleteTarget = $state<StorageInstance | null>(null);
   let busyKey = $state('');
   let saving = $state(false);
+  let healthChecks = $state.raw<AdminStorageHealthCheck[]>([]);
+  let checkingStorageKey = $state<string | null>(null);
+  let healthDetail = $state<AdminStorageHealthCheck | null>(null);
+  let healthHistory = $state<Record<string, HealthSample[]>>({});
+
+  const healthByKey = $derived.by(() => {
+    const byKey: Record<string, AdminStorageHealthCheck> = {};
+    for (const check of healthChecks) byKey[check.storage_key] = check;
+    return byKey;
+  });
 
   function closeEditor() {
     editingKey = null;
@@ -90,6 +110,64 @@
     return base;
   }
 
+  function applyHealthChecks(next: AdminStorageHealthCheck[]) {
+    healthChecks = next;
+    const nextHistory = { ...healthHistory };
+    for (const check of next) {
+      const sample: HealthSample = {
+        status: check.status,
+        latency_ms: check.latency_ms,
+        checked_at: check.last_check_at || new Date().toISOString(),
+      };
+      nextHistory[check.storage_key] = [...(nextHistory[check.storage_key] ?? []), sample].slice(-12);
+    }
+    healthHistory = nextHistory;
+    if (healthDetail) healthDetail = next.find((item) => item.storage_key === healthDetail?.storage_key) ?? healthDetail;
+  }
+
+  async function loadHealth(signal?: AbortSignal) {
+    const token = preferences.adminToken;
+    if (!token) return;
+    try {
+      const checks = await adminGetStorageHealth(token, signal);
+      if (signal?.aborted) return;
+      applyHealthChecks(Array.isArray(checks) ? checks : []);
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toastApiError(err, preferences.language);
+    }
+  }
+
+  async function checkOneStorage(storageKey: string) {
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (checkingStorageKey = value ? storageKey : null),
+      successMessage: t(preferences.language, 'admin.storageHealthCheckSuccess'),
+      action: () => adminCheckStorageHealth(token, storageKey),
+      onSuccess: (check) => {
+        const byKey: Record<string, AdminStorageHealthCheck> = {};
+        for (const item of healthChecks) byKey[item.storage_key] = item;
+        byKey[check.storage_key] = check;
+        applyHealthChecks(Object.values(byKey));
+        healthDetail = check;
+      },
+    });
+  }
+
+  async function checkAllStorage() {
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (checkingStorageKey = value ? '*' : null),
+      successMessage: t(preferences.language, 'admin.storageHealthCheckSuccess'),
+      action: () => adminCheckAllStorageHealth(token),
+      onSuccess: (checks) => applyHealthChecks(Array.isArray(checks) ? checks : []),
+    });
+  }
+
   async function save() {
     const token = preferences.adminToken;
     if (!token || !form.name.trim() || (editingKey && !form.storage_key.trim())) return;
@@ -100,9 +178,10 @@
       action: () => editingKey
         ? adminUpdateStorageInstance(token, editingKey, payload())
         : adminCreateStorageInstance(token, payload()),
-      onSuccess: (next) => {
+      onSuccess: async (next) => {
         onChange(next);
         closeEditor();
+        await loadHealth();
       },
     });
   }
@@ -127,39 +206,80 @@
       setBusy: (value) => (busyKey = value ? instance.storage_key : ''),
       successMessage: t(preferences.language, 'common.success'),
       action: () => adminDeleteStorageInstance(token, instance.storage_key),
-      onSuccess: (next) => {
+      onSuccess: async (next) => {
         onChange(next);
         deleteTarget = null;
         if (editingKey === instance.storage_key) closeEditor();
+        await loadHealth();
       },
     });
   }
+
+  function healthLabel(check: AdminStorageHealthCheck | undefined) {
+    if (!check || !check.last_check_at) return t(preferences.language, 'admin.storageHealthUnknown');
+    return check.status === 'healthy' ? t(preferences.language, 'admin.storageHealthHealthy') : t(preferences.language, 'admin.storageHealthUnhealthy');
+  }
+
+  function healthTone(check: AdminStorageHealthCheck | undefined) {
+    if (!check || !check.last_check_at) return 'blue';
+    return check.status === 'healthy' ? 'green' : 'danger';
+  }
+
+  function trendPoints(storageKey: string) {
+    const samples = healthHistory[storageKey] ?? [];
+    if (samples.length === 0) return '';
+    const maxLatency = Math.max(1, ...samples.map((item) => item.latency_ms));
+    return samples.map((sample, index) => {
+      const x = samples.length === 1 ? 50 : (index / (samples.length - 1)) * 100;
+      const y = sample.status === 'healthy' ? 84 - (sample.latency_ms / maxLatency) * 56 : 86;
+      return `${x.toFixed(1)},${Math.max(8, Math.min(88, y)).toFixed(1)}`;
+    }).join(' ');
+  }
+
+  $effect(() => {
+    const controller = new AbortController();
+    void loadHealth(controller.signal);
+    return () => controller.abort();
+  });
 </script>
 
 <section class="grid min-w-0 gap-6 overflow-hidden">
   <div class="min-w-0">
     <PageTitle eyebrow={t(preferences.language, 'admin.submenuStorage')} title={t(preferences.language, 'admin.storageInstances')} subtitle={t(preferences.language, 'admin.settingsDescription')} tone="blue" />
-    <div class="mt-6 mb-4 flex justify-end border-b-[3px] ink-line pb-3">
-      <button class="studio-button" data-tone="blue" type="button" onclick={startCreate}><Plus class="size-4" />{t(preferences.language, 'admin.storageNew')}</button>
+    <div class="mt-6 mb-4 flex flex-col gap-3 border-b-[3px] ink-line pb-3 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.storageHealthInlineHint')}</p>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <button class="studio-button" type="button" disabled={checkingStorageKey !== null} onclick={checkAllStorage}><RefreshCw class="size-4" />{checkingStorageKey === '*' ? t(preferences.language, 'common.loading') : t(preferences.language, 'admin.storageHealthCheckAll')}</button>
+        <button class="studio-button" data-tone="blue" type="button" onclick={startCreate}><Plus class="size-4" />{t(preferences.language, 'admin.storageNew')}</button>
+      </div>
     </div>
     <div class="w-full min-w-0 max-w-full touch-pan-x overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-      <table class="w-full min-w-[660px] border-collapse text-sm">
+      <table class="w-full min-w-[820px] border-collapse text-sm">
         <thead>
           <tr class="border-b-[3px] ink-line text-left text-xs font-black uppercase tracking-[0.12em] text-[hsl(var(--ink-muted))]">
             <th class="px-2 py-2" scope="col">{t(preferences.language, 'admin.storageName')}</th>
             <th class="w-[180px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageKey')}</th>
-            <th class="w-[120px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageBackend')}</th>
-            <th class="w-[250px] px-2 py-2 text-right" scope="col">{t(preferences.language, 'admin.imagesTableActions')}</th>
+            <th class="w-[110px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageBackend')}</th>
+            <th class="w-[170px] px-2 py-2" scope="col">{t(preferences.language, 'admin.storageHealthStatus')}</th>
+            <th class="w-[260px] px-2 py-2 text-right" scope="col">{t(preferences.language, 'admin.imagesTableActions')}</th>
           </tr>
         </thead>
         <tbody>
           {#each config.storage_configs as item (item.storage_key)}
+            {@const health = healthByKey[item.storage_key]}
             <tr class="studio-table-row align-middle">
               <th class="min-w-0 px-2 py-2 text-left font-normal" scope="row"><span class="block truncate font-black">{item.name}</span></th>
               <td class="min-w-0 px-2 py-2"><span class="block truncate text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</span></td>
               <td class="px-2 py-2 font-black uppercase">{item.storage_backend}</td>
               <td class="px-2 py-2">
+                <button class="studio-button min-w-28 px-2 py-1.5 text-xs" data-tone={healthTone(health)} type="button" onclick={() => (healthDetail = health ?? { id: 0, storage_key: item.storage_key, status: 'unknown', last_check_at: '', latency_ms: 0, error_message: t(preferences.language, 'admin.storageHealthNotChecked'), consecutive_failures: 0, created_at: '', updated_at: '' })}>
+                  <Activity class="size-4" />{healthLabel(health)}
+                </button>
+                <span class="mt-1 block text-xs font-bold text-[hsl(var(--ink-muted))]">{health?.last_check_at ? formatDate(health.last_check_at, preferences.language) : t(preferences.language, 'admin.storageHealthNotChecked')}</span>
+              </td>
+              <td class="px-2 py-2">
                 <div class="flex flex-nowrap justify-end gap-2">
+                  <button class="studio-button px-2 py-1.5 text-xs" type="button" disabled={checkingStorageKey !== null} onclick={() => checkOneStorage(item.storage_key)}><RefreshCw class="size-4" />{checkingStorageKey === item.storage_key ? t(preferences.language, 'common.loading') : t(preferences.language, 'admin.storageHealthCheckOne')}</button>
                   <button class="studio-button px-2 py-1.5" type="button" onclick={() => startEdit(item)} aria-label={t(preferences.language, 'announcement.edit')}><Edit3 class="size-4" /></button>
                   <button class="studio-button px-2 py-1.5 text-xs" data-tone="green" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => setDefault(item.storage_key)}>{t(preferences.language, 'common.default')}</button>
                   <button class="studio-button px-2 py-1.5" data-tone="danger" type="button" disabled={item.is_default || busyKey === item.storage_key} onclick={() => (deleteTarget = item)} aria-label={t(preferences.language, 'common.delete')}><Trash2 class="size-4" /></button>
@@ -234,6 +354,56 @@
       </form>
     </div>
   {/if}
+
+  {#if healthDetail}
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-health-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: () => (healthDetail = null) }))}>
+      <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35" type="button" onclick={() => (healthDetail = null)} aria-label={t(preferences.language, 'common.close')}></button>
+      <section class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[-0.25deg]">
+        <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">
+          <div>
+            <p class="tape-label" style={`background:hsl(var(${healthDetail.status === 'healthy' ? '--marker-green' : '--marker-pink'}))`}>{healthLabel(healthDetail)}</p>
+            <h2 id="storage-health-title" class="mt-3 text-2xl font-black">{healthDetail.storage_key}</h2>
+          </div>
+          <button class="studio-button p-2" type="button" onclick={() => (healthDetail = null)} aria-label={t(preferences.language, 'common.close')}><X class="size-4" /></button>
+        </div>
+        <dl class="grid gap-3 text-sm md:grid-cols-2">
+          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthLastCheck')}</dt><dd>{healthDetail.last_check_at ? formatDate(healthDetail.last_check_at, preferences.language) : t(preferences.language, 'admin.storageHealthNotChecked')}</dd></div>
+          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthLatency')}</dt><dd>{healthDetail.latency_ms} ms</dd></div>
+          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthFailuresLabel')}</dt><dd>{healthDetail.consecutive_failures}</dd></div>
+          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthUpdatedAt')}</dt><dd>{healthDetail.updated_at ? formatDate(healthDetail.updated_at, preferences.language) : '—'}</dd></div>
+        </dl>
+        <div class="mt-4 border-2 ink-line bg-[hsl(var(--paper))] p-4">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <h3 class="font-black">{t(preferences.language, 'admin.storageHealthTrend')}</h3>
+            <span class="text-xs font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.storageHealthSessionTrend')}</span>
+          </div>
+          <svg viewBox="0 0 100 96" class="h-32 w-full overflow-visible border-2 ink-line bg-[hsl(var(--paper-deep))]" role="img" aria-label={t(preferences.language, 'admin.storageHealthTrend')}>
+            <line x1="0" y1="88" x2="100" y2="88" stroke="currentColor" stroke-opacity="0.3" stroke-width="1" />
+            <line x1="0" y1="16" x2="100" y2="16" stroke="currentColor" stroke-opacity="0.16" stroke-width="1" />
+            {#if trendPoints(healthDetail.storage_key)}
+              <polyline points={trendPoints(healthDetail.storage_key)} fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />
+              {#each healthHistory[healthDetail.storage_key] ?? [] as sample, index (sample.checked_at + index)}
+                {@const samples = healthHistory[healthDetail.storage_key] ?? []}
+                {@const maxLatency = Math.max(1, ...samples.map((item) => item.latency_ms))}
+                {@const x = samples.length === 1 ? 50 : (index / (samples.length - 1)) * 100}
+                {@const y = sample.status === 'healthy' ? 84 - (sample.latency_ms / maxLatency) * 56 : 86}
+                <circle cx={x} cy={Math.max(8, Math.min(88, y))} r="3.2" fill={sample.status === 'healthy' ? 'hsl(var(--marker-green))' : 'hsl(var(--marker-pink))'} stroke="currentColor" stroke-width="1.5" />
+              {/each}
+            {:else}
+              <text x="50" y="52" text-anchor="middle" class="fill-current text-[8px] font-black">{t(preferences.language, 'admin.storageHealthNoTrend')}</text>
+            {/if}
+          </svg>
+        </div>
+        {#if healthDetail.error_message}
+          <div class="mt-4 border-2 ink-line bg-[hsl(var(--marker-pink))] p-3 text-[hsl(var(--marker-ink))]"><h3 class="font-black">{t(preferences.language, 'admin.storageHealthError')}</h3><p class="mt-2 break-words text-sm font-bold">{healthDetail.error_message}</p></div>
+        {/if}
+        <div class="mt-5 flex justify-end">
+          <button class="studio-button" type="button" disabled={checkingStorageKey !== null} onclick={() => checkOneStorage(healthDetail?.storage_key ?? '')}><RefreshCw class="size-4" />{t(preferences.language, 'admin.storageHealthCheckOne')}</button>
+        </div>
+      </section>
+    </div>
+  {/if}
+
   <ConfirmDialog
     open={deleteTarget !== null}
     title={`${t(preferences.language, 'common.delete')} ${deleteTarget?.name ?? ''}?`}

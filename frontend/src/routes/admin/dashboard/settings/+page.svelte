@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Activity, CircleAlert, KeyRound, RefreshCw, Save, TriangleAlert } from 'lucide-svelte';
-  import { adminChangePassword, adminCheckAllStorageHealth, adminCheckStorageHealth, adminGetAuditLogs, adminGetConfig, adminGetStorageHealth, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
+  import { CircleAlert, KeyRound, Save, TriangleAlert } from 'lucide-svelte';
+  import { adminChangePassword, adminGetAuditLogs, adminGetConfig, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
   import AnnouncementManager from '@/components/studio/AnnouncementManager.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import StorageInstanceManager from '@/components/studio/StorageInstanceManager.svelte';
@@ -11,7 +11,7 @@
   import { toast } from '@/stores/toast.svelte';
   import { runAsyncAction, toastApiError } from '@/ui-errors';
   import { isValidAdminPasswordStrength } from '@/password-policy';
-  import type { AdminAuditScope, AdminConfig, AdminConfigAuditLog, AdminStorageHealthCheck, AdminSystemSettings } from '@/types';
+  import type { AdminAuditScope, AdminConfig, AdminConfigAuditLog, AdminSystemSettings } from '@/types';
 
   let config = $state.raw<AdminConfig | null>(null);
   let system = $state<AdminSystemSettings | null>(null);
@@ -27,10 +27,11 @@
   let auditPage = $state(1);
   let auditPageSize = $state(20);
   let auditScope = $state<AdminAuditScope>('');
-  let healthChecks = $state.raw<AdminStorageHealthCheck[]>([]);
-  let checkingStorageKey = $state<string | null>(null);
 
-  const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
+  const activeTab = $derived.by(() => {
+    const tab = page.url.searchParams.get('tab') ?? 'runtime';
+    return tab === 'health' ? 'storage' : tab;
+  });
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
   const cloudflarePurgeConfigured = $derived(system?.readonly.service.cloudflare_purge_configured ?? false);
   const auditTotalPages = $derived(Math.max(1, Math.ceil(auditTotal / auditPageSize)));
@@ -61,25 +62,10 @@
     }
   }
 
-  async function loadHealth(signal?: AbortSignal) {
-    if (!preferences.adminToken) return;
-    try {
-      const result = await adminGetStorageHealth(preferences.adminToken, signal);
-      if (!signal?.aborted) healthChecks = Array.isArray(result) ? result : [];
-    } catch (err) {
-      if (isAbortError(err)) return;
-      toastApiError(err, preferences.language);
-    }
-  }
-
   async function load(signal?: AbortSignal) {
     if (!preferences.adminToken || activeTab === 'announcements') return;
     if (activeTab === 'audit') {
       await loadAudit(signal);
-      return;
-    }
-    if (activeTab === 'health') {
-      await loadHealth(signal);
       return;
     }
     try {
@@ -149,34 +135,6 @@
     }
   }
 
-  async function checkOneStorage(storageKey: string) {
-    const token = preferences.adminToken;
-    if (!token) return;
-    await runAsyncAction({
-      language: preferences.language,
-      setBusy: (value) => (checkingStorageKey = value ? storageKey : null),
-      successMessage: t(preferences.language, 'admin.storageHealthCheckSuccess'),
-      action: () => adminCheckStorageHealth(token, storageKey),
-      onSuccess: async () => {
-        await loadHealth();
-      },
-    });
-  }
-
-  async function checkAllStorage() {
-    const token = preferences.adminToken;
-    if (!token) return;
-    await runAsyncAction({
-      language: preferences.language,
-      setBusy: (value) => (checkingStorageKey = value ? '*' : null),
-      successMessage: t(preferences.language, 'admin.storageHealthCheckSuccess'),
-      action: () => adminCheckAllStorageHealth(token),
-      onSuccess: (result) => {
-        healthChecks = Array.isArray(result) ? result : [];
-      },
-    });
-  }
-
   async function purgeCloudflareCache() {
     const token = preferences.adminToken;
     const url = cloudflarePurgeUrl.trim();
@@ -210,40 +168,6 @@
   {#if activeTab === 'storage'}
     {#if config}
       <StorageInstanceManager {config} onChange={(next) => (config = next)} />
-    {/if}
-  {:else if activeTab === 'health'}
-    <PageTitle eyebrow={t(preferences.language, 'admin.submenuStorageHealth')} title={t(preferences.language, 'admin.storageHealthTitle')} subtitle={t(preferences.language, 'admin.storageHealthDescription')} tone="green" />
-    <div class="flex justify-end border-b-[3px] ink-line pb-3">
-      <button class="studio-button" data-tone="primary" type="button" disabled={checkingStorageKey !== null} onclick={checkAllStorage}><RefreshCw class="size-4" />{t(preferences.language, 'admin.storageHealthCheckAll')}</button>
-    </div>
-    <div class="w-full min-w-0 max-w-full overflow-x-auto">
-      <table class="w-full min-w-[760px] table-fixed border-collapse text-sm">
-        <thead>
-          <tr class="border-b-[3px] ink-line text-left text-xs font-black uppercase text-[hsl(var(--ink-muted))]">
-            <th class="w-[18%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageKey')}</th>
-            <th class="w-[12%] px-3 py-2" scope="col">{t(preferences.language, 'admin.securityStatus')}</th>
-            <th class="w-[18%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageHealthLastCheck')}</th>
-            <th class="w-[12%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageHealthLatency')}</th>
-            <th class="w-[28%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageHealthError')}</th>
-            <th class="w-[12%] px-3 py-2 text-right" scope="col">{t(preferences.language, 'admin.securityTableActions')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each healthChecks as item (item.storage_key)}
-            <tr class="studio-table-row align-middle">
-              <th class="px-3 py-3 text-left font-black" scope="row">{item.storage_key}</th>
-              <td class="px-3 py-3"><span class="tape-label" style={`background:hsl(var(${item.status === 'healthy' ? '--marker-green' : '--marker-pink'}))`}>{item.status}</span><span class="block text-xs text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.storageHealthFailures', { count: item.consecutive_failures })}</span></td>
-              <td class="px-3 py-3 text-xs">{item.last_check_at ? formatDate(item.last_check_at, preferences.language) : '—'}</td>
-              <td class="px-3 py-3 font-bold tabular-nums">{item.latency_ms} ms</td>
-              <td class="truncate px-3 py-3 text-xs text-[hsl(var(--ink-muted))]" title={item.error_message}>{item.error_message || '—'}</td>
-              <td class="px-3 py-3 text-right"><button class="studio-button px-2 py-1.5 text-xs" type="button" disabled={checkingStorageKey !== null} onclick={() => checkOneStorage(item.storage_key)}><Activity class="size-4" />{checkingStorageKey === item.storage_key ? t(preferences.language, 'common.loading') : t(preferences.language, 'admin.storageHealthCheckOne')}</button></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-    {#if healthChecks.length === 0}
-      <div class="grid min-h-32 place-items-center border-[3px] border-dashed ink-line px-3 text-center"><p class="font-black">{t(preferences.language, 'admin.storageHealthEmpty')}</p></div>
     {/if}
   {:else if activeTab === 'audit'}
     <PageTitle eyebrow={t(preferences.language, 'admin.submenuAuditLogs')} title={t(preferences.language, 'admin.auditLogsTitle')} subtitle={t(preferences.language, 'admin.auditLogsDescription')} tone="blue" />
