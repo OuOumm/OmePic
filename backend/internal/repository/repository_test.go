@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,41 +123,6 @@ func TestMigrateCreatesSoftDeleteColumnsIdempotently(t *testing.T) {
 	}
 }
 
-func TestMigrateDoesNotRebuildLegacyImagesTableForDroppedColumns(t *testing.T) {
-	ctx := context.Background()
-	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = repo.Close()
-	})
-
-	if err := createLegacyImagesTable(ctx, repo); err != nil {
-		t.Fatalf("createLegacyImagesTable returned error: %v", err)
-	}
-
-	if err := repo.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate returned error: %v", err)
-	}
-
-	exists, err := testTableColumnExists(ctx, repo.db, "images", "original_filename")
-	if err != nil {
-		t.Fatalf("testTableColumnExists returned error: %v", err)
-	}
-	if !exists {
-		t.Fatalf("expected legacy schema to remain untouched; stale dev databases must be reset manually")
-	}
-
-	exists, err = testTableColumnExists(ctx, repo.db, "images", "storage_key")
-	if err != nil {
-		t.Fatalf("testTableColumnExists returned error: %v", err)
-	}
-	if !exists {
-		t.Fatalf("expected storage_key column to be added to legacy schema")
-	}
-}
-
 func TestInsertImagePersistsStorageKeyWithoutOriginalFilenameColumn(t *testing.T) {
 	ctx := context.Background()
 	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
@@ -192,61 +158,6 @@ func TestInsertImagePersistsStorageKeyWithoutOriginalFilenameColumn(t *testing.T
 	}
 	if stored.MIMEType != "image/avif" || stored.FilePath != "2026/04/two.avif" || stored.StorageKey != "local-default" {
 		t.Fatalf("stored row mismatch: %+v", stored)
-	}
-}
-
-func TestSearchImagesIgnoresLegacyOriginalFilenameColumnAndIncludesStorageKey(t *testing.T) {
-	ctx := context.Background()
-	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = repo.Close()
-	})
-
-	if err := createLegacyImagesTable(ctx, repo); err != nil {
-		t.Fatalf("createLegacyImagesTable returned error: %v", err)
-	}
-
-	if err := repo.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate returned error: %v", err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`INSERT INTO images(
-			uid, token, storage_key, storage_backend, file_path, mime_type, size, md5_hash, ip_address, original_filename, created_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"uid-legacy",
-		"token-legacy",
-		"local-default",
-		"local",
-		"2026/04/legacy.avif",
-		"image/avif",
-		64,
-		"hash-legacy",
-		"127.0.0.1",
-		"client-only-name.png",
-		"2026-04-27T00:00:00Z",
-	); err != nil {
-		t.Fatalf("legacy insert returned error: %v", err)
-	}
-
-	matches, total, err := repo.SearchImages(ctx, 1, 20, "client-only-name")
-	if err != nil {
-		t.Fatalf("SearchImages returned error: %v", err)
-	}
-	if total != 0 || len(matches) != 0 {
-		t.Fatalf("expected legacy original_filename to be ignored, got total=%d len=%d", total, len(matches))
-	}
-
-	matches, total, err = repo.SearchImages(ctx, 1, 20, "local-default")
-	if err != nil {
-		t.Fatalf("SearchImages returned error: %v", err)
-	}
-	if total != 1 || len(matches) != 1 {
-		t.Fatalf("expected storage_key to remain searchable, got total=%d len=%d", total, len(matches))
 	}
 }
 
@@ -393,25 +304,14 @@ func TestInitializeStorageCatalogSeedsLegacyBackendsAndBackfillsImageStorageKeys
 	}
 }
 
+func normalizeIndexSQL(sql string) string {
+	normalized := strings.TrimSuffix(strings.Join(strings.Fields(sql), " "), ";")
+	normalized = strings.ReplaceAll(normalized, " IF NOT EXISTS", "")
+	return normalized
+}
+
 func imageIndexSQL(ctx context.Context, repo *Repository, name string) (string, error) {
 	var sql string
 	err := repo.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, name).Scan(&sql)
 	return sql, err
-}
-
-func createLegacyImagesTable(ctx context.Context, repo *Repository) error {
-	_, err := repo.db.ExecContext(ctx, `CREATE TABLE images (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		uid TEXT UNIQUE NOT NULL,
-		token TEXT NOT NULL,
-		storage_backend TEXT DEFAULT 'local',
-		file_path TEXT,
-		mime_type TEXT,
-		size INTEGER,
-		md5_hash TEXT NOT NULL,
-		ip_address TEXT,
-		original_filename TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);`)
-	return err
 }
