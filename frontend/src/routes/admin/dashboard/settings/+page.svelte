@@ -1,17 +1,17 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { CircleAlert, KeyRound, Save, TriangleAlert } from 'lucide-svelte';
-  import { adminChangePassword, adminGetConfig, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
+  import { Activity, CircleAlert, KeyRound, RefreshCw, Save, TriangleAlert } from 'lucide-svelte';
+  import { adminChangePassword, adminCheckAllStorageHealth, adminCheckStorageHealth, adminGetAuditLogs, adminGetConfig, adminGetStorageHealth, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
   import AnnouncementManager from '@/components/studio/AnnouncementManager.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import StorageInstanceManager from '@/components/studio/StorageInstanceManager.svelte';
   import { t } from '@/i18n';
-  import { formatMegabytes, isAbortError } from '@/utils';
+  import { formatDate, formatMegabytes, isAbortError } from '@/utils';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import { runAsyncAction, toastApiError } from '@/ui-errors';
   import { isValidAdminPasswordStrength } from '@/password-policy';
-  import type { AdminConfig, AdminSystemSettings } from '@/types';
+  import type { AdminAuditScope, AdminConfig, AdminConfigAuditLog, AdminStorageHealthCheck, AdminSystemSettings } from '@/types';
 
   let config = $state.raw<AdminConfig | null>(null);
   let system = $state<AdminSystemSettings | null>(null);
@@ -22,10 +22,18 @@
   let cloudflarePurgeUrl = $state('');
   let oldPassword = $state('');
   let newPassword = $state('');
+  let auditLogs = $state.raw<AdminConfigAuditLog[]>([]);
+  let auditTotal = $state(0);
+  let auditPage = $state(1);
+  let auditPageSize = $state(20);
+  let auditScope = $state<AdminAuditScope>('');
+  let healthChecks = $state.raw<AdminStorageHealthCheck[]>([]);
+  let checkingStorageKey = $state<string | null>(null);
 
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
   const cloudflarePurgeConfigured = $derived(system?.readonly.service.cloudflare_purge_configured ?? false);
+  const auditTotalPages = $derived(Math.max(1, Math.ceil(auditTotal / auditPageSize)));
   const securityWarnings = $derived.by(() => {
     const warnings: string[] = [];
     if (!system) return warnings;
@@ -40,8 +48,40 @@
     return Array.isArray(runtimeTypes) ? runtimeTypes.join(', ') : '';
   }
 
+  async function loadAudit(signal?: AbortSignal) {
+    if (!preferences.adminToken) return;
+    try {
+      const result = await adminGetAuditLogs(preferences.adminToken, auditPage, auditPageSize, auditScope, signal);
+      if (signal?.aborted) return;
+      auditLogs = Array.isArray(result.items) ? result.items : [];
+      auditTotal = result.total;
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toastApiError(err, preferences.language);
+    }
+  }
+
+  async function loadHealth(signal?: AbortSignal) {
+    if (!preferences.adminToken) return;
+    try {
+      const result = await adminGetStorageHealth(preferences.adminToken, signal);
+      if (!signal?.aborted) healthChecks = Array.isArray(result) ? result : [];
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toastApiError(err, preferences.language);
+    }
+  }
+
   async function load(signal?: AbortSignal) {
     if (!preferences.adminToken || activeTab === 'announcements') return;
+    if (activeTab === 'audit') {
+      await loadAudit(signal);
+      return;
+    }
+    if (activeTab === 'health') {
+      await loadHealth(signal);
+      return;
+    }
     try {
       [config, system] = await Promise.all([adminGetConfig(preferences.adminToken, signal), adminGetSystemSettings(preferences.adminToken, signal)]);
       if (signal?.aborted) return;
@@ -100,6 +140,43 @@
     });
   }
 
+  function formatSnapshot(value: string) {
+    if (!value) return '—';
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+
+  async function checkOneStorage(storageKey: string) {
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (checkingStorageKey = value ? storageKey : null),
+      successMessage: t(preferences.language, 'admin.storageHealthCheckSuccess'),
+      action: () => adminCheckStorageHealth(token, storageKey),
+      onSuccess: async () => {
+        await loadHealth();
+      },
+    });
+  }
+
+  async function checkAllStorage() {
+    const token = preferences.adminToken;
+    if (!token) return;
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (checkingStorageKey = value ? '*' : null),
+      successMessage: t(preferences.language, 'admin.storageHealthCheckSuccess'),
+      action: () => adminCheckAllStorageHealth(token),
+      onSuccess: (result) => {
+        healthChecks = Array.isArray(result) ? result : [];
+      },
+    });
+  }
+
   async function purgeCloudflareCache() {
     const token = preferences.adminToken;
     const url = cloudflarePurgeUrl.trim();
@@ -117,6 +194,10 @@
   }
 
   $effect(() => {
+    if (auditScope === '' || auditScope === 'runtime' || auditScope === 'storage') auditPage = 1;
+  });
+
+  $effect(() => {
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
@@ -130,6 +211,83 @@
     {#if config}
       <StorageInstanceManager {config} onChange={(next) => (config = next)} />
     {/if}
+  {:else if activeTab === 'health'}
+    <PageTitle eyebrow={t(preferences.language, 'admin.submenuStorageHealth')} title={t(preferences.language, 'admin.storageHealthTitle')} subtitle={t(preferences.language, 'admin.storageHealthDescription')} tone="green" />
+    <div class="flex justify-end border-b-[3px] ink-line pb-3">
+      <button class="studio-button" data-tone="primary" type="button" disabled={checkingStorageKey !== null} onclick={checkAllStorage}><RefreshCw class="size-4" />{t(preferences.language, 'admin.storageHealthCheckAll')}</button>
+    </div>
+    <div class="w-full min-w-0 max-w-full overflow-x-auto">
+      <table class="w-full min-w-[760px] table-fixed border-collapse text-sm">
+        <thead>
+          <tr class="border-b-[3px] ink-line text-left text-xs font-black uppercase text-[hsl(var(--ink-muted))]">
+            <th class="w-[18%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageKey')}</th>
+            <th class="w-[12%] px-3 py-2" scope="col">{t(preferences.language, 'admin.securityStatus')}</th>
+            <th class="w-[18%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageHealthLastCheck')}</th>
+            <th class="w-[12%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageHealthLatency')}</th>
+            <th class="w-[28%] px-3 py-2" scope="col">{t(preferences.language, 'admin.storageHealthError')}</th>
+            <th class="w-[12%] px-3 py-2 text-right" scope="col">{t(preferences.language, 'admin.securityTableActions')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each healthChecks as item (item.storage_key)}
+            <tr class="studio-table-row align-middle">
+              <th class="px-3 py-3 text-left font-black" scope="row">{item.storage_key}</th>
+              <td class="px-3 py-3"><span class="tape-label" style={`background:hsl(var(${item.status === 'healthy' ? '--marker-green' : '--marker-pink'}))`}>{item.status}</span><span class="block text-xs text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.storageHealthFailures', { count: item.consecutive_failures })}</span></td>
+              <td class="px-3 py-3 text-xs">{item.last_check_at ? formatDate(item.last_check_at, preferences.language) : '—'}</td>
+              <td class="px-3 py-3 font-bold tabular-nums">{item.latency_ms} ms</td>
+              <td class="truncate px-3 py-3 text-xs text-[hsl(var(--ink-muted))]" title={item.error_message}>{item.error_message || '—'}</td>
+              <td class="px-3 py-3 text-right"><button class="studio-button px-2 py-1.5 text-xs" type="button" disabled={checkingStorageKey !== null} onclick={() => checkOneStorage(item.storage_key)}><Activity class="size-4" />{checkingStorageKey === item.storage_key ? t(preferences.language, 'common.loading') : t(preferences.language, 'admin.storageHealthCheckOne')}</button></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+    {#if healthChecks.length === 0}
+      <div class="grid min-h-32 place-items-center border-[3px] border-dashed ink-line px-3 text-center"><p class="font-black">{t(preferences.language, 'admin.storageHealthEmpty')}</p></div>
+    {/if}
+  {:else if activeTab === 'audit'}
+    <PageTitle eyebrow={t(preferences.language, 'admin.submenuAuditLogs')} title={t(preferences.language, 'admin.auditLogsTitle')} subtitle={t(preferences.language, 'admin.auditLogsDescription')} tone="blue" />
+    <div class="grid gap-3 border-b-[3px] ink-line pb-4 md:grid-cols-[auto_auto_1fr] md:items-center">
+      <label class="grid gap-2 text-sm font-black">
+        {t(preferences.language, 'admin.auditScope')}
+        <select class="studio-input" bind:value={auditScope}>
+          <option value="">{t(preferences.language, 'admin.auditScopeAll')}</option>
+          <option value="runtime">{t(preferences.language, 'admin.submenuRuntime')}</option>
+          <option value="storage">{t(preferences.language, 'admin.submenuStorage')}</option>
+        </select>
+      </label>
+      <label class="grid gap-2 text-sm font-black">
+        {t(preferences.language, 'admin.imagesPageSize')}
+        <select class="studio-input" bind:value={auditPageSize}>
+          <option value={10}>10</option>
+          <option value={20}>20</option>
+          <option value={50}>50</option>
+        </select>
+      </label>
+      <p class="self-end text-sm font-black md:text-right">{t(preferences.language, 'admin.auditTotal', { total: auditTotal })}</p>
+    </div>
+    <div class="grid gap-4">
+      {#each auditLogs as item (item.id)}
+        <article class="grid gap-3 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 ink-line pb-2">
+            <div class="flex flex-wrap items-center gap-2"><span class="tape-label" style="background:hsl(var(--marker-blue))">{item.config_scope}</span><span class="font-black">{item.actor || 'admin'}</span><span class="text-sm font-bold text-[hsl(var(--ink-muted))]">{item.actor_ip || '—'}</span></div>
+            <time class="text-sm font-bold text-[hsl(var(--ink-muted))]">{formatDate(item.created_at, preferences.language)}</time>
+          </div>
+          <div class="grid gap-3 lg:grid-cols-2">
+            <div class="min-w-0"><h3 class="mb-2 font-black">{t(preferences.language, 'admin.auditBefore')}</h3><pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words border-2 ink-line bg-[hsl(var(--paper-deep))] p-3 text-xs">{formatSnapshot(item.before_snapshot)}</pre></div>
+            <div class="min-w-0"><h3 class="mb-2 font-black">{t(preferences.language, 'admin.auditAfter')}</h3><pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words border-2 ink-line bg-[hsl(var(--paper-deep))] p-3 text-xs">{formatSnapshot(item.after_snapshot)}</pre></div>
+          </div>
+        </article>
+      {/each}
+    </div>
+    {#if auditLogs.length === 0}
+      <div class="grid min-h-32 place-items-center border-[3px] border-dashed ink-line px-3 text-center"><p class="font-black">{t(preferences.language, 'admin.auditEmpty')}</p></div>
+    {/if}
+    <div class="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-t-[3px] ink-line pt-3">
+      <button class="studio-button px-3 py-1.5 text-sm" disabled={auditPage <= 1} onclick={() => { auditPage -= 1; }}>{t(preferences.language, 'admin.imagesPrev')}</button>
+      <span class="min-w-0 justify-center text-center text-sm font-black">{t(preferences.language, 'admin.imagesPageStatus', { page: auditPage, totalPages: auditTotalPages })}</span>
+      <button class="studio-button px-3 py-1.5 text-sm" disabled={auditPage >= auditTotalPages} onclick={() => { auditPage += 1; }}>{t(preferences.language, 'admin.imagesNext')}</button>
+    </div>
   {:else if activeTab === 'runtime'}
     {#if system}
       <PageTitle eyebrow={t(preferences.language, 'admin.submenuRuntime')} title={t(preferences.language, 'admin.runtimeTitle')} subtitle={t(preferences.language, 'admin.runtimeDescription')} tone="yellow" />
@@ -201,15 +359,15 @@
               <input class="studio-input" type="number" min="0" max="10" step="1" inputmode="numeric" bind:value={system.runtime.avif_speed} />
             </label>
             <label class="grid gap-2 text-sm font-black">
-              最大图片像素数
+              {t(preferences.language, 'admin.runtimeMaxImagePixels')}
               <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.max_image_pixels} />
             </label>
             <label class="grid gap-2 text-sm font-black">
-              AVIF 转换并发上限
+              {t(preferences.language, 'admin.runtimeAvifMaxConcurrency')}
               <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.avif_max_concurrency} />
             </label>
             <label class="grid gap-2 text-sm font-black md:col-span-2">
-              AVIF 转换超时（秒）
+              {t(preferences.language, 'admin.runtimeAvifTimeoutSeconds')}
               <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.avif_conversion_timeout_seconds} />
             </label>
             <label class="flex items-center gap-3 border-y-2 ink-line py-3 font-black md:col-span-2">

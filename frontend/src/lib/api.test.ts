@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   adminChangePassword,
+  adminCheckAllStorageHealth,
+  adminCheckStorageHealth,
   adminCreateStorageInstance,
   adminDeleteImages,
+  adminDisableToken,
+  adminEnableToken,
+  adminGetAuditLogs,
   adminGetImages,
+  adminGetStorageHealth,
+  adminGetTokens,
+  adminGetTrashImages,
   adminGetStatus,
   adminPurgeCloudflareImageCache,
+  adminRestoreImage,
   adminUpdateSystemSettings,
   deleteImageByUid,
   getRuntimeSettings,
@@ -182,6 +191,137 @@ describe("admin API helpers", () => {
       },
       signal: controller.signal,
     });
+  });
+
+  it("uses trash listing and restore contracts", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse(200, { success: true, data: { items: [], total: 0 } })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
+
+    await adminGetTrashImages("admin-token", 3, 10, "deleted");
+    await adminRestoreImage("admin-token", "uid-1");
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8080/admin/images/trash?page=3&pageSize=10&search=deleted",
+      expect.objectContaining({
+        cache: "no-store",
+        headers: {
+          Authorization: "Bearer admin-token",
+          "Content-Type": "application/json",
+        },
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8080/admin/images/uid-1/restore",
+      {
+        cache: "no-store",
+        method: "POST",
+        headers: { Authorization: "Bearer admin-token" },
+      }
+    );
+  });
+
+  it("uses token governance request contracts", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse(200, { success: true, data: { items: [] } })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }))
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: {} }));
+
+    await adminGetTokens("admin-token");
+    await adminDisableToken("admin-token", "a".repeat(64), "abuse");
+    await adminEnableToken("admin-token", "a".repeat(64));
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8080/admin/tokens",
+      expect.objectContaining({
+        cache: "no-store",
+        headers: { Authorization: "Bearer admin-token" },
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      `http://localhost:8080/admin/tokens/${"a".repeat(64)}/disable`,
+      {
+        cache: "no-store",
+        method: "POST",
+        headers: {
+          Authorization: "Bearer admin-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reason: "abuse" }),
+      }
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      `http://localhost:8080/admin/tokens/${"a".repeat(64)}/enable`,
+      {
+        cache: "no-store",
+        method: "POST",
+        headers: { Authorization: "Bearer admin-token" },
+      }
+    );
+  });
+
+  it("uses audit log and storage health contracts", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse(200, { success: true, data: { items: [], total: 0 } })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          success: true,
+          data: { storage_key: "local", status: "healthy" },
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, data: [] }));
+
+    await adminGetAuditLogs("admin-token", 2, 20, "runtime");
+    await adminGetStorageHealth("admin-token");
+    await adminCheckStorageHealth("admin-token", "local");
+    await adminCheckAllStorageHealth("admin-token");
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8080/admin/audit-logs?page=2&page_size=20&scope=runtime",
+      expect.objectContaining({
+        cache: "no-store",
+        headers: { Authorization: "Bearer admin-token" },
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8080/admin/storage/health",
+      expect.objectContaining({
+        cache: "no-store",
+        headers: { Authorization: "Bearer admin-token" },
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8080/admin/storage/local/health-check",
+      {
+        cache: "no-store",
+        method: "POST",
+        headers: { Authorization: "Bearer admin-token" },
+      }
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8080/admin/storage/health-check-all",
+      {
+        cache: "no-store",
+        method: "POST",
+        headers: { Authorization: "Bearer admin-token" },
+      }
+    );
   });
 
   it("reads public runtime settings without the removed effective MIME field", async () => {

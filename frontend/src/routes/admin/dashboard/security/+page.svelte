@@ -1,29 +1,33 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Gauge, Save, ShieldCheck, Trash2, Unlock } from 'lucide-svelte';
+  import { Gauge, KeyRound, Save, ShieldCheck, Trash2, Unlock } from 'lucide-svelte';
   import BanIPDialog from '@/components/studio/BanIPDialog.svelte';
   import ConfirmDialog from '@/components/studio/ConfirmDialog.svelte';
   import MetricStrip from '@/components/studio/MetricStrip.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
-  import { adminCreateIPBan, adminDeleteIPBan, adminDeleteIPBanImages, adminGetAbuseOverview, adminGetIPBans, adminGetSystemSettings, adminUpdateSystemSettings } from '@/api';
+  import { adminCreateIPBan, adminDeleteIPBan, adminDeleteIPBanImages, adminDisableToken, adminEnableToken, adminGetAbuseOverview, adminGetIPBans, adminGetSystemSettings, adminGetTokens, adminUpdateSystemSettings } from '@/api';
   import { t } from '@/i18n';
   import { preferences } from '@/stores/preferences.svelte';
-  import { formatBytes, isAbortError } from '@/utils';
+  import { formatBytes, formatDate, isAbortError } from '@/utils';
   import { runAsyncAction, toastApiError } from '@/ui-errors';
-  import type { AdminAbuseOverview, AdminIPBan, AdminSystemSettings } from '@/types';
+  import type { AdminAbuseOverview, AdminIPBan, AdminSystemSettings, AdminTokenGovernanceEntry } from '@/types';
 
   let overview = $state.raw<AdminAbuseOverview | null>(null);
   let bans = $state.raw<AdminIPBan[]>([]);
   let system = $state<AdminSystemSettings | null>(null);
+  let tokens = $state.raw<AdminTokenGovernanceEntry[]>([]);
   let banTarget = $state<{ ip: string; label?: string } | null>(null);
   let confirmTarget = $state<{ action: 'unban' | 'purge'; ban: AdminIPBan } | null>(null);
   let banning = $state(false);
   let confirmBusy = $state(false);
   let savingRateLimit = $state(false);
+  let tokenBusy = $state(false);
+  let tokenConfirmTarget = $state<{ action: 'disable' | 'enable'; token: AdminTokenGovernanceEntry } | null>(null);
 
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'abuse');
   const topIps = $derived(Array.isArray(overview?.top_ips) ? overview.top_ips : []);
   const safeBans = $derived(Array.isArray(bans) ? bans : []);
+  const safeTokens = $derived(Array.isArray(tokens) ? tokens : []);
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
 
   async function loadAbuse(signal?: AbortSignal) {
@@ -33,6 +37,17 @@
       if (signal?.aborted) return;
       overview = nextOverview ? { ...nextOverview, top_ips: Array.isArray(nextOverview.top_ips) ? nextOverview.top_ips : [] } : null;
       bans = Array.isArray(nextBans) ? nextBans : [];
+    } catch (err) {
+      if (isAbortError(err)) return;
+      toastApiError(err, preferences.language);
+    }
+  }
+
+  async function loadTokens(signal?: AbortSignal) {
+    if (!preferences.adminToken) return;
+    try {
+      const result = await adminGetTokens(preferences.adminToken, signal);
+      if (!signal?.aborted) tokens = Array.isArray(result.items) ? result.items : [];
     } catch (err) {
       if (isAbortError(err)) return;
       toastApiError(err, preferences.language);
@@ -53,6 +68,10 @@
   async function load(signal?: AbortSignal) {
     if (activeTab === 'rate-limit') {
       await loadRateLimit(signal);
+      return;
+    }
+    if (activeTab === 'tokens') {
+      await loadTokens(signal);
       return;
     }
     await loadAbuse(signal);
@@ -118,6 +137,22 @@
     });
   }
 
+  async function setTokenDisabled(target: AdminTokenGovernanceEntry, disabled: boolean) {
+    const token = preferences.adminToken;
+    if (!token) return;
+    const reason = target.reason || t(preferences.language, 'admin.tokensDefaultDisableReason');
+    await runAsyncAction({
+      language: preferences.language,
+      setBusy: (value) => (tokenBusy = value),
+      successMessage: t(preferences.language, 'common.success'),
+      action: () => disabled ? adminDisableToken(token, target.token_hash, reason) : adminEnableToken(token, target.token_hash),
+      onSuccess: async () => {
+        tokenConfirmTarget = null;
+        await loadTokens();
+      },
+    });
+  }
+
   async function purgeImages(id: number) {
     const token = preferences.adminToken;
     if (!token) return;
@@ -143,7 +178,48 @@
 <svelte:head><title>{t(preferences.language, 'admin.abuseTitle')} · {siteName}</title></svelte:head>
 
 <div class="min-w-0 space-y-6 overflow-hidden">
-  {#if activeTab === 'rate-limit'}
+  {#if activeTab === 'tokens'}
+    <PageTitle eyebrow={t(preferences.language, 'admin.submenuTokens')} title={t(preferences.language, 'admin.tokensTitle')} subtitle={t(preferences.language, 'admin.tokensDescription')} tone="yellow" />
+    <div class="w-full min-w-0 max-w-full overflow-x-auto">
+      <table class="w-full min-w-[860px] table-fixed border-collapse text-sm">
+        <thead>
+          <tr class="border-b-[3px] ink-line text-left text-xs font-black uppercase text-[hsl(var(--ink-muted))]">
+            <th class="w-[24%] px-3 py-2" scope="col">{t(preferences.language, 'admin.tokensHash')}</th>
+            <th class="w-[12%] px-3 py-2" scope="col">{t(preferences.language, 'admin.tokensPreview')}</th>
+            <th class="w-[10%] px-3 py-2" scope="col">{t(preferences.language, 'admin.tokensUploads')}</th>
+            <th class="w-[12%] px-3 py-2" scope="col">{t(preferences.language, 'admin.tokensTotalBytes')}</th>
+            <th class="w-[12%] px-3 py-2" scope="col">{t(preferences.language, 'admin.tokensLastIp')}</th>
+            <th class="w-[14%] px-3 py-2" scope="col">{t(preferences.language, 'admin.tokensLastUsed')}</th>
+            <th class="w-[16%] px-3 py-2 text-right" scope="col">{t(preferences.language, 'admin.securityTableActions')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each safeTokens as item (item.token_hash)}
+            <tr class="studio-table-row align-middle">
+              <th class="px-3 py-3 text-left font-mono text-xs font-black" scope="row"><span class="block truncate" title={item.token_hash}>{item.token_hash}</span></th>
+              <td class="px-3 py-3 font-mono text-xs">{item.token_preview || '—'}</td>
+              <td class="px-3 py-3 font-bold tabular-nums">{item.upload_count}</td>
+              <td class="px-3 py-3 font-bold">{formatBytes(item.total_bytes, preferences.language)}</td>
+              <td class="truncate px-3 py-3" title={item.last_ip}>{item.last_ip || '—'}</td>
+              <td class="px-3 py-3 text-xs">{item.last_used_at ? formatDate(item.last_used_at, preferences.language) : '—'}</td>
+              <td class="px-3 py-3">
+                <div class="flex flex-col items-end gap-2">
+                  <span class="tape-label" style={`background:hsl(var(${item.disabled ? '--marker-pink' : '--marker-green'}))`}>{item.disabled ? t(preferences.language, 'common.disabled') : t(preferences.language, 'common.enabled')}</span>
+                  {#if item.reason}<span class="max-w-full truncate text-xs text-[hsl(var(--ink-muted))]" title={item.reason}>{item.reason}</span>{/if}
+                  <button class="studio-button px-2 py-1.5 text-xs" data-tone={item.disabled ? 'green' : 'danger'} type="button" onclick={() => (tokenConfirmTarget = { action: item.disabled ? 'enable' : 'disable', token: item })}>
+                    {item.disabled ? t(preferences.language, 'admin.tokensEnable') : t(preferences.language, 'admin.tokensDisable')}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+    {#if safeTokens.length === 0}
+      <div class="grid min-h-32 place-items-center border-[3px] border-dashed ink-line px-3 text-center"><p class="flex items-center gap-2 font-black"><KeyRound class="size-5" />{t(preferences.language, 'admin.tokensEmpty')}</p></div>
+    {/if}
+  {:else if activeTab === 'rate-limit'}
     <PageTitle eyebrow={t(preferences.language, 'admin.submenuRateLimit')} title={t(preferences.language, 'admin.rateLimitTitle')} subtitle={t(preferences.language, 'admin.rateLimitDescription')} tone="blue" />
     {#if system}
       <div class="mt-6 flex justify-end border-b-[3px] ink-line pb-3">
@@ -270,6 +346,17 @@
     {/if}
   {/if}
   <BanIPDialog target={banTarget} busy={banning} onClose={() => (banTarget = null)} onConfirm={banIp} />
+  <ConfirmDialog
+    open={tokenConfirmTarget !== null}
+    title={tokenConfirmTarget?.action === 'enable' ? t(preferences.language, 'admin.tokensEnableConfirm') : t(preferences.language, 'admin.tokensDisableConfirm')}
+    description={tokenConfirmTarget?.token.token_hash ?? ''}
+    confirmLabel={tokenConfirmTarget?.action === 'enable' ? t(preferences.language, 'admin.tokensEnable') : t(preferences.language, 'admin.tokensDisable')}
+    cancelLabel={t(preferences.language, 'common.cancel')}
+    tone={tokenConfirmTarget?.action === 'enable' ? 'primary' : 'danger'}
+    busy={tokenBusy}
+    onClose={() => (tokenConfirmTarget = null)}
+    onConfirm={() => tokenConfirmTarget && setTokenDisabled(tokenConfirmTarget.token, tokenConfirmTarget.action === 'disable')}
+  />
   <ConfirmDialog
     open={confirmTarget !== null}
     title={confirmTarget?.action === 'unban' ? t(preferences.language, 'admin.securityUnbanConfirm') : t(preferences.language, 'admin.securityDeleteBanImagesConfirm')}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { BarChart3, Gauge, Image, LogOut, Megaphone, Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-svelte';
+  import { Activity, Archive, BarChart3, ClipboardList, Gauge, Image, KeyRound, LogOut, Megaphone, Server, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-svelte';
   import { adminGetStatus } from '@/api';
   import { t } from '@/i18n';
   import { clearAdminToken, preferences } from '@/stores/preferences.svelte';
@@ -23,17 +23,26 @@
   const settingsTabs = $derived([
     { href: '/admin/dashboard/settings?tab=runtime', tab: 'runtime', label: t(preferences.language, 'admin.submenuRuntime'), icon: SlidersHorizontal },
     { href: '/admin/dashboard/settings?tab=storage', tab: 'storage', label: t(preferences.language, 'admin.submenuStorage'), icon: Server },
+    { href: '/admin/dashboard/settings?tab=health', tab: 'health', label: t(preferences.language, 'admin.submenuStorageHealth'), icon: Activity },
+    { href: '/admin/dashboard/settings?tab=audit', tab: 'audit', label: t(preferences.language, 'admin.submenuAuditLogs'), icon: ClipboardList },
     { href: '/admin/dashboard/settings?tab=announcements', tab: 'announcements', label: t(preferences.language, 'admin.submenuAnnouncements'), icon: Megaphone }
   ]);
   const securityTabs = $derived([
     { href: '/admin/dashboard/security?tab=abuse', tab: 'abuse', label: t(preferences.language, 'admin.submenuAbuse'), icon: ShieldCheck },
+    { href: '/admin/dashboard/security?tab=tokens', tab: 'tokens', label: t(preferences.language, 'admin.submenuTokens'), icon: KeyRound },
     { href: '/admin/dashboard/security?tab=rate-limit', tab: 'rate-limit', label: t(preferences.language, 'admin.submenuRateLimit'), icon: Gauge }
+  ]);
+  const imageTabs = $derived([
+    { href: '/admin/dashboard/images?tab=active', tab: 'active', label: t(preferences.language, 'admin.imagesActive'), icon: Image },
+    { href: '/admin/dashboard/images?tab=trash', tab: 'trash', label: t(preferences.language, 'admin.imagesTrash'), icon: Archive }
   ]);
   const isSettingsPage = $derived(page.url.pathname === '/admin/dashboard/settings');
   const isSecurityPage = $derived(page.url.pathname === '/admin/dashboard/security');
+  const isImagesPage = $derived(page.url.pathname === '/admin/dashboard/images');
   const isDashboardEntry = $derived(page.url.pathname === '/admin/dashboard');
   const activeSettingsTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const activeSecurityTab = $derived(page.url.searchParams.get('tab') ?? 'abuse');
+  const activeImageTab = $derived(page.url.searchParams.get('tab') ?? 'active');
 
   function isActiveLink(href: string) {
     return href === '/admin/dashboard' ? page.url.pathname === href : page.url.pathname.startsWith(href);
@@ -93,6 +102,18 @@
                 <item.icon class="size-4 shrink-0" aria-hidden="true" />
                 <span class="min-w-0 truncate">{item.label}</span>
               </a>
+              {#if item.href === '/admin/dashboard/images' && isImagesPage}
+                <ul class="ml-6 grid gap-1 border-b-2 border-dashed border-[hsl(var(--ink)/0.24)] pb-2" aria-label={t(preferences.language, 'admin.sidebarImages')}>
+                  {#each imageTabs as tab (tab.tab)}
+                    <li>
+                      <a class="flex min-w-0 items-center gap-2 px-2 py-1.5 text-sm font-black {activeImageTab === tab.tab ? 'marker-highlight' : 'text-[hsl(var(--ink-muted))] hover:marker-highlight focus-visible:marker-highlight'}" href={tab.href} aria-current={activeImageTab === tab.tab ? 'page' : undefined}>
+                        <tab.icon class="size-3.5 shrink-0" aria-hidden="true" />
+                        <span class="min-w-0 truncate">{tab.label}</span>
+                      </a>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
               {#if item.href === '/admin/dashboard/security' && isSecurityPage}
                 <ul class="ml-6 grid gap-1 border-b-2 border-dashed border-[hsl(var(--ink)/0.24)] pb-2" aria-label={t(preferences.language, 'admin.sidebarSecurity')}>
                   {#each securityTabs as tab (tab.tab)}

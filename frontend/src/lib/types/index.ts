@@ -32,6 +32,17 @@ export interface AdminImage {
   md5_hash: string;
   ip_address: string;
   created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string;
+  delete_reason?: string;
+  purge_after?: string | null;
+}
+
+export interface AdminTrashImage extends AdminImage {
+  deleted_at?: string | null;
+  deleted_by?: string;
+  delete_reason?: string;
+  purge_after?: string | null;
 }
 
 export interface AdminIPBan {
@@ -98,6 +109,62 @@ export interface AdminImagesResponse {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface AdminTrashImagesResponse {
+  items: AdminTrashImage[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminTokenGovernanceEntry {
+  token_hash: string;
+  token_preview: string;
+  upload_count: number;
+  total_bytes: number;
+  last_ip: string;
+  last_used_at: string;
+  disabled: boolean;
+  reason: string;
+  disabled_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminTokenListResponse {
+  items: AdminTokenGovernanceEntry[];
+}
+
+export type AdminAuditScope = "" | "runtime" | "storage";
+
+export interface AdminConfigAuditLog {
+  id: number;
+  actor: string;
+  actor_ip: string;
+  config_scope: string;
+  before_snapshot: string;
+  after_snapshot: string;
+  created_at: string;
+}
+
+export interface AdminConfigAuditLogResponse {
+  items: AdminConfigAuditLog[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export interface AdminStorageHealthCheck {
+  id: number;
+  storage_key: string;
+  status: string;
+  last_check_at: string;
+  latency_ms: number;
+  error_message: string;
+  consecutive_failures: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface StorageInstance {

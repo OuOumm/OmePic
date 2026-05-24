@@ -5,6 +5,11 @@ import type {
   UploadResult,
   AdminStatus,
   AdminImagesResponse,
+  AdminTrashImagesResponse,
+  AdminTokenListResponse,
+  AdminConfigAuditLogResponse,
+  AdminAuditScope,
+  AdminStorageHealthCheck,
   AdminConfig,
   StorageInstance,
   PublicRuntimeSettings,
@@ -419,6 +424,34 @@ export async function adminDeleteImages(
   });
 }
 
+export async function adminGetTrashImages(
+  token: string,
+  page: number,
+  pageSize: number,
+  search?: string,
+  signal?: AbortSignal
+): Promise<AdminTrashImagesResponse> {
+  return apiFetch<AdminTrashImagesResponse>("/admin/images/trash", {
+    headers: adminHeaders(token),
+    signal,
+    params: {
+      page: String(page),
+      pageSize: String(pageSize),
+      ...(search ? { search } : {}),
+    },
+  });
+}
+
+export async function adminRestoreImage(
+  token: string,
+  uid: string
+): Promise<void> {
+  await apiFetch<Record<string, never> | null>(`/admin/images/${uid}/restore`, {
+    method: "POST",
+    headers: adminAuthHeaders(token),
+  });
+}
+
 export async function adminPurgeCloudflareImageCache(
   token: string,
   url: string
@@ -507,6 +540,44 @@ export async function adminGetAbuseIPDetail(
   });
 }
 
+export async function adminGetTokens(
+  token: string,
+  signal?: AbortSignal
+): Promise<AdminTokenListResponse> {
+  return apiFetch<AdminTokenListResponse>("/admin/tokens", {
+    headers: adminAuthHeaders(token),
+    signal,
+  });
+}
+
+export async function adminDisableToken(
+  token: string,
+  tokenHash: string,
+  reason: string
+): Promise<void> {
+  await apiFetch<Record<string, never> | null>(
+    `/admin/tokens/${tokenHash}/disable`,
+    {
+      method: "POST",
+      headers: adminHeaders(token),
+      body: JSON.stringify({ reason }),
+    }
+  );
+}
+
+export async function adminEnableToken(
+  token: string,
+  tokenHash: string
+): Promise<void> {
+  await apiFetch<Record<string, never> | null>(
+    `/admin/tokens/${tokenHash}/enable`,
+    {
+      method: "POST",
+      headers: adminAuthHeaders(token),
+    }
+  );
+}
+
 export async function adminGetConfig(
   token: string,
   signal?: AbortSignal
@@ -564,6 +635,56 @@ export async function adminSetDefaultStorage(
     method: "POST",
     headers: adminHeaders(token),
     body: JSON.stringify({ storage_key: storageKey }),
+  });
+}
+
+export async function adminGetAuditLogs(
+  token: string,
+  page: number,
+  pageSize: number,
+  scope?: AdminAuditScope,
+  signal?: AbortSignal
+): Promise<AdminConfigAuditLogResponse> {
+  return apiFetch<AdminConfigAuditLogResponse>("/admin/audit-logs", {
+    headers: adminAuthHeaders(token),
+    signal,
+    params: {
+      page: String(page),
+      page_size: String(pageSize),
+      ...(scope ? { scope } : {}),
+    },
+  });
+}
+
+export async function adminGetStorageHealth(
+  token: string,
+  signal?: AbortSignal
+): Promise<AdminStorageHealthCheck[]> {
+  return apiFetch<AdminStorageHealthCheck[]>("/admin/storage/health", {
+    headers: adminAuthHeaders(token),
+    signal,
+  });
+}
+
+export async function adminCheckStorageHealth(
+  token: string,
+  storageKey: string
+): Promise<AdminStorageHealthCheck> {
+  return apiFetch<AdminStorageHealthCheck>(
+    `/admin/storage/${storageKey}/health-check`,
+    {
+      method: "POST",
+      headers: adminAuthHeaders(token),
+    }
+  );
+}
+
+export async function adminCheckAllStorageHealth(
+  token: string
+): Promise<AdminStorageHealthCheck[]> {
+  return apiFetch<AdminStorageHealthCheck[]>("/admin/storage/health-check-all", {
+    method: "POST",
+    headers: adminAuthHeaders(token),
   });
 }
 
