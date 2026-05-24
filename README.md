@@ -2,7 +2,7 @@
 
 **自托管图片托管服务 — 自动 AVIF 转换 · MD5 去重 · 多后端存储**
 
-> [US](docs/README_EN.md)
+> [US](docs\language\README_EN.md)
 
 ![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)
 ![SvelteKit](https://img.shields.io/badge/SvelteKit-2-FF3E00?logo=svelte&logoColor=white)
