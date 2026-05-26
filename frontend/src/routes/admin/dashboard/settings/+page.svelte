@@ -227,6 +227,12 @@
               {t(preferences.language, 'admin.runtimePublicUrl')}
               <input class="studio-input" bind:value={system.runtime.public_base_url} />
             </label>
+          </div>
+
+          <div class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <span class="tape-label rotate-[1deg]" style="background:hsl(var(--marker-blue))">Cloudflare</span>
+            </div>
             <label class="flex items-start gap-3 border-y-2 ink-line py-3 font-black md:col-span-2">
               <input class="mt-1" type="checkbox" bind:checked={system.runtime.cloudflare_purge_enabled} />
               <span class="grid gap-1">
