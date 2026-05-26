@@ -12,6 +12,7 @@
   } from '@/api';
   import { attachAccessibleDialog } from '@/actions/accessible-dialog';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import LineChart from './LineChart.svelte';
   import { t } from '@/i18n';
   import PageTitle from './PageTitle.svelte';
   import { preferences } from '@/stores/preferences.svelte';
@@ -55,7 +56,6 @@
   let healthChecks = $state.raw<AdminStorageHealthCheck[]>([]);
   let checkingStorageKey = $state<string | null>(null);
   let healthDetail = $state<AdminStorageHealthCheck | null>(null);
-  let healthTrendReady = $state(false);
   let healthHistory = $state<Record<string, AdminStorageHealthCheck[]>>({});
 
   const healthByKey = $derived.by(() => {
@@ -151,16 +151,6 @@
     }
   }
 
-  function openHealthDetail(check: AdminStorageHealthCheck) {
-    healthTrendReady = false;
-    healthDetail = check;
-  }
-
-  function closeHealthDetail() {
-    healthDetail = null;
-    healthTrendReady = false;
-  }
-
   async function checkOneStorage(storageKey: string) {
     const token = preferences.adminToken;
     if (!token) return;
@@ -174,7 +164,7 @@
         for (const item of healthChecks) byKey[item.storage_key] = item;
         byKey[check.storage_key] = check;
         applyHealthChecks(Object.values(byKey));
-        openHealthDetail(check);
+        healthDetail = check;
         void loadHealthHistory(check.storage_key);
       },
     });
@@ -271,32 +261,15 @@
     return healthHistory[storageKey] ?? [];
   }
 
-  function trendPoint(sample: AdminStorageHealthCheck, maxLatency: number) {
-    const windowStart = Date.now() - healthTrendHours * 60 * 60 * 1000;
-    const checkedAt = new Date(sample.last_check_at || sample.updated_at || sample.created_at).getTime();
-    const x = ((checkedAt - windowStart) / (healthTrendHours * 60 * 60 * 1000)) * 100;
-    const y = sample.status === 'healthy' ? 84 - (sample.latency_ms / maxLatency) * 56 : 86;
-    return { x: Math.max(0, Math.min(100, x)), y: Math.max(8, Math.min(88, y)) };
+  function trendChartPoints(storageKey: string) {
+    return trendSamples(storageKey).map((sample) => ({
+      id: sample.id,
+      value: Math.max(0, sample.latency_ms),
+      tone: sample.status === 'healthy' ? 'green' as const : 'pink' as const,
+      label: `${sample.latency_ms} ms`,
+    }));
   }
 
-  function trendPoints(storageKey: string) {
-    const samples = trendSamples(storageKey);
-    if (samples.length === 0) return '';
-    const maxLatency = Math.max(1, ...samples.map((item) => item.latency_ms));
-    return samples.map((sample) => {
-      const point = trendPoint(sample, maxLatency);
-      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
-    }).join(' ');
-  }
-
-  $effect(() => {
-    healthTrendReady = false;
-    if (!healthDetail) return;
-    const timer = window.setTimeout(() => {
-      healthTrendReady = true;
-    }, 160);
-    return () => window.clearTimeout(timer);
-  });
 
   $effect(() => {
     const controller = new AbortController();
@@ -338,7 +311,7 @@
               <td class="min-w-0 px-2 py-2"><span class="block truncate text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</span></td>
               <td class="px-2 py-2 font-black uppercase">{item.storage_backend}</td>
               <td class="px-2 py-2">
-                <button class="studio-button min-w-20 justify-center px-2.5 py-1.5 text-xs" data-tone={healthTone(health)} type="button" onclick={() => openHealthDetail(health ?? { id: 0, storage_key: item.storage_key, status: 'unknown', last_check_at: '', latency_ms: 0, error_message: t(preferences.language, 'admin.storageHealthNotChecked'), consecutive_failures: 0, created_at: '', updated_at: '' })}>
+                <button class="studio-button min-w-20 justify-center px-2.5 py-1.5 text-xs" data-tone={healthTone(health)} type="button" onclick={() => (healthDetail = health ?? { id: 0, storage_key: item.storage_key, status: 'unknown', last_check_at: '', latency_ms: 0, error_message: t(preferences.language, 'admin.storageHealthNotChecked'), consecutive_failures: 0, created_at: '', updated_at: '' })}>
                   <Activity class="size-3.5" />{healthLabel(health)}
                 </button>
               </td>
@@ -421,15 +394,15 @@
   {/if}
 
   {#if healthDetail}
-    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-health-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: closeHealthDetail }))}>
-      <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35" type="button" onclick={closeHealthDetail} aria-label={t(preferences.language, 'common.close')}></button>
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-health-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: () => (healthDetail = null) }))}>
+      <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35" type="button" onclick={() => (healthDetail = null)} aria-label={t(preferences.language, 'common.close')}></button>
       <section class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[-0.25deg]">
         <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">
           <div>
             <p class="tape-label" style={`background:hsl(var(${healthDetail.status === 'healthy' ? '--marker-green' : '--marker-pink'}))`}>{healthLabel(healthDetail)}</p>
             <h2 id="storage-health-title" class="mt-3 text-2xl font-black">{healthDetail.storage_key}</h2>
           </div>
-          <button class="studio-button p-2" type="button" onclick={closeHealthDetail} aria-label={t(preferences.language, 'common.close')}><X class="size-4" /></button>
+          <button class="studio-button p-2" type="button" onclick={() => (healthDetail = null)} aria-label={t(preferences.language, 'common.close')}><X class="size-4" /></button>
         </div>
         <dl class="grid gap-3 text-sm md:grid-cols-2">
           <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthLastCheck')}</dt><dd>{healthDetail.last_check_at ? formatDate(healthDetail.last_check_at, preferences.language) : t(preferences.language, 'admin.storageHealthNotChecked')}</dd></div>
@@ -442,22 +415,11 @@
             <h3 class="font-black">{t(preferences.language, 'admin.storageHealthTrend')}</h3>
             <span class="text-xs font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.storageHealthSessionTrend')}</span>
           </div>
-          <svg viewBox="0 0 100 96" class="h-32 w-full overflow-visible border-2 ink-line bg-[hsl(var(--paper-deep))]" role="img" aria-label={t(preferences.language, 'admin.storageHealthTrend')}>
-            <line x1="0" y1="88" x2="100" y2="88" stroke="currentColor" stroke-opacity="0.3" stroke-width="1" />
-            <line x1="0" y1="16" x2="100" y2="16" stroke="currentColor" stroke-opacity="0.16" stroke-width="1" />
-            {#if !healthTrendReady}
-              <text x="50" y="52" text-anchor="middle" class="fill-current text-[8px] font-black">{t(preferences.language, 'common.loading')}</text>
-            {:else if trendPoints(healthDetail.storage_key)}
-              <polyline points={trendPoints(healthDetail.storage_key)} fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />
-              {#each trendSamples(healthDetail.storage_key) as sample (sample.id)}
-                {@const maxLatency = Math.max(1, ...trendSamples(healthDetail.storage_key).map((item) => item.latency_ms))}
-                {@const point = trendPoint(sample, maxLatency)}
-                <circle cx={point.x} cy={point.y} r="3.2" fill={sample.status === 'healthy' ? 'hsl(var(--marker-green))' : 'hsl(var(--marker-pink))'} stroke="currentColor" stroke-width="1.5" />
-              {/each}
-            {:else}
-              <text x="50" y="52" text-anchor="middle" class="fill-current text-[8px] font-black">{t(preferences.language, 'admin.storageHealthNoTrend')}</text>
-            {/if}
-          </svg>
+          <LineChart
+            points={trendChartPoints(healthDetail.storage_key)}
+            emptyLabel={t(preferences.language, 'admin.storageHealthNoTrend')}
+            ariaLabel={t(preferences.language, 'admin.storageHealthTrend')}
+          />
         </div>
         {#if healthDetail.error_message}
           <div class="mt-4 border-2 ink-line bg-[hsl(var(--marker-pink))] p-3 text-[hsl(var(--marker-ink))]"><h3 class="font-black">{t(preferences.language, 'admin.storageHealthError')}</h3><p class="mt-2 break-words text-sm font-bold">{healthDetail.error_message}</p></div>
