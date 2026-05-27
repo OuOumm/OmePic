@@ -23,20 +23,19 @@ func (r *Repository) UpsertStorageHealthCheck(ctx context.Context, check model.S
 			check.ConsecutiveFailures = 1
 		}
 	}
-	if check.LastCheckAt.IsZero() {
-		check.LastCheckAt = time.Now().UTC()
-	}
+	now := time.Now().UTC()
 	if check.CreatedAt.IsZero() {
-		check.CreatedAt = check.LastCheckAt
+		check.CreatedAt = now
 	}
-	check.UpdatedAt = check.LastCheckAt
+	if check.UpdatedAt.IsZero() {
+		check.UpdatedAt = now
+	}
 
 	result, err := r.db.ExecContext(ctx, `INSERT INTO storage_health_checks(
-		storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at
-	) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+		storage_key, status, latency_ms, error_message, consecutive_failures, created_at, updated_at
+	) VALUES(?, ?, ?, ?, ?, ?, ?)`,
 		check.StorageKey,
 		check.Status,
-		formatTime(check.LastCheckAt),
 		check.LatencyMS,
 		check.ErrorMessage,
 		check.ConsecutiveFailures,
@@ -54,17 +53,17 @@ func (r *Repository) UpsertStorageHealthCheck(ctx context.Context, check model.S
 }
 
 func (r *Repository) GetStorageHealthCheck(ctx context.Context, storageKey string) (model.StorageHealthCheck, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks WHERE storage_key = ? ORDER BY last_check_at DESC, id DESC LIMIT 1`, storageKey)
+	row := r.db.QueryRowContext(ctx, `SELECT id, storage_key, status, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks WHERE storage_key = ? ORDER BY updated_at DESC, id DESC LIMIT 1`, storageKey)
 	return scanStorageHealthCheck(row)
 }
 
 func (r *Repository) GetStorageHealthCheckByID(ctx context.Context, id int64) (model.StorageHealthCheck, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, storage_key, status, latency_ms, error_message, consecutive_failures, created_at, updated_at FROM storage_health_checks WHERE id = ?`, id)
 	return scanStorageHealthCheck(row)
 }
 
 func (r *Repository) ListStorageHealthChecks(ctx context.Context) ([]model.StorageHealthCheck, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT h.id, h.storage_key, h.status, h.last_check_at, h.latency_ms, h.error_message, h.consecutive_failures, h.created_at, h.updated_at
+	rows, err := r.db.QueryContext(ctx, `SELECT h.id, h.storage_key, h.status, h.latency_ms, h.error_message, h.consecutive_failures, h.created_at, h.updated_at
 		FROM storage_health_checks h
 		WHERE h.id IN (SELECT MAX(id) FROM storage_health_checks GROUP BY storage_key)
 		ORDER BY h.storage_key ASC`)
@@ -85,10 +84,10 @@ func (r *Repository) ListStorageHealthChecks(ctx context.Context) ([]model.Stora
 }
 
 func (r *Repository) ListStorageHealthHistory(ctx context.Context, storageKey string, since time.Time) ([]model.StorageHealthCheck, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, storage_key, status, last_check_at, latency_ms, error_message, consecutive_failures, created_at, updated_at
+	rows, err := r.db.QueryContext(ctx, `SELECT id, storage_key, status, latency_ms, error_message, consecutive_failures, created_at, updated_at
 		FROM storage_health_checks
-		WHERE storage_key = ? AND last_check_at >= ?
-		ORDER BY last_check_at ASC, id ASC`, storageKey, formatTime(since))
+		WHERE storage_key = ? AND updated_at >= ?
+		ORDER BY updated_at ASC, id ASC`, storageKey, formatTime(since))
 	if err != nil {
 		return nil, err
 	}
@@ -107,14 +106,13 @@ func (r *Repository) ListStorageHealthHistory(ctx context.Context, storageKey st
 
 func scanStorageHealthCheck(scanner interface{ Scan(dest ...any) error }) (model.StorageHealthCheck, error) {
 	var check model.StorageHealthCheck
-	var lastCheckAt, createdAt, updatedAt string
-	if err := scanner.Scan(&check.ID, &check.StorageKey, &check.Status, &lastCheckAt, &check.LatencyMS, &check.ErrorMessage, &check.ConsecutiveFailures, &createdAt, &updatedAt); err != nil {
+	var createdAt, updatedAt string
+	if err := scanner.Scan(&check.ID, &check.StorageKey, &check.Status, &check.LatencyMS, &check.ErrorMessage, &check.ConsecutiveFailures, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.StorageHealthCheck{}, sql.ErrNoRows
 		}
 		return model.StorageHealthCheck{}, err
 	}
-	check.LastCheckAt = parseTime(lastCheckAt)
 	check.CreatedAt = parseTime(createdAt)
 	check.UpdatedAt = parseTime(updatedAt)
 	return check, nil

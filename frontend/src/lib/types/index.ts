@@ -104,8 +104,7 @@ export interface AdminImagesResponse {
 export interface AdminStorageHealthCheck {
   id: number;
   storage_key: string;
-  status: string;
-  last_check_at: string;
+  status: number;
   latency_ms: number;
   error_message: string;
   consecutive_failures: number;
@@ -171,6 +170,7 @@ export interface PublicRuntimeSettings {
   upload: {
     max_upload_size_mb: number;
     allowed_mime_types: string[];
+    avif_max_concurrency: number;
   };
   features: {
     allow_storage_selection: boolean;

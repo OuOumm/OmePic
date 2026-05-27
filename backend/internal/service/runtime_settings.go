@@ -77,8 +77,9 @@ type PublicAccessSettingsView struct {
 }
 
 type PublicUploadSettingsView struct {
-	MaxUploadSizeMB  int      `json:"max_upload_size_mb"`
-	AllowedMIMETypes []string `json:"allowed_mime_types"`
+	MaxUploadSizeMB   int      `json:"max_upload_size_mb"`
+	AllowedMIMETypes  []string `json:"allowed_mime_types"`
+	AVIFMaxConcurrency int     `json:"avif_max_concurrency"`
 }
 
 type PublicFeatureSettingsView struct {

@@ -216,7 +216,7 @@ func TestAdminStorageHealthCheckAll(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected check all status 200, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if !strings.Contains(recorder.Body.String(), "local-default") || !strings.Contains(recorder.Body.String(), model.StorageHealthHealthy) {
+	if !strings.Contains(recorder.Body.String(), "local-default") || !strings.Contains(recorder.Body.String(), "\"status\":1") {
 		t.Fatalf("unexpected check all body: %s", recorder.Body.String())
 	}
 }

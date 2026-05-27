@@ -233,13 +233,13 @@
   }
 
   function healthLabel(check: AdminStorageHealthCheck | undefined) {
-    if (!check || !check.last_check_at) return t(preferences.language, 'admin.storageHealthUnknown');
-    return check.status === 'healthy' ? t(preferences.language, 'admin.storageHealthHealthy') : t(preferences.language, 'admin.storageHealthUnhealthy');
+    if (!check || check.updated_at === '0001-01-01T00:00:00Z' || !check.updated_at) return t(preferences.language, 'admin.storageHealthUnknown');
+    return check.status === 1 ? t(preferences.language, 'admin.storageHealthHealthy') : t(preferences.language, 'admin.storageHealthUnhealthy');
   }
 
   function healthTone(check: AdminStorageHealthCheck | undefined) {
-    if (!check || !check.last_check_at) return 'blue';
-    return check.status === 'healthy' ? 'green' : 'danger';
+    if (!check || check.updated_at === '0001-01-01T00:00:00Z' || !check.updated_at) return 'blue';
+    return check.status === 1 ? 'green' : 'danger';
   }
 
   async function autoCheckAllStorage() {
@@ -265,8 +265,9 @@
     return trendSamples(storageKey).map((sample) => ({
       id: sample.id,
       value: Math.max(0, sample.latency_ms),
-      tone: sample.status === 'healthy' ? 'green' as const : 'pink' as const,
+      tone: sample.status === 1 ? 'green' as const : 'pink' as const,
       label: `${sample.latency_ms} ms`,
+      timestamp: sample.created_at,
     }));
   }
 
@@ -285,10 +286,9 @@
 <section class="grid min-w-0 gap-6 overflow-hidden">
   <div class="min-w-0">
     <PageTitle eyebrow={t(preferences.language, 'admin.submenuStorage')} title={t(preferences.language, 'admin.storageInstances')} subtitle={t(preferences.language, 'admin.settingsDescription')} tone="blue" />
-    <div class="mt-6 mb-4 flex flex-col gap-3 border-b-[3px] ink-line pb-3 sm:flex-row sm:items-center sm:justify-between">
-      <p class="text-sm font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.storageHealthInlineHint')}</p>
+    <div class="mt-6 mb-4 flex flex-col gap-3 border-b-[3px] ink-line pb-3 sm:flex-row sm:items-center sm:justify-end">
       <div class="flex flex-col gap-2 sm:flex-row">
-        <button class="studio-button p-2" type="button" disabled={checkingStorageKey !== null} onclick={checkAllStorage} title={t(preferences.language, 'admin.storageHealthCheckAll')} aria-label={t(preferences.language, 'admin.storageHealthCheckAll')}><RefreshCw class={`size-4 ${checkingStorageKey === '*' ? 'animate-spin' : ''}`} /></button>
+        <button class="studio-button" type="button" disabled={checkingStorageKey !== null} onclick={checkAllStorage}><RefreshCw class={`size-4 ${checkingStorageKey === '*' ? 'animate-spin' : ''}`} />{t(preferences.language, 'admin.storageHealthCheckAll')}</button>
         <button class="studio-button" data-tone="blue" type="button" onclick={startCreate}><Plus class="size-4" />{t(preferences.language, 'admin.storageNew')}</button>
       </div>
     </div>
@@ -311,7 +311,7 @@
               <td class="min-w-0 px-2 py-2"><span class="block truncate text-sm font-semibold text-[hsl(var(--ink-muted))]">{item.storage_key}</span></td>
               <td class="px-2 py-2 font-black uppercase">{item.storage_backend}</td>
               <td class="px-2 py-2">
-                <button class="studio-button min-w-20 justify-center px-2.5 py-1.5 text-xs" data-tone={healthTone(health)} type="button" onclick={() => (healthDetail = health ?? { id: 0, storage_key: item.storage_key, status: 'unknown', last_check_at: '', latency_ms: 0, error_message: t(preferences.language, 'admin.storageHealthNotChecked'), consecutive_failures: 0, created_at: '', updated_at: '' })}>
+                <button class="studio-button min-w-20 justify-center px-2.5 py-1.5 text-xs" data-tone={healthTone(health)} type="button" onclick={() => (healthDetail = health ?? { id: 0, storage_key: item.storage_key, status: -1, latency_ms: 0, error_message: t(preferences.language, 'admin.storageHealthNotChecked'), consecutive_failures: 0, created_at: '', updated_at: '' })}>
                   <Activity class="size-3.5" />{healthLabel(health)}
                 </button>
               </td>
@@ -399,17 +399,12 @@
       <section class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[-0.25deg]">
         <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">
           <div>
-            <p class="tape-label" style={`background:hsl(var(${healthDetail.status === 'healthy' ? '--marker-green' : '--marker-pink'}))`}>{healthLabel(healthDetail)}</p>
+            <p class="tape-label" style={`background:hsl(var(${healthDetail.status === 1 ? '--marker-green' : '--marker-pink'}))`}>{healthLabel(healthDetail)}</p>
             <h2 id="storage-health-title" class="mt-3 text-2xl font-black">{healthDetail.storage_key}</h2>
           </div>
           <button class="studio-button p-2" type="button" onclick={() => (healthDetail = null)} aria-label={t(preferences.language, 'common.close')}><X class="size-4" /></button>
         </div>
-        <dl class="grid gap-3 text-sm md:grid-cols-2">
-          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthLastCheck')}</dt><dd>{healthDetail.last_check_at ? formatDate(healthDetail.last_check_at, preferences.language) : t(preferences.language, 'admin.storageHealthNotChecked')}</dd></div>
-          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthLatency')}</dt><dd>{healthDetail.latency_ms} ms</dd></div>
-          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthFailuresLabel')}</dt><dd>{healthDetail.consecutive_failures}</dd></div>
-          <div class="border-2 ink-line bg-[hsl(var(--paper-deep))] p-3"><dt class="font-black">{t(preferences.language, 'admin.storageHealthUpdatedAt')}</dt><dd>{healthDetail.updated_at ? formatDate(healthDetail.updated_at, preferences.language) : '—'}</dd></div>
-        </dl>
+
         <div class="mt-4 border-2 ink-line bg-[hsl(var(--paper))] p-4">
           <div class="mb-2 flex items-center justify-between gap-2">
             <h3 class="font-black">{t(preferences.language, 'admin.storageHealthTrend')}</h3>
@@ -419,6 +414,12 @@
             points={trendChartPoints(healthDetail.storage_key)}
             emptyLabel={t(preferences.language, 'admin.storageHealthNoTrend')}
             ariaLabel={t(preferences.language, 'admin.storageHealthTrend')}
+            heightClass="h-96"
+            metadata={[
+              { label: t(preferences.language, 'admin.storageHealthLatency'), value: `${healthDetail.latency_ms} ms` },
+              { label: t(preferences.language, 'admin.storageHealthFailuresLabel'), value: String(healthDetail.consecutive_failures) },
+              { label: t(preferences.language, 'admin.storageHealthUpdatedAt'), value: healthDetail.updated_at && healthDetail.updated_at !== '0001-01-01T00:00:00Z' ? formatDate(healthDetail.updated_at, preferences.language) : '—' },
+            ]}
           />
         </div>
         {#if healthDetail.error_message}

@@ -39,7 +39,7 @@
   const publicImageAllowedOrigins = $derived(imageUrlAllowedOrigins(preferences.runtimeSettings?.access.public_base_url));
   const maintenanceMode = $derived(preferences.runtimeSettings?.features.maintenance_mode ?? false);
   const activeTasks = $derived(getActiveTasks());
-  const uploadDisabled = $derived(runtimeLoading || maintenanceMode || activeTasks.some((task) => task.status === 'pending' || task.status === 'uploading'));
+  const uploadDisabled = $derived(runtimeLoading || maintenanceMode);
 
   async function loadRuntime(showLoading = true, signal?: AbortSignal) {
     if (showLoading) runtimeLoading = true;
@@ -101,8 +101,7 @@
   }
 
   async function handleFiles(files: File[]) {
-    const uploaded = await enqueueFiles(files, maintenanceMode);
-    if (uploaded) await loadRecent();
+    await enqueueFiles(files, maintenanceMode, loadRecent);
   }
 
   function maxUploadBytes(): number {
@@ -175,11 +174,10 @@
     urlUploading = true;
     try {
       const file = await downloadURLImage(parsed);
-      const uploaded = await enqueueFiles([file], maintenanceMode);
+      const uploaded = await enqueueFiles([file], maintenanceMode, loadRecent);
       if (uploaded) {
         toast.success(t(preferences.language, 'upload.urlSuccess'));
         urlInput = '';
-        await loadRecent();
       }
     } catch (err) {
       toast.error(errorMessage(err, preferences.language));

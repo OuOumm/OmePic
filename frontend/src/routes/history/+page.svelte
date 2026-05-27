@@ -98,7 +98,24 @@
 
     busy = true;
     try {
-      await Promise.all(targets.map((record) => deleteImageByUid(record.uid, record.client_token)));
+      const seenPaths = new Set<string>();
+      const deduped: UploadHistoryRecord[] = [];
+      for (const record of targets) {
+        const pathKey = `${record.storage_key}:${record.url}`;
+        if (seenPaths.has(pathKey)) continue;
+        seenPaths.add(pathKey);
+        deduped.push(record);
+      }
+
+      const errors: string[] = [];
+      for (const record of deduped) {
+        try {
+          await deleteImageByUid(record.uid, record.client_token);
+        } catch {
+          errors.push(record.original_filename || record.uid);
+        }
+      }
+
       await Promise.all(targets.map((record) => deleteUploadFromHistory(record.uid)));
       const targetUids = targets.map((record) => record.uid);
       allRecords = allRecords.filter((record) => !targetUids.includes(record.uid));
@@ -106,9 +123,11 @@
       if (previewRecord && targetUids.includes(previewRecord.uid)) previewRecord = null;
       applyHistoryPage(page);
       confirmTarget = null;
-      toast.success(t(preferences.language, 'history.bulkDeleted', { count: targets.length }));
-    } catch {
-      toast.error(t(preferences.language, 'history.deleteError'));
+      if (errors.length > 0) {
+        toast.error(t(preferences.language, 'history.deleteError'));
+      } else {
+        toast.success(t(preferences.language, 'history.bulkDeleted', { count: targets.length }));
+      }
     } finally {
       busy = false;
     }

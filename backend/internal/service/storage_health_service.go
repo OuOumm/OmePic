@@ -166,10 +166,9 @@ func (s *StorageHealthService) checkResolved(ctx context.Context, storageKey str
 	latency := time.Since(started).Milliseconds()
 
 	check := model.StorageHealthCheck{
-		StorageKey:  storageKey,
-		Status:      model.StorageHealthHealthy,
-		LastCheckAt: time.Now().UTC(),
-		LatencyMS:   latency,
+		StorageKey: storageKey,
+		Status:     model.StorageHealthHealthy,
+		LatencyMS:  latency,
 	}
 	if probeErr != nil {
 		check.Status = model.StorageHealthUnavailable

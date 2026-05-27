@@ -3,15 +3,14 @@ package model
 import "time"
 
 const (
-	StorageHealthHealthy     = "healthy"
-	StorageHealthUnavailable = "unavailable"
+	StorageHealthHealthy     = 1
+	StorageHealthUnavailable = 0
 )
 
 type StorageHealthCheck struct {
 	ID                  int64     `json:"id"`
 	StorageKey          string    `json:"storage_key"`
-	Status              string    `json:"status"`
-	LastCheckAt         time.Time `json:"last_check_at"`
+	Status              int       `json:"status"`
 	LatencyMS           int64     `json:"latency_ms"`
 	ErrorMessage        string    `json:"error_message"`
 	ConsecutiveFailures int       `json:"consecutive_failures"`

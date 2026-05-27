@@ -27,7 +27,7 @@ func TestStorageHealthCheckRecordsHealthyAndCleansProbe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check returned error: %v", err)
 	}
-	if check.Status != model.StorageHealthHealthy || check.ConsecutiveFailures != 0 || check.LatencyMS < 0 || check.LastCheckAt.IsZero() {
+	if check.Status != model.StorageHealthHealthy || check.ConsecutiveFailures != 0 || check.LatencyMS < 0 || check.UpdatedAt.IsZero() {
 		t.Fatalf("unexpected healthy check: %+v", check)
 	}
 	if provider.objectCount() != 0 {
@@ -80,7 +80,7 @@ func TestStorageHealthHeartbeatCanStartAndStop(t *testing.T) {
 		if err != nil {
 			t.Fatalf("List returned error: %v", err)
 		}
-		if len(checks) == 1 && checks[0].LastCheckAt.IsZero() == false {
+		if len(checks) == 1 && checks[0].UpdatedAt.IsZero() == false {
 			stop()
 			return
 		}

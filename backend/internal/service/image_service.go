@@ -343,8 +343,9 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 			PublicBaseURL: s.EffectivePublicBaseURL(""),
 		},
 		Upload: PublicUploadSettingsView{
-			MaxUploadSizeMB:  settings.MaxUploadSizeMB,
-			AllowedMIMETypes: append([]string(nil), settings.AllowedMIMETypes...),
+			MaxUploadSizeMB:   settings.MaxUploadSizeMB,
+			AllowedMIMETypes:  append([]string(nil), settings.AllowedMIMETypes...),
+			AVIFMaxConcurrency: settings.AVIFMaxConcurrency,
 		},
 		Features: PublicFeatureSettingsView{
 			AllowStorageSelection: settings.AllowStorageSelect,

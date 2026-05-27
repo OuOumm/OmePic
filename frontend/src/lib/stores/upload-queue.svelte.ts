@@ -58,7 +58,7 @@ function updateTask(id: string, values: Partial<Omit<UploadTask, 'id' | 'file'>>
   if (task) Object.assign(task, values);
 }
 
-async function uploadOneTask(task: UploadTask): Promise<UploadResult | null> {
+async function uploadOneTask(task: UploadTask, onEachSuccess?: () => void): Promise<UploadResult | null> {
   updateTask(task.id, { status: 'uploading', progress: 0 });
   const token = getClientToken();
   const reportProgress = createProgressReporter((progress) => {
@@ -96,6 +96,7 @@ async function uploadOneTask(task: UploadTask): Promise<UploadResult | null> {
       saved_at: createdAt,
     });
     toast.success(result.duplicate ? t(preferences.language, 'upload.duplicate') : t(preferences.language, 'upload.success'));
+    onEachSuccess?.();
     return result;
   } catch (err) {
     const message = uploadErrorMessageWithT(preferences.language, err);
@@ -105,7 +106,7 @@ async function uploadOneTask(task: UploadTask): Promise<UploadResult | null> {
   }
 }
 
-export async function enqueueFiles(files: File[], maintenanceMode: boolean): Promise<boolean> {
+export async function enqueueFiles(files: File[], maintenanceMode: boolean, onEachSuccess?: () => void): Promise<boolean> {
   if (maintenanceMode) {
     toast.error(preferences.runtimeSettings?.features.maintenance_message ?? t(preferences.language, 'common.error'));
     return false;
@@ -114,6 +115,7 @@ export async function enqueueFiles(files: File[], maintenanceMode: boolean): Pro
   if (accepted.length === 0) return false;
   const next = accepted.map((file) => ({ id: `task-${++counter}`, file, progress: 0, status: 'pending' as const }));
   tasks = [...next, ...tasks];
-  const results = await runWithConcurrency(next.map((task) => () => uploadOneTask(task)), 3);
+  const concurrency = Math.max(1, preferences.runtimeSettings?.upload.avif_max_concurrency ?? 2);
+  const results = await runWithConcurrency(next.map((task) => () => uploadOneTask(task, onEachSuccess)), concurrency);
   return results.some(Boolean);
 }

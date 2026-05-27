@@ -69,8 +69,7 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS storage_health_checks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			storage_key TEXT NOT NULL,
-			status TEXT NOT NULL,
-			last_check_at DATETIME NOT NULL,
+			status INTEGER NOT NULL DEFAULT 0,
 			latency_ms INTEGER NOT NULL DEFAULT 0,
 			error_message TEXT NOT NULL DEFAULT '',
 			consecutive_failures INTEGER NOT NULL DEFAULT 0,
@@ -95,8 +94,8 @@ func (r *Repository) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_announcements_public ON announcements(status, starts_at, ends_at, sort_order, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_ip_hash ON ip_bans(ip_hash);`,
 		`CREATE INDEX IF NOT EXISTS idx_ip_bans_expires_at ON ip_bans(expires_at);`,
-		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_storage_key ON storage_health_checks(storage_key, last_check_at DESC);`,
-		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_status ON storage_health_checks(status, last_check_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_storage_key ON storage_health_checks(storage_key, updated_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_storage_health_checks_status ON storage_health_checks(status, updated_at DESC);`,
 	}
 
 	for _, stmt := range schema {
