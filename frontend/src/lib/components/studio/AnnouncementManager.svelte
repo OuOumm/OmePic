@@ -8,6 +8,7 @@
     adminUpdateAnnouncement,
   } from '@/api';
   import { attachAccessibleDialog } from '@/actions/accessible-dialog';
+  import { attachViewportPortal } from '@/actions/viewport-portal';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import { t } from '@/i18n';
   import MarkdownContent from './MarkdownContent.svelte';
@@ -197,7 +198,7 @@
   </div>
 
   {#if viewingAnnouncement}
-    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-detail-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: () => (viewingAnnouncement = null) }))}>
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-detail-title" tabindex="-1" {@attach attachViewportPortal()} {@attach attachAccessibleDialog(() => ({ onClose: () => (viewingAnnouncement = null) }))}>
       <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35 backdrop-blur-[2px]" type="button" aria-label={t(preferences.language, 'common.cancel')} onclick={() => (viewingAnnouncement = null)}></button>
       <div class="studio-panel relative grid max-h-[calc(100dvh-3rem)] w-full max-w-3xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-5 rotate-[0.25deg]">
         <div class="mb-4 flex items-start justify-between gap-3 border-b-[3px] ink-line pb-3">
@@ -215,7 +216,7 @@
   {/if}
 
   {#if editorOpen}
-    <div class="fixed inset-0 z-50 grid place-items-center bg-[hsl(var(--ink)/0.45)] p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-editor-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: reset }))}>
+    <div class="fixed inset-0 z-50 grid place-items-center bg-[hsl(var(--ink)/0.45)] p-4" role="dialog" aria-modal="true" aria-labelledby="announcement-editor-title" tabindex="-1" {@attach attachViewportPortal()} {@attach attachAccessibleDialog(() => ({ onClose: reset }))}>
       <button class="absolute inset-0 cursor-default" type="button" aria-label={t(preferences.language, 'common.cancel')} onclick={reset}></button>
       <form class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[0.35deg]" onsubmit={(event) => { event.preventDefault(); save(); }}>
         <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">

@@ -98,12 +98,12 @@
 
     busy = true;
     try {
-      const seenPaths = new Set<string>();
+      const seenPaths: string[] = [];
       const deduped: UploadHistoryRecord[] = [];
       for (const record of targets) {
         const pathKey = `${record.storage_key}:${record.url}`;
-        if (seenPaths.has(pathKey)) continue;
-        seenPaths.add(pathKey);
+        if (seenPaths.includes(pathKey)) continue;
+        seenPaths.push(pathKey);
         deduped.push(record);
       }
 

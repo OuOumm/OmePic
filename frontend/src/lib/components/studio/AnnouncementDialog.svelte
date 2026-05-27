@@ -2,6 +2,7 @@
   import { ChevronLeft, ChevronRight, History, Megaphone, X } from 'lucide-svelte';
   import { t } from '@/i18n';
   import { attachAccessibleDialog } from '@/actions/accessible-dialog';
+  import { attachViewportPortal } from '@/actions/viewport-portal';
   import { formatDate, markdownSummaryText } from '@/utils';
   import MarkdownContent from './MarkdownContent.svelte';
   import type { Announcement, Language } from '@/types';
@@ -54,7 +55,7 @@
 </script>
 
 {#if open && current}
-  <div class="fixed inset-0 z-[85] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.48)] p-2 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()}>
+  <div class="fixed inset-0 z-[85] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.48)] p-2 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()} {@attach attachViewportPortal()}>
     <div class="grid max-h-[calc(100dvh-1rem)] w-full max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[3px] ink-line bg-[hsl(var(--paper))] shadow-[5px_5px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:shadow-[8px_8px_0_hsl(var(--ink))]" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="announcement-dialog-title" {@attach attachAccessibleDialog(() => ({ onClose }))}>
       <header class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b-[3px] ink-line p-4">
         <div class="min-w-0 overflow-hidden">

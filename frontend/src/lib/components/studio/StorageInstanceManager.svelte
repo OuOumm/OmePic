@@ -11,6 +11,7 @@
     adminUpdateStorageInstance,
   } from '@/api';
   import { attachAccessibleDialog } from '@/actions/accessible-dialog';
+  import { attachViewportPortal } from '@/actions/viewport-portal';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import LineChart from './LineChart.svelte';
   import { t } from '@/i18n';
@@ -331,7 +332,7 @@
   </div>
 
   {#if editorOpen}
-    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-editor-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: closeEditor }))}>
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-editor-title" tabindex="-1" {@attach attachViewportPortal()} {@attach attachAccessibleDialog(() => ({ onClose: closeEditor }))}>
       <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35" type="button" onclick={closeEditor} aria-label={t(preferences.language, 'common.cancel')}></button>
       <form class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[0.25deg]" onsubmit={(event) => { event.preventDefault(); save(); }}>
         <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">
@@ -394,7 +395,7 @@
   {/if}
 
   {#if healthDetail}
-    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-health-title" tabindex="-1" {@attach attachAccessibleDialog(() => ({ onClose: () => (healthDetail = null) }))}>
+    <div class="fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="storage-health-title" tabindex="-1" {@attach attachViewportPortal()} {@attach attachAccessibleDialog(() => ({ onClose: () => (healthDetail = null) }))}>
       <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35" type="button" onclick={() => (healthDetail = null)} aria-label={t(preferences.language, 'common.close')}></button>
       <section class="studio-panel relative max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto p-5 rotate-[-0.25deg]">
         <div class="mb-4 flex items-center justify-between border-b-2 ink-line pb-2">

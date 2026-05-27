@@ -2,6 +2,7 @@
   import { Ban, CheckCircle2, Copy, ExternalLink, Trash2, X } from 'lucide-svelte';
   import { adminCreateIPBan, adminDeleteImages, adminGetAbuseIPDetail } from '@/api';
   import { attachAccessibleDialog } from '@/actions/accessible-dialog';
+  import { attachViewportPortal } from '@/actions/viewport-portal';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import ImageSwitchButton from './ImageSwitchButton.svelte';
   import { copyToClipboard } from '@/clipboard';
@@ -134,7 +135,7 @@
 </script>
 
 {#if image}
-  <div class="fixed inset-0 z-[70] grid place-items-center p-2 sm:p-4" role="dialog" aria-modal="true" aria-label={t(preferences.language, 'admin.imageDetails')} tabindex="-1" onkeydown={handleKeydown} {@attach attachAccessibleDialog(() => ({ onClose }))}>
+  <div class="fixed inset-0 z-[70] grid place-items-center p-2 sm:p-4" role="dialog" aria-modal="true" aria-label={t(preferences.language, 'admin.imageDetails')} tabindex="-1" onkeydown={handleKeydown} {@attach attachViewportPortal()} {@attach attachAccessibleDialog(() => ({ onClose }))}>
     <button class="absolute inset-0 cursor-default bg-[hsl(var(--ink))]/35 backdrop-blur-[2px]" type="button" onclick={onClose} aria-label={t(preferences.language, 'common.close')}></button>
     <div class="studio-panel relative max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto bg-[hsl(var(--paper))] p-3 rotate-[0.25deg] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:p-5">
       <div class="mb-2 flex items-start justify-between gap-2 sm:mb-4 sm:gap-3">

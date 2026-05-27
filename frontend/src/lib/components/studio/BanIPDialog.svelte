@@ -2,6 +2,7 @@
   import { X } from 'lucide-svelte';
   import { t } from '@/i18n';
   import { attachAccessibleDialog } from '@/actions/accessible-dialog';
+  import { attachViewportPortal } from '@/actions/viewport-portal';
   import { preferences } from '@/stores/preferences.svelte';
 
   type BanDialogTarget = {
@@ -61,7 +62,7 @@
 </script>
 
 {#if target}
-  <div class="fixed inset-0 z-[90] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.42)] p-4 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()}>
+  <div class="fixed inset-0 z-[90] grid min-h-dvh place-items-center overflow-y-auto bg-[hsl(var(--ink)/0.42)] p-4 backdrop-blur-sm sm:p-6" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()} {@attach attachViewportPortal()}>
     <div class="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto border-[3px] ink-line bg-[hsl(var(--paper))] p-4 shadow-[8px_8px_0_hsl(var(--ink))] sketch-enter sm:max-h-[calc(100dvh-3rem)] sm:p-5" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="ban-dialog-title" {@attach attachAccessibleDialog(() => ({ onClose }))}>
       <div class="mb-5 flex items-start justify-between gap-3 border-b-[3px] ink-line pb-3">
         <div>
