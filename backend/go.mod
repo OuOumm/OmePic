@@ -3,6 +3,8 @@ module omepic/backend
 go 1.25.0
 
 require (
+	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/discord/lilliput v1.5.0
 	github.com/gen2brain/avif v0.4.4
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
@@ -18,7 +20,6 @@ require (
 )
 
 require (
-	github.com/alicebob/miniredis/v2 v2.38.0 // indirect
 	github.com/bytedance/sonic v1.13.3 // indirect
 	github.com/bytedance/sonic/loader v0.2.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

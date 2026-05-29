@@ -6,18 +6,22 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build:backend
 
-# Stage 2: Build Go backend (nodynamic: pure-Go AVIF, zero C deps)
+# Stage 2: Build Go backend (lilliput requires CGO + C libraries)
 FROM golang:1.25-alpine AS backend-build
+RUN apk add --no-cache \
+    libavif-dev libwebp-dev libjpeg-turbo-dev \
+    libpng-dev giflib-dev pkgconf build-base
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY --from=frontend-build /app/backend/web ./web/
-RUN CGO_ENABLED=0 go build -tags nodynamic -ldflags="-s -w" -trimpath -o /server ./cmd/server/
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -trimpath -o /server ./cmd/server/
 
-# Stage 3: Minimal runtime — scratch, ~0 MB overhead
-FROM scratch
-COPY --from=backend-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Stage 3: Runtime with C libraries (~30 MB)
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates \
+    libavif libwebp libjpeg-turbo libpng giflib
 COPY --from=backend-build /server /opt/omepic/server
 COPY --from=backend-build /app/web /opt/omepic/web
 WORKDIR /opt/omepic
