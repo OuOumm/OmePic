@@ -11,6 +11,7 @@ import (
 	"omepic/backend/internal/config"
 	"omepic/backend/internal/model"
 	"omepic/backend/internal/repository"
+	"omepic/backend/internal/secrets"
 	"omepic/backend/internal/storage"
 )
 
@@ -200,11 +201,24 @@ func TestUpdateStorageConfigPreservesMaskedSecretsAndReloadsManager(t *testing.T
 	if err != nil {
 		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
 	}
-	if stored.S3AccessKey != "access-b" {
-		t.Fatalf("expected access key to remain unchanged, got %q", stored.S3AccessKey)
+	// After encryption, stored values are AES-256-GCM ciphertext. Verify they decrypt correctly.
+	secretEncryptor, encErr := secrets.NewEncryptor("abcdefghijklmnopqrstuvwxyz012345")
+	if encErr != nil {
+		t.Fatalf("secrets.NewEncryptor returned error: %v", encErr)
 	}
-	if stored.S3SecretKey != "secret-b" {
-		t.Fatalf("expected secret key to remain unchanged, got %q", stored.S3SecretKey)
+	decryptedAccessKey, decErr := secretEncryptor.Decrypt(stored.S3AccessKey)
+	if decErr != nil {
+		t.Fatalf("Decrypt S3AccessKey returned error: %v", decErr)
+	}
+	decryptedSecretKey, decErr := secretEncryptor.Decrypt(stored.S3SecretKey)
+	if decErr != nil {
+		t.Fatalf("Decrypt S3SecretKey returned error: %v", decErr)
+	}
+	if decryptedAccessKey != "access-b" {
+		t.Fatalf("expected decrypted access key to remain unchanged, got %q", decryptedAccessKey)
+	}
+	if decryptedSecretKey != "secret-b" {
+		t.Fatalf("expected decrypted secret key to remain unchanged, got %q", decryptedSecretKey)
 	}
 	if stored.Name != "S3 Renamed" || stored.S3Bucket != "bucket-updated" {
 		t.Fatalf("unexpected stored config: %+v", stored)
@@ -839,7 +853,11 @@ func newAdminServiceTestHarnessWithEnv(t *testing.T, jwtSecret string, uidSecret
 		t.Fatalf("settingsManager.Load returned error: %v", err)
 	}
 	imageService := NewImageService(repo, newFakeCache(), manager, settingsManager, nil, nil, logger)
-	return NewAdminService(repo, manager, settingsManager, imageService, jwtSecret, AdminEnvMetadata{HTTPAddr: ":8080", DatabasePath: ":memory:", RedisURL: "", UIDEncryptionKey: uidSecret}), repo
+	secretEncryptor, err := secrets.NewEncryptor("abcdefghijklmnopqrstuvwxyz012345")
+	if err != nil {
+		t.Fatalf("secrets.NewEncryptor returned error: %v", err)
+	}
+	return NewAdminService(repo, manager, settingsManager, imageService, jwtSecret, nil, secretEncryptor, AdminEnvMetadata{HTTPAddr: ":8080", DatabasePath: ":memory:", RedisURL: "", UIDEncryptionKey: uidSecret}), repo
 }
 
 func modelImageRecord(uid string, storageKey string, backend string) model.ImageRecord {

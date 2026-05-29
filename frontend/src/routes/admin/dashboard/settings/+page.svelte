@@ -36,6 +36,7 @@
     if (!system) return warnings;
     if (!system.readonly.security.jwt_secret.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningJwtDefault'));
     if (!system.readonly.security.uid_encryption_key.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningUidDefault'));
+    if (!system.readonly.security.secret_encryption_key.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningSecretEncryptionDefault'));
     if (!system.readonly.security.admin_password.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningAdminPasswordBootstrap'));
     return warnings;
   });

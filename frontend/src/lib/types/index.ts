@@ -197,6 +197,7 @@ export interface AdminSystemSettings {
       jwt_secret: SecretStatus;
       admin_password: SecretStatus;
       uid_encryption_key: SecretStatus;
+      secret_encryption_key: SecretStatus;
     };
     storage: {
       default_storage_key: string;

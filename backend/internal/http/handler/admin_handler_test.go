@@ -17,6 +17,7 @@ import (
 	"omepic/backend/internal/config"
 	"omepic/backend/internal/model"
 	"omepic/backend/internal/repository"
+	"omepic/backend/internal/secrets"
 	"omepic/backend/internal/service"
 	"omepic/backend/internal/storage"
 )
@@ -258,5 +259,9 @@ func newTestAdminServiceWithRepo(t *testing.T) (*service.AdminService, *reposito
 		t.Fatalf("storage.NewManager returned error: %v", err)
 	}
 	settings := service.NewRuntimeSettingsManager()
-	return service.NewAdminService(repo, manager, settings, nil, "test-secret", service.AdminEnvMetadata{}), repo
+	secretEncryptor, err := secrets.NewEncryptor("abcdefghijklmnopqrstuvwxyz012345")
+	if err != nil {
+		t.Fatalf("secrets.NewEncryptor returned error: %v", err)
+	}
+	return service.NewAdminService(repo, manager, settings, nil, "test-secret", nil, secretEncryptor, service.AdminEnvMetadata{}), repo
 }

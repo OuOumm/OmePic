@@ -132,9 +132,10 @@ type SecretStatus struct {
 }
 
 type AdminSecurityStatus struct {
-	JWTSecret        SecretStatus `json:"jwt_secret"`
-	AdminPassword    SecretStatus `json:"admin_password"`
-	UIDEncryptionKey SecretStatus `json:"uid_encryption_key"`
+	JWTSecret            SecretStatus `json:"jwt_secret"`
+	AdminPassword        SecretStatus `json:"admin_password"`
+	UIDEncryptionKey     SecretStatus `json:"uid_encryption_key"`
+	SecretEncryptionKey  SecretStatus `json:"secret_encryption_key"`
 }
 
 type AdminStorageStatus struct {

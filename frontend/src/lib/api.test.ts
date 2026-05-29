@@ -285,6 +285,7 @@ describe("admin API helpers", () => {
           jwt_secret: { configured: true },
           admin_password: { configured: true },
           uid_encryption_key: { configured: true },
+          secret_encryption_key: { configured: true },
         },
         storage: {
           default_storage_key: "local",

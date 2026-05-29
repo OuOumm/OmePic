@@ -280,7 +280,7 @@ const en: TranslationMap = {
   "admin.cloudflareApiTokenPlaceholder": "Leave masked value to keep; clear to remove",
   "admin.cloudflareApiBaseUrl": "Cloudflare API Base URL",
   "admin.cloudflareApiBaseUrlHint":
-    "Leave empty to use https://api.cloudflare.com/client/v4. Custom values must be http/https URLs.",
+    "Leave empty to use https://api.cloudflare.com/client/v4. Please verify any custom value is the official Cloudflare API or a trusted self-hosted proxy. Custom values must be http/https URLs.",
   "admin.cloudflareConfigured":
     "Cloudflare Zone ID and API Token are configured in runtime settings.",
   "admin.cloudflareNotConfigured":
@@ -299,7 +299,9 @@ const en: TranslationMap = {
   "admin.runtimeWarningJwtDefault":
     "JWT secret is still using the default value. Set a strong JWT_SECRET in production.",
   "admin.runtimeWarningUidDefault":
-    "UID encryption key is still using the default value. Set a strong UID_ENCRYPTION_KEY in production.",
+    "UID obfuscation key is still using the default value. Set a strong UID_ENCRYPTION_KEY in production (this key obfuscates IDs, it does not provide cryptographic security).",
+  "admin.runtimeWarningSecretEncryptionDefault":
+    "Secret encryption key is not configured. Set a 32-character SECRET_ENCRYPTION_KEY in .env to encrypt storage credentials in the database.",
   "admin.runtimeWarningAdminPasswordBootstrap":
     "Admin password is still using the default value (admin123). Change it immediately in the settings page.",
   "admin.changePassword": "Change password",
@@ -684,7 +686,7 @@ const zh: TranslationMap = {
   "admin.cloudflareApiTokenPlaceholder": "保留遮罩值表示不变，清空表示移除",
   "admin.cloudflareApiBaseUrl": "Cloudflare API Base URL",
   "admin.cloudflareApiBaseUrlHint":
-    "留空使用 https://api.cloudflare.com/client/v4；自定义值必须是 http/https URL。",
+    "留空使用 https://api.cloudflare.com/client/v4；请确认自定义值为 Cloudflare 官方 API 或可信自建代理。自定义值必须是 http/https URL。",
   "admin.cloudflareConfigured": "Cloudflare Zone ID 与 API Token 已在运行时设置中配置。",
   "admin.cloudflareNotConfigured":
     "Cloudflare Zone ID 或 API Token 尚未配置。启用清理前请在此填写。",
@@ -702,7 +704,9 @@ const zh: TranslationMap = {
   "admin.runtimeWarningJwtDefault":
     "JWT 密钥仍在使用默认值。生产环境请设置强随机 JWT_SECRET。",
   "admin.runtimeWarningUidDefault":
-    "UID 加密密钥仍在使用默认值。生产环境请设置强随机 UID_ENCRYPTION_KEY。",
+    "UID 混淆密钥仍在使用默认值。生产环境请设置强随机 UID_ENCRYPTION_KEY（此密钥用于混淆 ID，不提供密码学安全保障）。",
+  "admin.runtimeWarningSecretEncryptionDefault":
+    "存储凭据加密密钥未配置。请在 .env 中设置 32 字符的 SECRET_ENCRYPTION_KEY 以加密数据库中的存储凭据。",
   "admin.runtimeWarningAdminPasswordBootstrap":
     "管理员密码仍在使用默认值（admin123）。请立即在设置页修改密码。",
   "admin.changePassword": "修改密码",

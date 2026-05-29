@@ -14,14 +14,15 @@ const (
 )
 
 type AppConfig struct {
-	HTTPAddr         string
-	DatabasePath     string
-	RedisURL         string
-	UIDPrefix        string
-	UIDEncryptionKey string
-	JWTSecret        string
-	AppEnv           string
-	PublicBaseURL    string
+	HTTPAddr              string
+	DatabasePath          string
+	RedisURL              string
+	UIDPrefix             string
+	UIDEncryptionKey      string // UID obfuscation key (env: UID_ENCRYPTION_KEY). XOR-based ID obfuscation, not a cryptographic boundary.
+	JWTSecret             string
+	SecretEncryptionKey   string // AES-256-GCM key (env: SECRET_ENCRYPTION_KEY). Encrypts storage credentials in DB.
+	AppEnv                string
+	PublicBaseURL          string
 }
 
 // IsProduction returns true when APP_ENV is not "development".
@@ -91,14 +92,15 @@ func Load() AppConfig {
 	godotenv.Load()
 	godotenv.Load("../.env")
 	return AppConfig{
-		HTTPAddr:         envOrDefault("HTTP_ADDR", ":8080"),
-		DatabasePath:     envOrDefault("DATABASE_PATH", "data/omepic.db"),
-		RedisURL:         envOrDefault("REDIS_URL", "redis://localhost:6379/0"),
-		UIDPrefix:        envOrDefault("UID_PREFIX", "omeo_"),
-		UIDEncryptionKey: strings.TrimSpace(os.Getenv("UID_ENCRYPTION_KEY")),
-		JWTSecret:        strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		AppEnv:           envOrDefault("APP_ENV", ""),
-		PublicBaseURL:    strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "/"),
+		HTTPAddr:            envOrDefault("HTTP_ADDR", ":8080"),
+		DatabasePath:        envOrDefault("DATABASE_PATH", "data/omepic.db"),
+		RedisURL:            envOrDefault("REDIS_URL", "redis://localhost:6379/0"),
+		UIDPrefix:           envOrDefault("UID_PREFIX", "omeo_"),
+		UIDEncryptionKey:    strings.TrimSpace(os.Getenv("UID_ENCRYPTION_KEY")),
+		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		SecretEncryptionKey: strings.TrimSpace(os.Getenv("SECRET_ENCRYPTION_KEY")),
+		AppEnv:              envOrDefault("APP_ENV", ""),
+		PublicBaseURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "/"),
 	}
 }
 
