@@ -41,7 +41,8 @@ func encodeAVIFToWriterLilliput(source io.Reader, target io.Writer, settings AVI
 	}
 
 	// Step 1: check frame count (consumes a decoder; do NOT reuse for Transform)
-	if err := checkFrameCount(data); err != nil {
+	animatedInput, err := checkFrameCount(data)
+	if err != nil {
 		return err
 	}
 
@@ -66,6 +67,8 @@ func encodeAVIFToWriterLilliput(source io.Reader, target io.Writer, settings AVI
 			avifEncodeQuality: settings.Quality,
 			avifEncodeSpeed:   settings.Speed,
 		},
+		MaxEncodeFrames:       maxAnimationFrames,
+		DisableAnimatedOutput: false,
 	}
 
 	// Step 4: transform and write output
@@ -83,6 +86,16 @@ func encodeAVIFToWriterLilliput(source io.Reader, target io.Writer, settings AVI
 		}
 	}
 
+	if animatedInput {
+		animatedOutput, err := isLilliputAnimated(result)
+		if err != nil {
+			return fmt.Errorf("%w: failed to validate animated avif output", ErrDependencyUnavailable)
+		}
+		if !animatedOutput {
+			return fmt.Errorf("%w: animated image conversion produced a static avif", ErrDependencyUnavailable)
+		}
+	}
+
 	if _, err := target.Write(result); err != nil {
 		return fmt.Errorf("%w: failed to write converted image", ErrDependencyUnavailable)
 	}
@@ -90,23 +103,24 @@ func encodeAVIFToWriterLilliput(source io.Reader, target io.Writer, settings AVI
 }
 
 // checkFrameCount creates a decoder from data, inspects the image header,
-// and if animated, counts the frames. Returns ErrTooManyFrames if the
-// frame count exceeds maxAnimationFrames.
-func checkFrameCount(data []byte) error {
+// and if animated, counts the frames. Returns true when the source image is
+// animated. Returns ErrTooManyFrames if the frame count exceeds
+// maxAnimationFrames.
+func checkFrameCount(data []byte) (bool, error) {
 	decoder, err := lilliput.NewDecoder(data)
 	if err != nil {
-		return WithUserMessage(ErrInvalidInput, "file type is not allowed")
+		return false, WithUserMessage(ErrInvalidInput, "file type is not allowed")
 	}
 	defer decoder.Close()
 
 	header, err := decoder.Header()
 	if err != nil {
-		return WithUserMessage(ErrInvalidInput, "file type is not allowed")
+		return false, WithUserMessage(ErrInvalidInput, "file type is not allowed")
 	}
 
 	// Static image — no need to count
 	if !header.IsAnimated() {
-		return nil
+		return false, nil
 	}
 
 	// Count frames by decoding each one
@@ -120,14 +134,28 @@ func checkFrameCount(data []byte) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("%w: failed to decode animation frame", ErrDependencyUnavailable)
+			return true, fmt.Errorf("%w: failed to decode animation frame", ErrDependencyUnavailable)
 		}
 		count++
 	}
 
 	if count > maxAnimationFrames {
-		return WithUserMessage(ErrTooManyFrames,
+		return true, WithUserMessage(ErrTooManyFrames,
 			fmt.Sprintf("animated image has too many frames (max %d)", maxAnimationFrames))
 	}
-	return nil
+	return true, nil
+}
+
+func isLilliputAnimated(data []byte) (bool, error) {
+	decoder, err := lilliput.NewDecoder(data)
+	if err != nil {
+		return false, err
+	}
+	defer decoder.Close()
+
+	header, err := decoder.Header()
+	if err != nil {
+		return false, err
+	}
+	return header.IsAnimated(), nil
 }

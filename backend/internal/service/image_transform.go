@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/gif"
 	"io"
 
 	"github.com/gen2brain/avif"
 
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/webp"
-	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 )
@@ -47,7 +47,15 @@ func convertToAVIFWithSettings(payload []byte, settings AVIFConversionSettings) 
 }
 
 func encodeAVIFToWriter(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
-	img, _, err := image.Decode(source)
+	payload, err := io.ReadAll(source)
+	if err != nil {
+		return fmt.Errorf("%w: failed to read source data", ErrDependencyUnavailable)
+	}
+	if isAnimatedGIF(payload) {
+		return fmt.Errorf("%w: animated GIF to animated AVIF requires the Linux/macOS lilliput encoder", ErrDependencyUnavailable)
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(payload))
 	if err != nil {
 		return WithUserMessage(ErrInvalidInput, "file type is not allowed")
 	}
@@ -58,4 +66,9 @@ func encodeAVIFToWriter(source io.Reader, target io.Writer, settings AVIFConvers
 		return fmt.Errorf("%w: failed to convert image to avif", ErrDependencyUnavailable)
 	}
 	return nil
+}
+
+func isAnimatedGIF(payload []byte) bool {
+	gifImage, err := gif.DecodeAll(bytes.NewReader(payload))
+	return err == nil && len(gifImage.Image) > 1
 }
