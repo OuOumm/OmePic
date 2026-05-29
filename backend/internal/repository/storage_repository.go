@@ -10,8 +10,8 @@ import (
 )
 
 const storageConfigInsertSQL = `INSERT INTO storage_configs(
-	storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass, created_at, updated_at
-) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass, max_upload_size_mb, allowed_mime_types, avif_quality, avif_speed, max_image_pixels, avif_max_concurrency, avif_conversion_timeout_seconds, created_at, updated_at
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 func (r *Repository) InitializeStorageCatalog(ctx context.Context, envDefault config.RuntimeStorageConfig) (config.RuntimeStorageCatalog, error) {
 	configs, err := r.ListStorageConfigs(ctx)
@@ -38,7 +38,7 @@ func (r *Repository) InitializeStorageCatalog(ctx context.Context, envDefault co
 	if err != nil {
 		return config.RuntimeStorageCatalog{}, err
 	}
-	catalog := buildStorageCatalog(configs)
+	catalog := BuildStorageCatalog(configs)
 
 	if err := r.backfillImageStorageKeys(ctx, keyByBackend(configs), catalog.DefaultStorageKey); err != nil {
 		return config.RuntimeStorageCatalog{}, err
@@ -71,7 +71,7 @@ func (r *Repository) GetLegacyStorageConfig(ctx context.Context) (config.Runtime
 func (r *Repository) ListStorageConfigs(ctx context.Context) ([]config.RuntimeStorageConfig, error) {
 	rows, err := r.db.QueryContext(
 		ctx,
-		`SELECT storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass
+		`SELECT storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass, max_upload_size_mb, allowed_mime_types, avif_quality, avif_speed, max_image_pixels, avif_max_concurrency, avif_conversion_timeout_seconds
 		 FROM storage_configs
 		 ORDER BY is_default DESC, id ASC`,
 	)
@@ -94,7 +94,7 @@ func (r *Repository) ListStorageConfigs(ctx context.Context) ([]config.RuntimeSt
 func (r *Repository) GetStorageConfigByKey(ctx context.Context, storageKey string) (config.RuntimeStorageConfig, error) {
 	row := r.db.QueryRowContext(
 		ctx,
-		`SELECT storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass
+		`SELECT storage_key, name, backend, is_default, local_storage_path, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_use_ssl, s3_force_path_style, webdav_url, webdav_user, webdav_pass, max_upload_size_mb, allowed_mime_types, avif_quality, avif_speed, max_image_pixels, avif_max_concurrency, avif_conversion_timeout_seconds
 		 FROM storage_configs
 		 WHERE storage_key = ?`,
 		storageKey,
@@ -161,7 +161,7 @@ func updateStorageConfig(ctx context.Context, execer execContexter, cfg config.R
 	result, err := execer.ExecContext(
 		ctx,
 		`UPDATE storage_configs
-		 SET name = ?, backend = ?, local_storage_path = ?, s3_endpoint = ?, s3_region = ?, s3_bucket = ?, s3_access_key = ?, s3_secret_key = ?, s3_use_ssl = ?, s3_force_path_style = ?, webdav_url = ?, webdav_user = ?, webdav_pass = ?, updated_at = ?
+		 SET name = ?, backend = ?, local_storage_path = ?, s3_endpoint = ?, s3_region = ?, s3_bucket = ?, s3_access_key = ?, s3_secret_key = ?, s3_use_ssl = ?, s3_force_path_style = ?, webdav_url = ?, webdav_user = ?, webdav_pass = ?, max_upload_size_mb = ?, allowed_mime_types = ?, avif_quality = ?, avif_speed = ?, max_image_pixels = ?, avif_max_concurrency = ?, avif_conversion_timeout_seconds = ?, updated_at = ?
 		 WHERE storage_key = ?`,
 		cfg.Name,
 		cfg.Backend,
@@ -176,6 +176,13 @@ func updateStorageConfig(ctx context.Context, execer execContexter, cfg config.R
 		cfg.WebDAVURL,
 		cfg.WebDAVUser,
 		cfg.WebDAVPass,
+		cfg.MaxUploadSizeMB,
+		cfg.AllowedMIMETypes,
+		cfg.AvifQuality,
+		cfg.AvifSpeed,
+		cfg.MaxImagePixels,
+		cfg.AVIFMaxConcurrency,
+		cfg.AVIFConversionTimeoutSeconds,
 		timestamp,
 		cfg.StorageKey,
 	)
@@ -224,6 +231,13 @@ func scanStorageConfig(scanner interface{ Scan(dest ...any) error }) (config.Run
 		&record.WebDAVURL,
 		&record.WebDAVUser,
 		&record.WebDAVPass,
+		&record.MaxUploadSizeMB,
+		&record.AllowedMIMETypes,
+		&record.AvifQuality,
+		&record.AvifSpeed,
+		&record.MaxImagePixels,
+		&record.AVIFMaxConcurrency,
+		&record.AVIFConversionTimeoutSeconds,
 	)
 	if err != nil {
 		return config.RuntimeStorageConfig{}, err
@@ -256,6 +270,13 @@ func storageConfigInsertArgs(cfg config.RuntimeStorageConfig, timestamp string) 
 		cfg.WebDAVURL,
 		cfg.WebDAVUser,
 		cfg.WebDAVPass,
+		cfg.MaxUploadSizeMB,
+		cfg.AllowedMIMETypes,
+		cfg.AvifQuality,
+		cfg.AvifSpeed,
+		cfg.MaxImagePixels,
+		cfg.AVIFMaxConcurrency,
+		cfg.AVIFConversionTimeoutSeconds,
 		timestamp,
 		timestamp,
 	}
@@ -419,7 +440,7 @@ func normalizeSeedConfig(cfg config.RuntimeStorageConfig) config.RuntimeStorageC
 	return cfg
 }
 
-func buildStorageCatalog(configs []config.RuntimeStorageConfig) config.RuntimeStorageCatalog {
+func BuildStorageCatalog(configs []config.RuntimeStorageConfig) config.RuntimeStorageCatalog {
 	catalog := config.RuntimeStorageCatalog{
 		StorageConfigs: configs,
 	}

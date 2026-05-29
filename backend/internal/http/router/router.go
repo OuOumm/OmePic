@@ -22,6 +22,7 @@ type Dependencies struct {
 	AnnouncementHandler *handler.AnnouncementHandler
 	HealthHandler       *handler.HealthHandler
 	Settings            *service.RuntimeSettingsManager
+	ImageService        *service.ImageService
 	RateLimiter         ratelimit.Limiter
 	IPResolver          *clientip.Resolver
 	JWTSecret           string
@@ -61,7 +62,7 @@ func New(deps Dependencies) *gin.Engine {
 	engine.GET(healthRouteSpec.Path, deps.HealthHandler.Health)
 	engine.GET(runtimeSettingsRouteSpec.Path, apiLimiter, deps.ImageHandler.RuntimeSettings)
 	engine.GET(publicAnnouncementsSpec.Path, apiLimiter, deps.AnnouncementHandler.PublicList)
-	engine.POST(imageUploadRouteSpec.Path, middleware.BodyLimit(deps.Settings), uploadLimiter, deps.ImageHandler.Upload)
+	engine.POST(imageUploadRouteSpec.Path, middleware.BodyLimit(deps.ImageService.MaxUploadSizeBytes), uploadLimiter, deps.ImageHandler.Upload)
 	engine.DELETE(imageRouteSpec.Path, apiLimiter, deps.ImageHandler.Delete)
 	engine.GET(imageRouteSpec.Path, deps.ImageHandler.Serve)
 	engine.POST(adminLoginRouteSpec.Path, apiLimiter, deps.AdminHandler.Login)

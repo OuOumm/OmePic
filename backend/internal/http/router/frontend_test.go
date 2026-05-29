@@ -205,10 +205,9 @@ func TestCORSConfigAllowsAllOriginsWhenRuntimePublicBaseURLUnset(t *testing.T) {
 func TestCORSConfigUsesRuntimePublicBaseURLWhenSet(t *testing.T) {
 	settings := service.NewRuntimeSettingsManager()
 	settings.Reconfigure(service.RuntimeSettings{
-		SiteName:        service.DefaultSiteName,
-		SiteTagline:     service.DefaultSiteTagline,
-		PublicBaseURL:   "https://img.example.com/",
-		MaxUploadSizeMB: 20,
+		SiteName:      service.DefaultSiteName,
+		SiteTagline:   service.DefaultSiteTagline,
+		PublicBaseURL: "https://img.example.com/",
 	})
 	cfg := corsConfig(settings)
 	if cfg.AllowAllOrigins {

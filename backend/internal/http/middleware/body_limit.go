@@ -7,19 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"omepic/backend/internal/response"
-	"omepic/backend/internal/service"
 )
 
 // BodyLimit wraps the request body with http.MaxBytesReader so oversized uploads
 // are rejected early at the HTTP layer, before the handler reads the body.
-// The limit is MaxUploadSizeBytes + 1 MiB to account for multipart overhead.
-func BodyLimit(settings *service.RuntimeSettingsManager) gin.HandlerFunc {
+// The limit is the max upload size across all storage configs + 1 MiB to account for multipart overhead.
+func BodyLimit(getMaxBytes func() int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if settings == nil {
-			c.Next()
-			return
-		}
-		max := settings.Current().MaxUploadSizeBytes()
+		max := getMaxBytes()
 		if max > 0 {
 			limit := max + (1 << 20) // +1 MiB for multipart framing
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)

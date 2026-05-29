@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"omepic/backend/internal/config"
 	"omepic/backend/internal/model"
 	"omepic/backend/internal/storage"
 )
@@ -26,6 +27,93 @@ type uploadRuntimePolicy struct {
 	avifMaxConcurrency           int
 	avifConversionTimeoutSeconds int
 	avifSettings                 AVIFConversionSettings
+	allowedMIMETypes             []string
+}
+
+// storageUploadPolicy extracts the upload policy from a RuntimeStorageConfig,
+// falling back to default values when fields are unset.
+type storageUploadPolicyResult struct {
+	maxUploadSizeBytes           int64
+	maxImagePixels               int64
+	avifMaxConcurrency           int
+	avifConversionTimeoutSeconds int
+	avifSettings                 AVIFConversionSettings
+	allowedMIMETypes             []string
+}
+
+func storageUploadPolicy(cfg config.RuntimeStorageConfig) storageUploadPolicyResult {
+	maxUploadMB := cfg.MaxUploadSizeMB
+	if maxUploadMB <= 0 {
+		maxUploadMB = 20
+	}
+	maxPixels := cfg.MaxImagePixels
+	if maxPixels <= 0 {
+		maxPixels = DefaultMaxImagePixels
+	}
+	avifConcurrency := cfg.AVIFMaxConcurrency
+	if avifConcurrency <= 0 {
+		avifConcurrency = DefaultAVIFMaxConcurrency
+	}
+	avifTimeout := cfg.AVIFConversionTimeoutSeconds
+	if avifTimeout <= 0 {
+		avifTimeout = DefaultAVIFConversionTimeoutSeconds
+	}
+	avifQuality := cfg.AvifQuality
+	if avifQuality <= 0 {
+		avifQuality = DefaultAVIFQuality
+	}
+	avifSpeed := cfg.AvifSpeed
+	if avifSpeed <= 0 {
+		avifSpeed = DefaultAVIFSpeed
+	}
+	allowed := cfg.AllowedMIMETypes
+	if strings.TrimSpace(allowed) == "" {
+		allowed = strings.Join(defaultAllowedMIMETypes, ",")
+	}
+	normalized, _ := normalizeMIMETypes(splitCSV(allowed))
+	if len(normalized) == 0 {
+		normalized = defaultAllowedMIMETypes
+	}
+	return storageUploadPolicyResult{
+		maxUploadSizeBytes:           int64(maxUploadMB) * bytesPerMB,
+		maxImagePixels:               maxPixels,
+		avifMaxConcurrency:           avifConcurrency,
+		avifConversionTimeoutSeconds: avifTimeout,
+		avifSettings:                 AVIFConversionSettings{Quality: avifQuality, Speed: avifSpeed},
+		allowedMIMETypes:             normalized,
+	}
+}
+
+// MaxUploadSizeBytesFromConfigs returns the maximum upload size in bytes
+// across all storage configs. Used for global body-limit middleware.
+func MaxUploadSizeBytesFromConfigs(configs []config.RuntimeStorageConfig) int64 {
+	if len(configs) == 0 {
+		return int64(20) * bytesPerMB
+	}
+	maxMB := 0
+	for _, cfg := range configs {
+		if cfg.MaxUploadSizeMB > maxMB {
+			maxMB = cfg.MaxUploadSizeMB
+		}
+	}
+	if maxMB <= 0 {
+		maxMB = 20
+	}
+	return int64(maxMB) * bytesPerMB
+}
+
+// DefaultUploadPolicy returns the default upload policy (used for PublicRuntimeSettings)
+// based on the default storage config in the catalog.
+func DefaultUploadPolicy(catalog config.RuntimeStorageCatalog) storageUploadPolicyResult {
+	for _, cfg := range catalog.StorageConfigs {
+		if cfg.IsDefault {
+			return storageUploadPolicy(cfg)
+		}
+	}
+	if len(catalog.StorageConfigs) > 0 {
+		return storageUploadPolicy(catalog.StorageConfigs[0])
+	}
+	return storageUploadPolicy(config.DefaultStorageConfig())
 }
 
 // uploadTransaction owns the upload-time resource bundle and commit state machine:
@@ -77,11 +165,20 @@ func (f uploadFlow) beginTransaction() (*uploadTransaction, error) {
 		return nil, err
 	}
 
-	policy := f.runtimePolicy()
-	if policy.settings.MaintenanceMode {
-		return nil, WithUserMessage(ErrInvalidInput, policy.settings.EffectiveMaintenanceMessage())
+	globalSettings := f.service.currentRuntimeSettings()
+	if globalSettings.MaintenanceMode {
+		return nil, WithUserMessage(ErrInvalidInput, globalSettings.EffectiveMaintenanceMessage())
 	}
 
+	// Resolve storage first to get per-storage upload policy.
+	resolved, err := f.service.resolveUploadStorage(f.input.StorageKey, globalSettings.AllowStorageSelect)
+	if err != nil {
+		return nil, err
+	}
+
+	policy := f.runtimePolicy(resolved.Config)
+
+	// Use a preliminary size limit from storage config for source preparation.
 	source, err := f.service.prepareUploadSource(f.input, policy.maxBytes)
 	if err != nil {
 		return nil, err
@@ -94,14 +191,9 @@ func (f uploadFlow) beginTransaction() (*uploadTransaction, error) {
 	}()
 
 	if source.size == 0 {
-		return nil, emptyUploadError(policy.settings)
+		return nil, emptyUploadError(policy)
 	}
-	if _, err := verifyUploadImageSource(source, f.input.MIMEType, policy.settings); err != nil {
-		return nil, err
-	}
-
-	resolved, err := f.service.resolveUploadStorage(f.input.StorageKey, policy.settings.AllowStorageSelect)
-	if err != nil {
+	if _, err := verifyUploadImageSource(source, f.input.MIMEType, policy.allowedMIMETypes); err != nil {
 		return nil, err
 	}
 
@@ -123,15 +215,17 @@ func (f uploadFlow) beginTransaction() (*uploadTransaction, error) {
 	}, nil
 }
 
-func (f uploadFlow) runtimePolicy() uploadRuntimePolicy {
+func (f uploadFlow) runtimePolicy(storageCfg config.RuntimeStorageConfig) uploadRuntimePolicy {
 	settings := f.service.currentRuntimeSettings()
+	uploadPolicy := storageUploadPolicy(storageCfg)
 	return uploadRuntimePolicy{
 		settings:                     settings,
-		maxBytes:                     settings.MaxUploadSizeBytes(),
-		maxImagePixels:               settings.MaxImagePixels,
-		avifMaxConcurrency:           settings.AVIFMaxConcurrency,
-		avifConversionTimeoutSeconds: settings.AVIFConversionTimeoutSeconds,
-		avifSettings:                 avifConversionSettingsFromRuntime(settings),
+		maxBytes:                     uploadPolicy.maxUploadSizeBytes,
+		maxImagePixels:               uploadPolicy.maxImagePixels,
+		avifMaxConcurrency:           uploadPolicy.avifMaxConcurrency,
+		avifConversionTimeoutSeconds: uploadPolicy.avifConversionTimeoutSeconds,
+		avifSettings:                 uploadPolicy.avifSettings,
+		allowedMIMETypes:             uploadPolicy.allowedMIMETypes,
 	}
 }
 
@@ -270,9 +364,9 @@ func (tx *uploadTransaction) writeUIDCache(record model.ImageRecord) error {
 	return nil
 }
 
-func emptyUploadError(settings RuntimeSettings) error {
-	if settings.MaxUploadSizeBytes() > 0 {
-		return WithUserMessage(ErrInvalidInput, fmt.Sprintf("file size must be between 1 byte and %d MB", settings.MaxUploadSizeMB))
+func emptyUploadError(policy uploadRuntimePolicy) error {
+	if policy.maxBytes > 0 {
+		return WithUserMessage(ErrInvalidInput, fmt.Sprintf("file size must be between 1 byte and %d MB", policy.maxBytes/(1024*1024)))
 	}
 	return WithUserMessage(ErrInvalidInput, "file size must be greater than 0 bytes")
 }

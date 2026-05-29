@@ -333,6 +333,8 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 		return PublicRuntimeSettingsView{}, fmt.Errorf("%w: config query failed", ErrDependencyUnavailable)
 	}
 
+	catalog := repository.BuildStorageCatalog(configs)
+	uploadPolicy := DefaultUploadPolicy(catalog)
 	options := publicStorageOptionsFromConfigs(configs, settings.AllowStorageSelect)
 	return PublicRuntimeSettingsView{
 		Site: PublicSiteSettingsView{
@@ -343,9 +345,9 @@ func (s *ImageService) PublicRuntimeSettings(ctx context.Context) (PublicRuntime
 			PublicBaseURL: s.EffectivePublicBaseURL(""),
 		},
 		Upload: PublicUploadSettingsView{
-			MaxUploadSizeMB:   settings.MaxUploadSizeMB,
-			AllowedMIMETypes:  append([]string(nil), settings.AllowedMIMETypes...),
-			AVIFMaxConcurrency: settings.AVIFMaxConcurrency,
+			MaxUploadSizeMB:   int(uploadPolicy.maxUploadSizeBytes / bytesPerMB),
+			AllowedMIMETypes:  uploadPolicy.allowedMIMETypes,
+			AVIFMaxConcurrency: uploadPolicy.avifMaxConcurrency,
 		},
 		Features: PublicFeatureSettingsView{
 			AllowStorageSelection: settings.AllowStorageSelect,
@@ -411,7 +413,7 @@ func (s *ImageService) prepareUploadSource(input UploadInput, maxBytes int64) (p
 	}
 
 	readLimit := MaxUploadSizeBytes() + 1
-	if maxBytes > 0 {
+	if maxBytes > readLimit {
 		readLimit = maxBytes + 1
 	}
 	tempFile, err := os.CreateTemp("", "omepic-upload-*.img")
@@ -515,16 +517,18 @@ func mapRepoError(err error) error {
 	return fmt.Errorf("%w: sqlite write failed", ErrDependencyUnavailable)
 }
 
+// MaxUploadSizeBytes returns the default max upload size from the default storage config.
+// Used by the image handler for initial size checks before storage is resolved.
 func MaxUploadSizeBytes() int64 {
-	return defaultRuntimeSettings().MaxUploadSizeBytes()
+	return storageUploadPolicy(config.DefaultStorageConfig()).maxUploadSizeBytes
 }
 
 func (s *ImageService) MaxUploadSizeBytes() int64 {
-	settings := s.currentRuntimeSettings()
-	if value := settings.MaxUploadSizeBytes(); value > 0 {
-		return value
+	configs, err := s.repo.ListStorageConfigs(context.Background())
+	if err != nil || len(configs) == 0 {
+		return MaxUploadSizeBytes()
 	}
-	return defaultRuntimeSettings().MaxUploadSizeBytes()
+	return MaxUploadSizeBytesFromConfigs(configs)
 }
 
 func (s *ImageService) EffectivePublicBaseURL(requestBase string) string {
@@ -641,12 +645,12 @@ func (s *ImageService) ensureIPAllowed(ctx context.Context, ipAddress string) er
 	return fmt.Errorf("%w: ip ban lookup failed", ErrDependencyUnavailable)
 }
 
-func runtimeSettingsAllowsMIME(settings RuntimeSettings, mimeType string) bool {
+func allowedMIME(allowedMIMETypes []string, mimeType string) bool {
 	candidate := strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0]))
 	if candidate == "" {
 		return false
 	}
-	for _, allowed := range settings.AllowedMIMETypes {
+	for _, allowed := range allowedMIMETypes {
 		if candidate == allowed {
 			return true
 		}

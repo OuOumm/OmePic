@@ -1,12 +1,12 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { CircleAlert, KeyRound, Save, TriangleAlert } from 'lucide-svelte';
+  import { KeyRound, Save, TriangleAlert } from 'lucide-svelte';
   import { adminChangePassword, adminGetConfig, adminGetSystemSettings, adminPurgeCloudflareImageCache, adminUpdateSystemSettings } from '@/api';
   import AnnouncementManager from '@/components/studio/AnnouncementManager.svelte';
   import PageTitle from '@/components/studio/PageTitle.svelte';
   import StorageInstanceManager from '@/components/studio/StorageInstanceManager.svelte';
   import { t } from '@/i18n';
-  import { formatMegabytes, isAbortError } from '@/utils';
+  import { isAbortError } from '@/utils';
   import { preferences } from '@/stores/preferences.svelte';
   import { toast } from '@/stores/toast.svelte';
   import { runAsyncAction, toastApiError } from '@/ui-errors';
@@ -18,7 +18,6 @@
   let savingRuntime = $state(false);
   let changingPassword = $state(false);
   let purgingCloudflare = $state(false);
-  let mimeTypesText = $state('');
   let cloudflarePurgeUrl = $state('');
   let oldPassword = $state('');
   let newPassword = $state('');
@@ -41,29 +40,18 @@
     return warnings;
   });
 
-  function runtimeMimeTypesText(settings: AdminSystemSettings | null) {
-    const runtimeTypes = settings?.runtime.allowed_mime_types;
-    return Array.isArray(runtimeTypes) ? runtimeTypes.join(', ') : '';
-  }
-
   async function load(signal?: AbortSignal) {
     if (!preferences.adminToken || activeTab === 'announcements') return;
     try {
       [config, system] = await Promise.all([adminGetConfig(preferences.adminToken, signal), adminGetSystemSettings(preferences.adminToken, signal)]);
       if (signal?.aborted) return;
-      mimeTypesText = runtimeMimeTypesText(system);
     } catch (err) {
       if (isAbortError(err)) return;
       toastApiError(err, preferences.language);
     }
   }
 
-  function parseMimeTypes(value: string) {
-    return value
-      .split(/[\r\n,]+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
+
 
   async function saveRuntime() {
     const token = preferences.adminToken;
@@ -74,12 +62,10 @@
       successMessage: t(preferences.language, 'common.success'),
       action: () => {
         if (!system) throw new Error(t(preferences.language, 'common.error'));
-        system.runtime.allowed_mime_types = parseMimeTypes(mimeTypesText);
         return adminUpdateSystemSettings(token, system.runtime);
       },
       onSuccess: (nextSystem) => {
         system = nextSystem;
-        mimeTypesText = runtimeMimeTypesText(system);
       },
     });
   }
@@ -101,7 +87,6 @@
         oldPassword = '';
         newPassword = '';
         system = await adminGetSystemSettings(token);
-        mimeTypesText = runtimeMimeTypesText(system);
       },
     });
   }
@@ -172,54 +157,8 @@
             </label>
           </div>
 
-          <div class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4 md:grid-cols-2">
-            <div class="md:col-span-2">
-              <span class="tape-label rotate-[1deg]" style="background:hsl(var(--marker-blue))">{t(preferences.language, 'admin.runtimeUploadPolicy')}</span>
-            </div>
-            <label class="grid gap-2 text-sm font-black">
-              {t(preferences.language, 'admin.settingsMaxUpload')} ({formatMegabytes(system.runtime.max_upload_size_mb, preferences.language)})
-              <input class="studio-input" type="number" min="0" bind:value={system.runtime.max_upload_size_mb} />
-            </label>
-            <label class="grid min-w-0 gap-2 text-sm font-black">
-              <span class="flex items-center gap-1">
-                {t(preferences.language, 'admin.runtimeAllowedMimeTypes')}
-                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} aria-label={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} role="img">
-                  <CircleAlert class="size-3" />
-                </span>
-              </span>
-              <input class="studio-input min-w-0 font-mono text-sm" bind:value={mimeTypesText} />
-            </label>
-            <label class="grid gap-2 text-sm font-black">
-              <span class="flex items-center gap-1">
-                {t(preferences.language, 'admin.runtimeAvifQuality')}
-                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAvifQualityHint')} aria-label={t(preferences.language, 'admin.runtimeAvifQualityHint')} role="img">
-                  <CircleAlert class="size-3" />
-                </span>
-              </span>
-              <input class="studio-input" type="number" min="0" max="100" step="1" inputmode="numeric" bind:value={system.runtime.avif_quality} />
-            </label>
-            <label class="grid gap-2 text-sm font-black">
-              <span class="flex items-center gap-1">
-                {t(preferences.language, 'admin.runtimeAvifSpeed')}
-                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAvifSpeedHint')} aria-label={t(preferences.language, 'admin.runtimeAvifSpeedHint')} role="img">
-                  <CircleAlert class="size-3" />
-                </span>
-              </span>
-              <input class="studio-input" type="number" min="0" max="10" step="1" inputmode="numeric" bind:value={system.runtime.avif_speed} />
-            </label>
-            <label class="grid gap-2 text-sm font-black">
-              {t(preferences.language, 'admin.runtimeMaxImagePixels')}
-              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.max_image_pixels} />
-            </label>
-            <label class="grid gap-2 text-sm font-black">
-              {t(preferences.language, 'admin.runtimeAvifMaxConcurrency')}
-              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.avif_max_concurrency} />
-            </label>
-            <label class="grid gap-2 text-sm font-black md:col-span-2">
-              {t(preferences.language, 'admin.runtimeAvifTimeoutSeconds')}
-              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={system.runtime.avif_conversion_timeout_seconds} />
-            </label>
-            <label class="flex items-center gap-3 border-y-2 ink-line py-3 font-black md:col-span-2">
+          <div class="grid gap-4 rounded-none border-2 ink-line bg-[hsl(var(--paper))] p-4">
+            <label class="flex items-center gap-3 border-y-2 ink-line py-3 font-black">
               <input type="checkbox" bind:checked={system.runtime.allow_storage_selection} />
               {t(preferences.language, 'admin.settingsAllowSelection')}
             </label>

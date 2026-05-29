@@ -24,12 +24,7 @@ func TestRuntimeSettingsLoadPersistsMissingDefaultsWithoutOverwritingExistingVal
 	if err := repo.SetConfigValue(ctx, "site_name", "Custom Site"); err != nil {
 		t.Fatalf("SetConfigValue returned error: %v", err)
 	}
-	if err := repo.SetConfigValue(ctx, "avif_quality", "75"); err != nil {
-		t.Fatalf("SetConfigValue avif_quality returned error: %v", err)
-	}
-	if err := repo.SetConfigValue(ctx, "avif_speed", "4"); err != nil {
-		t.Fatalf("SetConfigValue avif_speed returned error: %v", err)
-	}
+
 
 	manager := NewRuntimeSettingsManager()
 	if err := manager.Load(ctx, repo); err != nil {
@@ -42,9 +37,7 @@ func TestRuntimeSettingsLoadPersistsMissingDefaultsWithoutOverwritingExistingVal
 	}
 	defaultValues := runtimeConfigDefaultValues()
 	preservedKeys := map[string]struct{}{
-		"site_name":    {},
-		"avif_quality": {},
-		"avif_speed":   {},
+		"site_name": {},
 	}
 	for _, field := range GetAllFields() {
 		got, ok := values[field.Key]
@@ -58,16 +51,12 @@ func TestRuntimeSettingsLoadPersistsMissingDefaultsWithoutOverwritingExistingVal
 	if values["site_name"] != "Custom Site" {
 		t.Fatalf("expected existing site_name to remain unchanged, got %q", values["site_name"])
 	}
-	if values["avif_quality"] != "75" || values["avif_speed"] != "4" {
-		t.Fatalf("expected existing avif settings to remain unchanged, got quality=%q speed=%q", values["avif_quality"], values["avif_speed"])
-	}
+
 	current := manager.Current()
 	if current.SiteName != "Custom Site" {
 		t.Fatalf("expected manager to load existing site name, got %q", current.SiteName)
 	}
-	if current.AvifQuality != 75 || current.AvifSpeed != 4 {
-		t.Fatalf("expected manager to load existing avif settings, got quality=%d speed=%d", current.AvifQuality, current.AvifSpeed)
-	}
+
 
 	if err := repo.SetConfigValue(ctx, "site_tagline", "Custom Tagline"); err != nil {
 		t.Fatalf("SetConfigValue tagline returned error: %v", err)
@@ -84,27 +73,7 @@ func TestRuntimeSettingsLoadPersistsMissingDefaultsWithoutOverwritingExistingVal
 	}
 }
 
-func TestValidateRuntimeSettingsInputRejectsInvalidAVIFSettings(t *testing.T) {
-	base := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
-	cases := []struct {
-		name   string
-		mutate func(*RuntimeSettingsUpdateInput)
-	}{
-		{name: "quality below min", mutate: func(input *RuntimeSettingsUpdateInput) { input.AvifQuality = -1 }},
-		{name: "quality above max", mutate: func(input *RuntimeSettingsUpdateInput) { input.AvifQuality = 101 }},
-		{name: "speed below min", mutate: func(input *RuntimeSettingsUpdateInput) { input.AvifSpeed = -1 }},
-		{name: "speed above max", mutate: func(input *RuntimeSettingsUpdateInput) { input.AvifSpeed = 11 }},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			input := base
-			tc.mutate(&input)
-			if _, err := ValidateRuntimeSettingsInput(input); err == nil || !containsError(err, ErrInvalidInput) {
-				t.Fatalf("expected ErrInvalidInput, got %v", err)
-			}
-		})
-	}
-}
+
 
 func TestGetFieldByKeyReturnsAllDefinedFields(t *testing.T) {
 	for _, field := range GetAllFields() {
@@ -240,9 +209,9 @@ func TestRuntimeConfigFieldsRejectWrongSetterType(t *testing.T) {
 		value interface{}
 	}{
 		{key: "site_name", value: 42},
-		{key: "max_upload_size_mb", value: "not-a-number"},
+		{key: "rate_limit_max_requests", value: "not-a-number"},
 		{key: "allow_storage_selection", value: "true"},
-		{key: "allowed_mime_types", value: "image/png"},
+		{key: "real_ip_source", value: 42},
 	}
 	for _, tc := range cases {
 		t.Run(tc.key, func(t *testing.T) {

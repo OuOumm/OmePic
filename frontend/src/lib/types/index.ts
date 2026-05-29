@@ -128,6 +128,13 @@ export interface StorageInstance {
   webdav_url?: string;
   webdav_user?: string;
   webdav_pass?: string;
+  max_upload_size_mb?: number;
+  allowed_mime_types?: string[];
+  avif_quality?: number;
+  avif_speed?: number;
+  max_image_pixels?: number;
+  avif_max_concurrency?: number;
+  avif_conversion_timeout_seconds?: number;
 }
 
 export interface AdminConfig {
@@ -143,13 +150,6 @@ export interface RuntimeSettings {
   cloudflare_zone_id: string;
   cloudflare_api_token: string;
   cloudflare_api_base_url: string;
-  max_upload_size_mb: number;
-  allowed_mime_types: string[];
-  avif_quality: number;
-  avif_speed: number;
-  max_image_pixels: number;
-  avif_max_concurrency: number;
-  avif_conversion_timeout_seconds: number;
   allow_storage_selection: boolean;
   maintenance_mode: boolean;
   maintenance_message: string;

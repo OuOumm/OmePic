@@ -20,7 +20,7 @@ type verifiedUploadImage struct {
 	DetectedMagicMIME string
 }
 
-func verifyUploadImageSource(source preparedUploadSource, requestedMIME string, settings RuntimeSettings) (verifiedUploadImage, error) {
+func verifyUploadImageSource(source preparedUploadSource, requestedMIME string, allowedMIMETypes []string) (verifiedUploadImage, error) {
 	reader, err := source.Open()
 	if err != nil {
 		return verifiedUploadImage{}, fmt.Errorf("%w: failed to open upload source", ErrDependencyUnavailable)
@@ -58,7 +58,7 @@ func verifyUploadImageSource(source preparedUploadSource, requestedMIME string, 
 	if !requestMIMECompatible(requestedMIME, realMIME) {
 		return verifiedUploadImage{}, WithUserMessage(ErrInvalidInput, "file content type does not match the uploaded image")
 	}
-	if !runtimeSettingsAllowsMIME(settings, realMIME) {
+	if !allowedMIME(allowedMIMETypes, realMIME) {
 		return verifiedUploadImage{}, WithUserMessage(ErrInvalidInput, "file MIME type is not allowed")
 	}
 

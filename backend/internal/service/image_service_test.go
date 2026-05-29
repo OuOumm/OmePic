@@ -502,11 +502,26 @@ func TestUploadAllowedMIMETypesUseDetectedRealMIME(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
 	uidCodec.Queue("uid-png", "uid-jpeg")
-	settings := defaultRuntimeSettings()
-	settings.AllowedMIMETypes = []string{"image/png"}
-	service.settings.Reconfigure(settings)
 
-	_, err := service.Upload(ctx, UploadInput{
+	// Update default storage config to only allow PNG.
+	defaultCfg, err := repo.GetStorageConfigByKey(ctx, "local-primary")
+	if err != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", err)
+	}
+	defaultCfg.AllowedMIMETypes = "image/png"
+	if err := repo.UpdateStorageConfig(ctx, defaultCfg); err != nil {
+		t.Fatalf("UpdateStorageConfig returned error: %v", err)
+	}
+	// Reconfigure storage manager to pick up the change.
+	configs, err := repo.ListStorageConfigs(ctx)
+	if err != nil {
+		t.Fatalf("ListStorageConfigs returned error: %v", err)
+	}
+	if err := service.storage.Reconfigure(configs); err != nil {
+		t.Fatalf("storage.Reconfigure returned error: %v", err)
+	}
+
+	_, err = service.Upload(ctx, UploadInput{
 		Token:            "token-a",
 		OriginalFilename: "unknown.bin",
 		MIMEType:         "application/octet-stream",
@@ -962,9 +977,23 @@ func TestUploadRejectsImageOverPixelLimitBeforeConversion(t *testing.T) {
 	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
 	uidCodec.Queue("uid-pixel-limit")
 	service.settings.Reconfigure(defaultRuntimeSettings())
-	settings := service.settings.Current()
-	settings.MaxImagePixels = 3
-	service.settings.Reconfigure(settings)
+
+	// Update default storage config to set a very low pixel limit.
+	defaultCfg, cfgErr := repo.GetStorageConfigByKey(ctx, "local-primary")
+	if cfgErr != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", cfgErr)
+	}
+	defaultCfg.MaxImagePixels = 3
+	if updateErr := repo.UpdateStorageConfig(ctx, defaultCfg); updateErr != nil {
+		t.Fatalf("UpdateStorageConfig returned error: %v", updateErr)
+	}
+	configs, listErr := repo.ListStorageConfigs(ctx)
+	if listErr != nil {
+		t.Fatalf("ListStorageConfigs returned error: %v", listErr)
+	}
+	if err := service.storage.Reconfigure(configs); err != nil {
+		t.Fatalf("storage.Reconfigure returned error: %v", err)
+	}
 
 	conversionCalls := 0
 	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
@@ -996,19 +1025,24 @@ func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 	ctx := context.Background()
 	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
 	uidCodec.Queue("uid-1", "uid-2")
-	service.settings.Reconfigure(RuntimeSettings{
-		SiteName:                     DefaultSiteName,
-		SiteTagline:                  DefaultSiteTagline,
-		MaxUploadSizeMB:              20,
-		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
-		AvifQuality:                  35,
-		AvifSpeed:                    2,
-		AllowStorageSelect:           true,
-		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
-		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
-		UploadRateLimitWindowMinutes: DefaultUploadRateLimitWindowMinutes,
-		UploadRateLimitMaxRequests:   DefaultUploadRateLimitMaxRequests,
-	})
+
+	// Update storage config with specific AVIF settings for this test.
+	defaultCfg, cfgErr := repo.GetStorageConfigByKey(ctx, "local-primary")
+	if cfgErr != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", cfgErr)
+	}
+	defaultCfg.AvifQuality = 35
+	defaultCfg.AvifSpeed = 2
+	if updateErr := repo.UpdateStorageConfig(ctx, defaultCfg); updateErr != nil {
+		t.Fatalf("UpdateStorageConfig returned error: %v", updateErr)
+	}
+	configs, listErr := repo.ListStorageConfigs(ctx)
+	if listErr != nil {
+		t.Fatalf("ListStorageConfigs returned error: %v", listErr)
+	}
+	if err := service.storage.Reconfigure(configs); err != nil {
+		t.Fatalf("storage.Reconfigure returned error: %v", err)
+	}
 
 	sourceBytes := mustPNGBytes(t, color.RGBA{R: 80, G: 160, B: 40, A: 255})
 	conversionCalls := 0
@@ -1029,19 +1063,23 @@ func TestUploadSkipsAVIFConversionForDuplicateUploads(t *testing.T) {
 		t.Fatalf("first upload returned error: %v", err)
 	}
 
-	service.settings.Reconfigure(RuntimeSettings{
-		SiteName:                     DefaultSiteName,
-		SiteTagline:                  DefaultSiteTagline,
-		MaxUploadSizeMB:              20,
-		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
-		AvifQuality:                  90,
-		AvifSpeed:                    10,
-		AllowStorageSelect:           true,
-		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
-		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
-		UploadRateLimitWindowMinutes: DefaultUploadRateLimitWindowMinutes,
-		UploadRateLimitMaxRequests:   DefaultUploadRateLimitMaxRequests,
-	})
+	// Update storage config with specific AVIF settings for duplicate test.
+	defaultCfg, cfgErr = repo.GetStorageConfigByKey(ctx, "local-primary")
+	if cfgErr != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", cfgErr)
+	}
+	defaultCfg.AvifQuality = 90
+	defaultCfg.AvifSpeed = 10
+	if updateErr := repo.UpdateStorageConfig(ctx, defaultCfg); updateErr != nil {
+		t.Fatalf("UpdateStorageConfig returned error: %v", updateErr)
+	}
+	configs, listErr = repo.ListStorageConfigs(ctx)
+	if listErr != nil {
+		t.Fatalf("ListStorageConfigs returned error: %v", listErr)
+	}
+	if err := service.storage.Reconfigure(configs); err != nil {
+		t.Fatalf("storage.Reconfigure returned error: %v", err)
+	}
 	result, err := service.Upload(ctx, UploadInput{
 		Token:            "token-b",
 		OriginalFilename: "sample.png",
@@ -1313,7 +1351,7 @@ func TestPrepareUploadSourceSpoolsReaderToTempFileAndComputesMD5(t *testing.T) {
 	prepared, err := service.prepareUploadSource(UploadInput{
 		Source:       bytes.NewReader(source),
 		DeclaredSize: int64(len(source)),
-	}, defaultRuntimeSettings().MaxUploadSizeBytes())
+	}, MaxUploadSizeBytes())
 	if err != nil {
 		t.Fatalf("prepareUploadSource returned error: %v", err)
 	}
@@ -1354,21 +1392,26 @@ func TestPrepareUploadSourceRejectsOversizeReader(t *testing.T) {
 
 func TestUploadUsesConfiguredAVIFConversionSettings(t *testing.T) {
 	ctx := context.Background()
-	service, _, _, _, uidCodec := newImageServiceTestHarness(t)
+	service, repo, _, _, uidCodec := newImageServiceTestHarness(t)
 	uidCodec.Queue("uid-1")
-	service.settings.Reconfigure(RuntimeSettings{
-		SiteName:                     DefaultSiteName,
-		SiteTagline:                  DefaultSiteTagline,
-		MaxUploadSizeMB:              20,
-		AllowedMIMETypes:             DefaultAllowedMIMETypes(),
-		AvifQuality:                  42,
-		AvifSpeed:                    3,
-		AllowStorageSelect:           true,
-		RateLimitWindowMinutes:       DefaultRateLimitWindowMinutes,
-		RateLimitMaxRequests:         DefaultRateLimitMaxRequests,
-		UploadRateLimitWindowMinutes: DefaultUploadRateLimitWindowMinutes,
-		UploadRateLimitMaxRequests:   DefaultUploadRateLimitMaxRequests,
-	})
+
+	// Update storage config with specific AVIF settings for this test.
+	defaultCfg, cfgErr := repo.GetStorageConfigByKey(ctx, "local-primary")
+	if cfgErr != nil {
+		t.Fatalf("GetStorageConfigByKey returned error: %v", cfgErr)
+	}
+	defaultCfg.AvifQuality = 42
+	defaultCfg.AvifSpeed = 3
+	if updateErr := repo.UpdateStorageConfig(ctx, defaultCfg); updateErr != nil {
+		t.Fatalf("UpdateStorageConfig returned error: %v", updateErr)
+	}
+	configs, listErr := repo.ListStorageConfigs(ctx)
+	if listErr != nil {
+		t.Fatalf("ListStorageConfigs returned error: %v", listErr)
+	}
+	if err := service.storage.Reconfigure(configs); err != nil {
+		t.Fatalf("storage.Reconfigure returned error: %v", err)
+	}
 
 	var observed *AVIFConversionSettings
 	service.encoder = func(source io.Reader, target io.Writer, settings AVIFConversionSettings) error {
@@ -2004,18 +2047,32 @@ func newImageServiceTestHarness(t *testing.T) (*ImageService, *repository.Reposi
 	rootDir := filepath.Join(dir, "images")
 	storageConfigs := []config.RuntimeStorageConfig{
 		{
-			StorageKey:       "local-primary",
-			Name:             "Local Primary",
-			IsDefault:        true,
-			Backend:          config.StorageBackendLocal,
-			LocalStoragePath: rootDir,
+			StorageKey:                  "local-primary",
+			Name:                        "Local Primary",
+			IsDefault:                   true,
+			Backend:                     config.StorageBackendLocal,
+			LocalStoragePath:            rootDir,
+			MaxUploadSizeMB:             20,
+			AllowedMIMETypes:            "image/avif,image/gif,image/jpeg,image/png,image/webp",
+			AvifQuality:                 60,
+			AvifSpeed:                   8,
+			MaxImagePixels:              40000000,
+			AVIFMaxConcurrency:          2,
+			AVIFConversionTimeoutSeconds: 30,
 		},
 		{
-			StorageKey:       "local-secondary",
-			Name:             "Local Secondary",
-			IsDefault:        false,
-			Backend:          config.StorageBackendLocal,
-			LocalStoragePath: filepath.Join(dir, "images-secondary"),
+			StorageKey:                  "local-secondary",
+			Name:                        "Local Secondary",
+			IsDefault:                   false,
+			Backend:                     config.StorageBackendLocal,
+			LocalStoragePath:            filepath.Join(dir, "images-secondary"),
+			MaxUploadSizeMB:             20,
+			AllowedMIMETypes:            "image/avif,image/gif,image/jpeg,image/png,image/webp",
+			AvifQuality:                 60,
+			AvifSpeed:                   8,
+			MaxImagePixels:              40000000,
+			AVIFMaxConcurrency:          2,
+			AVIFConversionTimeoutSeconds: 30,
 		},
 	}
 	for _, cfg := range storageConfigs {

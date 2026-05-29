@@ -538,7 +538,7 @@ func TestUpdateStorageConfigRejectsBackendChangeForInUseInstance(t *testing.T) {
 	}
 }
 
-func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *testing.T) {
+func TestUpdateSystemSettingsRejectsInvalidRateLimitSettingsWithoutPartialSave(t *testing.T) {
 	ctx := context.Background()
 	adminService, repo := newAdminServiceTestHarness(t)
 	unlockAdminHighRiskSettings(t, ctx, adminService)
@@ -548,10 +548,10 @@ func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *tes
 
 	input := RuntimeSettingsUpdateInput(defaultRuntimeSettings())
 	input.SiteName = "Should Not Persist"
-	input.AvifQuality = 101
+	input.RateLimitWindowMinutes = -1
 	_, err := adminService.UpdateSystemSettings(ctx, input)
 	if err == nil || !containsError(err, ErrInvalidInput) {
-		t.Fatalf("expected ErrInvalidInput for invalid avif quality, got %v", err)
+		t.Fatalf("expected ErrInvalidInput for invalid rate limit, got %v", err)
 	}
 
 	values, err := repo.GetAllConfig(ctx)
@@ -559,10 +559,10 @@ func TestUpdateSystemSettingsRejectsInvalidAVIFSettingsWithoutPartialSave(t *tes
 		t.Fatalf("GetAllConfig returned error: %v", err)
 	}
 	if values["site_name"] == "Should Not Persist" {
-		t.Fatalf("expected invalid avif update to avoid partial site_name save")
+		t.Fatalf("expected invalid rate limit update to avoid partial site_name save")
 	}
 	if adminService.settings.Current().SiteName == "Should Not Persist" {
-		t.Fatalf("expected invalid avif update to avoid in-memory reconfigure")
+		t.Fatalf("expected invalid rate limit update to avoid in-memory reconfigure")
 	}
 }
 

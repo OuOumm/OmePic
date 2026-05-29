@@ -64,13 +64,6 @@ type RuntimeSettings struct {
 	CloudflareZoneID             string   `json:"cloudflare_zone_id"`
 	CloudflareAPIToken           string   `json:"cloudflare_api_token"`
 	CloudflareAPIBaseURL         string   `json:"cloudflare_api_base_url"`
-	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
-	AllowedMIMETypes             []string `json:"allowed_mime_types"`
-	AvifQuality                  int      `json:"avif_quality"`
-	AvifSpeed                    int      `json:"avif_speed"`
-	MaxImagePixels               int64    `json:"max_image_pixels"`
-	AVIFMaxConcurrency           int      `json:"avif_max_concurrency"`
-	AVIFConversionTimeoutSeconds int      `json:"avif_conversion_timeout_seconds"`
 	AllowStorageSelect           bool     `json:"allow_storage_selection"`
 	MaintenanceMode              bool     `json:"maintenance_mode"`
 	MaintenanceMessage           string   `json:"maintenance_message"`
@@ -156,28 +149,21 @@ type AdminServiceStatus struct {
 }
 
 type RuntimeSettingsUpdateInput struct {
-	SiteName                     string   `json:"site_name"`
-	SiteTagline                  string   `json:"site_tagline"`
-	PublicBaseURL                string   `json:"public_base_url"`
-	CloudflarePurgeEnabled       bool     `json:"cloudflare_purge_enabled"`
-	CloudflareZoneID             string   `json:"cloudflare_zone_id"`
-	CloudflareAPIToken           string   `json:"cloudflare_api_token"`
-	CloudflareAPIBaseURL         string   `json:"cloudflare_api_base_url"`
-	MaxUploadSizeMB              int      `json:"max_upload_size_mb"`
-	AllowedMIMETypes             []string `json:"allowed_mime_types"`
-	AvifQuality                  int      `json:"avif_quality"`
-	AvifSpeed                    int      `json:"avif_speed"`
-	MaxImagePixels               int64    `json:"max_image_pixels"`
-	AVIFMaxConcurrency           int      `json:"avif_max_concurrency"`
-	AVIFConversionTimeoutSeconds int      `json:"avif_conversion_timeout_seconds"`
-	AllowStorageSelect           bool     `json:"allow_storage_selection"`
-	MaintenanceMode              bool     `json:"maintenance_mode"`
-	MaintenanceMessage           string   `json:"maintenance_message"`
-	RateLimitWindowMinutes       int      `json:"rate_limit_window_minutes"`
-	RateLimitMaxRequests         int      `json:"rate_limit_max_requests"`
-	UploadRateLimitWindowMinutes int      `json:"upload_rate_limit_window_minutes"`
-	UploadRateLimitMaxRequests   int      `json:"upload_rate_limit_max_requests"`
-	RealIPSource                 string   `json:"real_ip_source"`
+	SiteName                     string `json:"site_name"`
+	SiteTagline                  string `json:"site_tagline"`
+	PublicBaseURL                string `json:"public_base_url"`
+	CloudflarePurgeEnabled       bool   `json:"cloudflare_purge_enabled"`
+	CloudflareZoneID             string `json:"cloudflare_zone_id"`
+	CloudflareAPIToken           string `json:"cloudflare_api_token"`
+	CloudflareAPIBaseURL         string `json:"cloudflare_api_base_url"`
+	AllowStorageSelect           bool   `json:"allow_storage_selection"`
+	MaintenanceMode              bool   `json:"maintenance_mode"`
+	MaintenanceMessage           string `json:"maintenance_message"`
+	RateLimitWindowMinutes       int    `json:"rate_limit_window_minutes"`
+	RateLimitMaxRequests         int    `json:"rate_limit_max_requests"`
+	UploadRateLimitWindowMinutes int    `json:"upload_rate_limit_window_minutes"`
+	UploadRateLimitMaxRequests   int    `json:"upload_rate_limit_max_requests"`
+	RealIPSource                 string `json:"real_ip_source"`
 }
 
 type RuntimeSettingsManager struct {
@@ -244,13 +230,6 @@ func (s RuntimeSettings) EffectiveMaintenanceMessage() string {
 	return message
 }
 
-func (s RuntimeSettings) MaxUploadSizeBytes() int64 {
-	if s.MaxUploadSizeMB <= 0 {
-		return 0
-	}
-	return int64(s.MaxUploadSizeMB) * bytesPerMB
-}
-
 func DefaultAllowedMIMETypes() []string {
 	return append([]string(nil), defaultAllowedMIMETypes...)
 }
@@ -268,13 +247,6 @@ func validateRuntimeSettingsInput(input RuntimeSettingsUpdateInput, strictCloudf
 		CloudflareZoneID:             strings.TrimSpace(input.CloudflareZoneID),
 		CloudflareAPIToken:           strings.TrimSpace(input.CloudflareAPIToken),
 		CloudflareAPIBaseURL:         normalizeCloudflareAPIBaseURL(input.CloudflareAPIBaseURL),
-		MaxUploadSizeMB:              input.MaxUploadSizeMB,
-		AllowedMIMETypes:             input.AllowedMIMETypes,
-		AvifQuality:                  input.AvifQuality,
-		AvifSpeed:                    input.AvifSpeed,
-		MaxImagePixels:               input.MaxImagePixels,
-		AVIFMaxConcurrency:           input.AVIFMaxConcurrency,
-		AVIFConversionTimeoutSeconds: input.AVIFConversionTimeoutSeconds,
 		AllowStorageSelect:           input.AllowStorageSelect,
 		MaintenanceMode:              input.MaintenanceMode,
 		MaintenanceMessage:           strings.TrimSpace(input.MaintenanceMessage),
@@ -304,35 +276,12 @@ func validateRuntimeSettingsInput(input RuntimeSettingsUpdateInput, strictCloudf
 			return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "cloudflare zone id and api token are required when cloudflare purge is enabled")
 		}
 	}
-	if settings.MaxUploadSizeMB < 0 {
-		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "max upload size must be zero or greater")
-	}
 	if settings.RateLimitWindowMinutes < 0 || settings.RateLimitMaxRequests < 0 || settings.UploadRateLimitWindowMinutes < 0 || settings.UploadRateLimitMaxRequests < 0 {
 		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "rate limit values must be zero or greater")
-	}
-	if settings.AvifQuality < 0 || settings.AvifQuality > 100 {
-		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif quality must be between 0 and 100")
-	}
-	if settings.AvifSpeed < 0 || settings.AvifSpeed > 10 {
-		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif speed must be between 0 and 10")
-	}
-	if settings.MaxImagePixels < 1 {
-		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "max image pixels must be greater than 0")
-	}
-	if settings.AVIFMaxConcurrency < 1 {
-		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif max concurrency must be greater than 0")
-	}
-	if settings.AVIFConversionTimeoutSeconds < 1 {
-		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif conversion timeout seconds must be greater than 0")
 	}
 	if settings.RealIPSource != "" && !IsValidRealIPSource(settings.RealIPSource) {
 		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "real ip source must be one of: remote-addr, x-forwarded-for, x-real-ip, cf-connecting-ip")
 	}
-	allowed, err := normalizeMIMETypes(settings.AllowedMIMETypes)
-	if err != nil {
-		return RuntimeSettings{}, err
-	}
-	settings.AllowedMIMETypes = allowed
 	return normalizeRuntimeSettings(settings), nil
 }
 
@@ -395,11 +344,6 @@ func normalizeRuntimeSettings(settings RuntimeSettings) RuntimeSettings {
 	if settings.RealIPSource == "" {
 		settings.RealIPSource = DefaultRealIPSource
 	}
-	allowed, _ := normalizeMIMETypes(settings.AllowedMIMETypes)
-	if allowed == nil {
-		allowed = []string{}
-	}
-	settings.AllowedMIMETypes = allowed
 	return settings
 }
 
@@ -416,7 +360,6 @@ func (s RuntimeSettings) UploadRateLimitPolicy() (int, int) {
 }
 
 func cloneRuntimeSettings(settings RuntimeSettings) RuntimeSettings {
-	settings.AllowedMIMETypes = append([]string(nil), settings.AllowedMIMETypes...)
 	return settings
 }
 

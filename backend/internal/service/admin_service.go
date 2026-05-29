@@ -17,21 +17,28 @@ import (
 )
 
 type AdminStorageConfigView struct {
-	StorageKey       string `json:"storage_key"`
-	Name             string `json:"name"`
-	IsDefault        bool   `json:"is_default"`
-	StorageBackend   string `json:"storage_backend"`
-	LocalStoragePath string `json:"local_storage_path"`
-	S3Endpoint       string `json:"s3_endpoint"`
-	S3Region         string `json:"s3_region"`
-	S3Bucket         string `json:"s3_bucket"`
-	S3AccessKey      string `json:"s3_access_key"`
-	S3SecretKey      string `json:"s3_secret_key"`
-	S3UseSSL         bool   `json:"s3_use_ssl"`
-	S3ForcePathStyle bool   `json:"s3_force_path_style"`
-	WebDAVURL        string `json:"webdav_url"`
-	WebDAVUser       string `json:"webdav_user"`
-	WebDAVPass       string `json:"webdav_pass"`
+	StorageKey                  string   `json:"storage_key"`
+	Name                        string   `json:"name"`
+	IsDefault                   bool     `json:"is_default"`
+	StorageBackend              string   `json:"storage_backend"`
+	LocalStoragePath            string   `json:"local_storage_path"`
+	S3Endpoint                  string   `json:"s3_endpoint"`
+	S3Region                    string   `json:"s3_region"`
+	S3Bucket                    string   `json:"s3_bucket"`
+	S3AccessKey                 string   `json:"s3_access_key"`
+	S3SecretKey                 string   `json:"s3_secret_key"`
+	S3UseSSL                    bool     `json:"s3_use_ssl"`
+	S3ForcePathStyle            bool     `json:"s3_force_path_style"`
+	WebDAVURL                   string   `json:"webdav_url"`
+	WebDAVUser                  string   `json:"webdav_user"`
+	WebDAVPass                  string   `json:"webdav_pass"`
+	MaxUploadSizeMB             int      `json:"max_upload_size_mb"`
+	AllowedMIMETypes            []string `json:"allowed_mime_types"`
+	AvifQuality                 int      `json:"avif_quality"`
+	AvifSpeed                   int      `json:"avif_speed"`
+	MaxImagePixels              int64    `json:"max_image_pixels"`
+	AVIFMaxConcurrency          int      `json:"avif_max_concurrency"`
+	AVIFConversionTimeoutSeconds int     `json:"avif_conversion_timeout_seconds"`
 }
 
 type AdminConfigView struct {
@@ -46,20 +53,27 @@ type AdminConfigUpdateInput struct {
 }
 
 type AdminStorageConfigCreateInput struct {
-	StorageKey       string `json:"storage_key"`
-	Name             string `json:"name"`
-	Backend          string `json:"storage_backend"`
-	LocalStoragePath string `json:"local_storage_path"`
-	S3Endpoint       string `json:"s3_endpoint"`
-	S3Region         string `json:"s3_region"`
-	S3Bucket         string `json:"s3_bucket"`
-	S3AccessKey      string `json:"s3_access_key"`
-	S3SecretKey      string `json:"s3_secret_key"`
-	S3UseSSL         bool   `json:"s3_use_ssl"`
-	S3ForcePathStyle bool   `json:"s3_force_path_style"`
-	WebDAVURL        string `json:"webdav_url"`
-	WebDAVUser       string `json:"webdav_user"`
-	WebDAVPass       string `json:"webdav_pass"`
+	StorageKey                  string `json:"storage_key"`
+	Name                        string `json:"name"`
+	Backend                     string `json:"storage_backend"`
+	LocalStoragePath            string `json:"local_storage_path"`
+	S3Endpoint                  string `json:"s3_endpoint"`
+	S3Region                    string `json:"s3_region"`
+	S3Bucket                    string `json:"s3_bucket"`
+	S3AccessKey                 string `json:"s3_access_key"`
+	S3SecretKey                 string `json:"s3_secret_key"`
+	S3UseSSL                    bool   `json:"s3_use_ssl"`
+	S3ForcePathStyle            bool   `json:"s3_force_path_style"`
+	WebDAVURL                   string `json:"webdav_url"`
+	WebDAVUser                  string `json:"webdav_user"`
+	WebDAVPass                  string `json:"webdav_pass"`
+	MaxUploadSizeMB             int    `json:"max_upload_size_mb"`
+	AllowedMIMETypes            string `json:"allowed_mime_types"`
+	AvifQuality                 int    `json:"avif_quality"`
+	AvifSpeed                   int    `json:"avif_speed"`
+	MaxImagePixels              int64  `json:"max_image_pixels"`
+	AVIFMaxConcurrency          int    `json:"avif_max_concurrency"`
+	AVIFConversionTimeoutSeconds int   `json:"avif_conversion_timeout_seconds"`
 }
 
 type AdminStorageConfigUpdateInput = config.RuntimeStorageUpdate
@@ -587,41 +601,84 @@ func buildStorageConfig(input AdminStorageConfigCreateInput) (config.RuntimeStor
 		storageKey = newStorageKey(name, backend)
 	}
 
+	maxUploadSizeMB := input.MaxUploadSizeMB
+	if maxUploadSizeMB <= 0 {
+		maxUploadSizeMB = 20
+	}
+	allowedMIMETypes := strings.TrimSpace(input.AllowedMIMETypes)
+	if allowedMIMETypes == "" {
+		allowedMIMETypes = "image/avif,image/gif,image/jpeg,image/png,image/webp"
+	}
+	avifQuality := input.AvifQuality
+	if avifQuality <= 0 {
+		avifQuality = 60
+	}
+	avifSpeed := input.AvifSpeed
+	if avifSpeed <= 0 {
+		avifSpeed = 8
+	}
+	maxImagePixels := input.MaxImagePixels
+	if maxImagePixels <= 0 {
+		maxImagePixels = 40000000
+	}
+	avifMaxConcurrency := input.AVIFMaxConcurrency
+	if avifMaxConcurrency <= 0 {
+		avifMaxConcurrency = 2
+	}
+	avifTimeout := input.AVIFConversionTimeoutSeconds
+	if avifTimeout <= 0 {
+		avifTimeout = 30
+	}
+
 	return config.RuntimeStorageConfig{
-		StorageKey:       storageKey,
-		Name:             name,
-		Backend:          backend,
-		LocalStoragePath: input.LocalStoragePath,
-		S3Endpoint:       input.S3Endpoint,
-		S3Region:         input.S3Region,
-		S3Bucket:         input.S3Bucket,
-		S3AccessKey:      input.S3AccessKey,
-		S3SecretKey:      input.S3SecretKey,
-		S3UseSSL:         input.S3UseSSL,
-		S3ForcePathStyle: input.S3ForcePathStyle,
-		WebDAVURL:        input.WebDAVURL,
-		WebDAVUser:       input.WebDAVUser,
-		WebDAVPass:       input.WebDAVPass,
+		StorageKey:                  storageKey,
+		Name:                        name,
+		Backend:                     backend,
+		LocalStoragePath:            input.LocalStoragePath,
+		S3Endpoint:                  input.S3Endpoint,
+		S3Region:                    input.S3Region,
+		S3Bucket:                    input.S3Bucket,
+		S3AccessKey:                 input.S3AccessKey,
+		S3SecretKey:                 input.S3SecretKey,
+		S3UseSSL:                    input.S3UseSSL,
+		S3ForcePathStyle:            input.S3ForcePathStyle,
+		WebDAVURL:                   input.WebDAVURL,
+		WebDAVUser:                  input.WebDAVUser,
+		WebDAVPass:                  input.WebDAVPass,
+		MaxUploadSizeMB:             maxUploadSizeMB,
+		AllowedMIMETypes:            allowedMIMETypes,
+		AvifQuality:                 avifQuality,
+		AvifSpeed:                   avifSpeed,
+		MaxImagePixels:              maxImagePixels,
+		AVIFMaxConcurrency:          avifMaxConcurrency,
+		AVIFConversionTimeoutSeconds: avifTimeout,
 	}, nil
 }
 
 func maskStorageConfig(cfg config.RuntimeStorageConfig) AdminStorageConfigView {
 	return AdminStorageConfigView{
-		StorageKey:       cfg.StorageKey,
-		Name:             cfg.Name,
-		IsDefault:        cfg.IsDefault,
-		StorageBackend:   cfg.Backend,
-		LocalStoragePath: cfg.LocalStoragePath,
-		S3Endpoint:       cfg.S3Endpoint,
-		S3Region:         cfg.S3Region,
-		S3Bucket:         cfg.S3Bucket,
-		S3AccessKey:      maskSecret(cfg.S3AccessKey),
-		S3SecretKey:      maskSecret(cfg.S3SecretKey),
-		S3UseSSL:         cfg.S3UseSSL,
-		S3ForcePathStyle: cfg.S3ForcePathStyle,
-		WebDAVURL:        cfg.WebDAVURL,
-		WebDAVUser:       cfg.WebDAVUser,
-		WebDAVPass:       maskSecret(cfg.WebDAVPass),
+		StorageKey:                  cfg.StorageKey,
+		Name:                        cfg.Name,
+		IsDefault:                   cfg.IsDefault,
+		StorageBackend:              cfg.Backend,
+		LocalStoragePath:            cfg.LocalStoragePath,
+		S3Endpoint:                  cfg.S3Endpoint,
+		S3Region:                    cfg.S3Region,
+		S3Bucket:                    cfg.S3Bucket,
+		S3AccessKey:                 maskSecret(cfg.S3AccessKey),
+		S3SecretKey:                 maskSecret(cfg.S3SecretKey),
+		S3UseSSL:                    cfg.S3UseSSL,
+		S3ForcePathStyle:            cfg.S3ForcePathStyle,
+		WebDAVURL:                   cfg.WebDAVURL,
+		WebDAVUser:                  cfg.WebDAVUser,
+		WebDAVPass:                  maskSecret(cfg.WebDAVPass),
+		MaxUploadSizeMB:             cfg.MaxUploadSizeMB,
+		AllowedMIMETypes:            splitCSV(cfg.AllowedMIMETypes),
+		AvifQuality:                 cfg.AvifQuality,
+		AvifSpeed:                   cfg.AvifSpeed,
+		MaxImagePixels:              cfg.MaxImagePixels,
+		AVIFMaxConcurrency:          cfg.AVIFMaxConcurrency,
+		AVIFConversionTimeoutSeconds: cfg.AVIFConversionTimeoutSeconds,
 	}
 }
 
@@ -664,6 +721,27 @@ func mergeStorageConfig(target *config.RuntimeStorageConfig, current config.Runt
 	}
 	if update.WebDAVPass != nil && *update.WebDAVPass != maskSecret(current.WebDAVPass) {
 		target.WebDAVPass = *update.WebDAVPass
+	}
+	if update.MaxUploadSizeMB != nil {
+		target.MaxUploadSizeMB = *update.MaxUploadSizeMB
+	}
+	if update.AllowedMIMETypes != nil {
+		target.AllowedMIMETypes = *update.AllowedMIMETypes
+	}
+	if update.AvifQuality != nil {
+		target.AvifQuality = *update.AvifQuality
+	}
+	if update.AvifSpeed != nil {
+		target.AvifSpeed = *update.AvifSpeed
+	}
+	if update.MaxImagePixels != nil {
+		target.MaxImagePixels = *update.MaxImagePixels
+	}
+	if update.AVIFMaxConcurrency != nil {
+		target.AVIFMaxConcurrency = *update.AVIFMaxConcurrency
+	}
+	if update.AVIFConversionTimeoutSeconds != nil {
+		target.AVIFConversionTimeoutSeconds = *update.AVIFConversionTimeoutSeconds
 	}
 }
 
@@ -724,24 +802,38 @@ func hasStorageConfigPatch(input AdminConfigUpdateInput) bool {
 		input.S3ForcePathStyle != nil ||
 		input.WebDAVURL != nil ||
 		input.WebDAVUser != nil ||
-		input.WebDAVPass != nil
+		input.WebDAVPass != nil ||
+		input.MaxUploadSizeMB != nil ||
+		input.AllowedMIMETypes != nil ||
+		input.AvifQuality != nil ||
+		input.AvifSpeed != nil ||
+		input.MaxImagePixels != nil ||
+		input.AVIFMaxConcurrency != nil ||
+		input.AVIFConversionTimeoutSeconds != nil
 }
 
 func storageUpdateFromConfigPatch(input AdminConfigUpdateInput) AdminStorageConfigUpdateInput {
 	return AdminStorageConfigUpdateInput{
-		Name:             input.Name,
-		Backend:          input.Backend,
-		LocalStoragePath: input.LocalStoragePath,
-		S3Endpoint:       input.S3Endpoint,
-		S3Region:         input.S3Region,
-		S3Bucket:         input.S3Bucket,
-		S3AccessKey:      input.S3AccessKey,
-		S3SecretKey:      input.S3SecretKey,
-		S3UseSSL:         input.S3UseSSL,
-		S3ForcePathStyle: input.S3ForcePathStyle,
-		WebDAVURL:        input.WebDAVURL,
-		WebDAVUser:       input.WebDAVUser,
-		WebDAVPass:       input.WebDAVPass,
+		Name:                        input.Name,
+		Backend:                     input.Backend,
+		LocalStoragePath:            input.LocalStoragePath,
+		S3Endpoint:                  input.S3Endpoint,
+		S3Region:                    input.S3Region,
+		S3Bucket:                    input.S3Bucket,
+		S3AccessKey:                 input.S3AccessKey,
+		S3SecretKey:                 input.S3SecretKey,
+		S3UseSSL:                    input.S3UseSSL,
+		S3ForcePathStyle:            input.S3ForcePathStyle,
+		WebDAVURL:                   input.WebDAVURL,
+		WebDAVUser:                  input.WebDAVUser,
+		WebDAVPass:                  input.WebDAVPass,
+		MaxUploadSizeMB:             input.MaxUploadSizeMB,
+		AllowedMIMETypes:            input.AllowedMIMETypes,
+		AvifQuality:                 input.AvifQuality,
+		AvifSpeed:                   input.AvifSpeed,
+		MaxImagePixels:              input.MaxImagePixels,
+		AVIFMaxConcurrency:          input.AVIFMaxConcurrency,
+		AVIFConversionTimeoutSeconds: input.AVIFConversionTimeoutSeconds,
 	}
 }
 

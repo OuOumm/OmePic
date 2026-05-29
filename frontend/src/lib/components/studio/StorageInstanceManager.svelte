@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, Edit3, Plus, RefreshCw, Save, Trash2, X } from 'lucide-svelte';
+  import { Activity, CircleAlert, Edit3, Plus, RefreshCw, Save, Trash2, X } from 'lucide-svelte';
   import {
     adminCheckAllStorageHealth,
     adminCheckStorageHealth,
@@ -17,7 +17,7 @@
   import { t } from '@/i18n';
   import PageTitle from './PageTitle.svelte';
   import { preferences } from '@/stores/preferences.svelte';
-  import { formatDate, isAbortError } from '@/utils';
+  import { formatDate, formatMegabytes, isAbortError } from '@/utils';
   import { runAsyncAction, toastApiError } from '@/ui-errors';
   import type { AdminConfig, AdminStorageHealthCheck, StorageInstance } from '@/types';
 
@@ -45,6 +45,13 @@
     webdav_url: '',
     webdav_user: '',
     webdav_pass: '',
+    max_upload_size_mb: 20,
+    allowed_mime_types: ['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp'],
+    avif_quality: 60,
+    avif_speed: 8,
+    max_image_pixels: 40000000,
+    avif_max_concurrency: 2,
+    avif_conversion_timeout_seconds: 30,
   };
 
   let { config, onChange }: Props = $props();
@@ -54,6 +61,7 @@
   let deleteTarget = $state<StorageInstance | null>(null);
   let busyKey = $state('');
   let saving = $state(false);
+  let mimeTypesText = $state('');
   let healthChecks = $state.raw<AdminStorageHealthCheck[]>([]);
   let checkingStorageKey = $state<string | null>(null);
   let healthDetail = $state<AdminStorageHealthCheck | null>(null);
@@ -74,13 +82,27 @@
   function startCreate() {
     editingKey = null;
     form = { ...blank };
+    mimeTypesText = mimeTypesTextFromInstance(blank);
     editorOpen = true;
+  }
+
+  function mimeTypesTextFromInstance(instance: StorageInstance) {
+    const types = instance.allowed_mime_types;
+    return Array.isArray(types) ? types.join(', ') : '';
   }
 
   function startEdit(instance: StorageInstance) {
     editingKey = instance.storage_key;
     form = { ...blank, ...instance, s3_secret_key: '', webdav_pass: '' };
+    mimeTypesText = mimeTypesTextFromInstance(instance);
     editorOpen = true;
+  }
+
+  function parseMimeTypes(value: string) {
+    return value
+      .split(/[\r\n,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   function payload() {
@@ -89,6 +111,13 @@
       name: form.name.trim(),
       is_default: form.is_default,
       storage_backend: form.storage_backend,
+      max_upload_size_mb: form.max_upload_size_mb,
+      allowed_mime_types: parseMimeTypes(mimeTypesText),
+      avif_quality: form.avif_quality,
+      avif_speed: form.avif_speed,
+      max_image_pixels: form.max_image_pixels,
+      avif_max_concurrency: form.avif_max_concurrency,
+      avif_conversion_timeout_seconds: form.avif_conversion_timeout_seconds,
     };
     if (form.storage_backend === 'local') {
       base.local_storage_path = form.local_storage_path?.trim();
@@ -384,6 +413,55 @@
             <label class="grid gap-2 text-sm font-black">{t(preferences.language, 'admin.storagePassword')}<input class="studio-input" type="password" autocomplete="new-password" bind:value={form.webdav_pass} /></label>
           </div>
         {/if}
+
+        <div class="mt-4 grid gap-3">
+          <span class="tape-label rotate-[1deg]" style="background:hsl(var(--marker-blue))">{t(preferences.language, 'admin.runtimeUploadPolicy')}</span>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="grid gap-2 text-sm font-black">
+              {t(preferences.language, 'admin.settingsMaxUpload')} ({formatMegabytes(form.max_upload_size_mb ?? 20, preferences.language)})
+              <input class="studio-input" type="number" min="0" bind:value={form.max_upload_size_mb} />
+            </label>
+            <label class="grid min-w-0 gap-2 text-sm font-black">
+              <span class="flex items-center gap-1">
+                {t(preferences.language, 'admin.runtimeAllowedMimeTypes')}
+                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} aria-label={t(preferences.language, 'admin.runtimeAllowedMimeTypesHint')} role="img">
+                  <CircleAlert class="size-3" />
+                </span>
+              </span>
+              <input class="studio-input min-w-0 font-mono text-sm" bind:value={mimeTypesText} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              <span class="flex items-center gap-1">
+                {t(preferences.language, 'admin.runtimeAvifQuality')}
+                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAvifQualityHint')} aria-label={t(preferences.language, 'admin.runtimeAvifQualityHint')} role="img">
+                  <CircleAlert class="size-3" />
+                </span>
+              </span>
+              <input class="studio-input" type="number" min="0" max="100" step="1" inputmode="numeric" bind:value={form.avif_quality} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              <span class="flex items-center gap-1">
+                {t(preferences.language, 'admin.runtimeAvifSpeed')}
+                <span class="inline-grid size-4 place-items-center rounded-full border-2 ink-line bg-[hsl(var(--marker-yellow))] text-[hsl(var(--marker-ink))]" title={t(preferences.language, 'admin.runtimeAvifSpeedHint')} aria-label={t(preferences.language, 'admin.runtimeAvifSpeedHint')} role="img">
+                  <CircleAlert class="size-3" />
+                </span>
+              </span>
+              <input class="studio-input" type="number" min="0" max="10" step="1" inputmode="numeric" bind:value={form.avif_speed} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              {t(preferences.language, 'admin.runtimeMaxImagePixels')}
+              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={form.max_image_pixels} />
+            </label>
+            <label class="grid gap-2 text-sm font-black">
+              {t(preferences.language, 'admin.runtimeAvifMaxConcurrency')}
+              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={form.avif_max_concurrency} />
+            </label>
+            <label class="grid gap-2 text-sm font-black sm:col-span-2">
+              {t(preferences.language, 'admin.runtimeAvifTimeoutSeconds')}
+              <input class="studio-input" type="number" min="1" step="1" inputmode="numeric" bind:value={form.avif_conversion_timeout_seconds} />
+            </label>
+          </div>
+        </div>
 
         <label class="mt-4 flex items-center gap-3 border-y-2 ink-line py-3 font-black">
           <input type="checkbox" bind:checked={form.is_default} />

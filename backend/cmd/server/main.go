@@ -135,6 +135,7 @@ func main() {
 		AnnouncementHandler: handler.NewAnnouncementHandler(announcementService, logger),
 		HealthHandler:       handler.NewHealthHandler(healthService),
 		Settings:            settingsManager,
+		ImageService:        imageService,
 		RateLimiter:         rateLimiter,
 		IPResolver:          ipResolver,
 		JWTSecret:           cfg.JWTSecret,

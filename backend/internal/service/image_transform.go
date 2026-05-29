@@ -25,10 +25,16 @@ type AVIFConversionSettings struct {
 	Speed   int
 }
 
-func avifConversionSettingsFromRuntime(settings RuntimeSettings) AVIFConversionSettings {
+func avifConversionSettings(quality int, speed int) AVIFConversionSettings {
+	if quality <= 0 {
+		quality = DefaultAVIFQuality
+	}
+	if speed <= 0 {
+		speed = DefaultAVIFSpeed
+	}
 	return AVIFConversionSettings{
-		Quality: settings.AvifQuality,
-		Speed:   settings.AvifSpeed,
+		Quality: quality,
+		Speed:   speed,
 	}
 }
 

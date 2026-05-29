@@ -8,7 +8,7 @@ import (
 
 // CurrentSchemaVersion is the expected PRAGMA user_version for this codebase.
 // Bump this value whenever the schema changes (new table, column, index, etc.).
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 func (r *Repository) Migrate(ctx context.Context) error {
 	schema := []string{
@@ -46,6 +46,13 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			webdav_url TEXT,
 			webdav_user TEXT,
 			webdav_pass TEXT,
+			max_upload_size_mb INTEGER NOT NULL DEFAULT 20,
+			allowed_mime_types TEXT NOT NULL DEFAULT 'image/avif,image/gif,image/jpeg,image/png,image/webp',
+			avif_quality INTEGER NOT NULL DEFAULT 60,
+			avif_speed INTEGER NOT NULL DEFAULT 8,
+			max_image_pixels INTEGER NOT NULL DEFAULT 40000000,
+			avif_max_concurrency INTEGER NOT NULL DEFAULT 2,
+			avif_conversion_timeout_seconds INTEGER NOT NULL DEFAULT 30,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
