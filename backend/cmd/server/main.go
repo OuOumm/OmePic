@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"omepic/backend/internal/auth"
 	"omepic/backend/internal/cache"
 	"omepic/backend/internal/config"
 	"omepic/backend/internal/http/clientip"
@@ -17,6 +18,7 @@ import (
 	"omepic/backend/internal/http/router"
 	"omepic/backend/internal/ratelimit"
 	"omepic/backend/internal/repository"
+	"omepic/backend/internal/secrets"
 	"omepic/backend/internal/service"
 	"omepic/backend/internal/storage"
 	"omepic/backend/internal/uid"
@@ -52,13 +54,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	storageCatalog, err := repo.InitializeStorageCatalog(ctx, config.DefaultStorageConfig())
+	secretEncryptor, err := secrets.NewEncryptor(cfg.SecretEncryptionKey)
 	if err != nil {
+		logger.Error("failed to init secret encryptor", "error", err.Error())
+		os.Exit(1)
+	}
+
+	// Initialize the storage catalog (may seed default configs from env).
+	if _, err := repo.InitializeStorageCatalog(ctx, config.DefaultStorageConfig()); err != nil {
 		logger.Error("failed to initialize storage catalog", "error", err.Error())
 		os.Exit(1)
 	}
 
-	storageManager, err := storage.NewManager(storageCatalog.StorageConfigs)
+	// Encrypt sensitive fields in storage configs and write back to DB.
+	if err := service.EncryptStorageCatalogSecrets(ctx, repo, secretEncryptor); err != nil {
+		logger.Error("failed to encrypt storage secrets", "error", err.Error())
+		os.Exit(1)
+	}
+
+	// Reload catalog from DB (now with encrypted values) and decrypt for storage manager.
+	encryptedConfigs, err := repo.ListStorageConfigs(ctx)
+	if err != nil {
+		logger.Error("failed to reload storage configs", "error", err.Error())
+		os.Exit(1)
+	}
+	decryptedForManager := service.DecryptStorageCatalogValues(encryptedConfigs, secretEncryptor)
+
+	storageManager, err := storage.NewManager(decryptedForManager)
 	if err != nil {
 		logger.Error("failed to init storage", "error", err.Error())
 		os.Exit(1)
@@ -107,8 +129,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	revChecker := auth.NewRevocationChecker(redisClient)
 	imageService := service.NewImageService(repo, imageCache, storageManager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger)
-	adminService := service.NewAdminService(repo, storageManager, settingsManager, imageService, cfg.JWTSecret, service.AdminEnvMetadata{
+
+	adminService := service.NewAdminService(repo, storageManager, settingsManager, imageService, cfg.JWTSecret, revChecker, secretEncryptor, service.AdminEnvMetadata{
 		HTTPAddr:         cfg.HTTPAddr,
 		DatabasePath:     cfg.DatabasePath,
 		RedisURL:         cfg.RedisURL,
@@ -138,6 +162,7 @@ func main() {
 		RateLimiter:         rateLimiter,
 		IPResolver:          ipResolver,
 		JWTSecret:           cfg.JWTSecret,
+		RevChecker:          revChecker,
 		FrontendDir:         "web",
 	})
 
@@ -195,8 +220,13 @@ func enforceRequiredSecrets(cfg config.AppConfig) error {
 	if cfg.JWTSecret == "" || len(cfg.JWTSecret) < 32 {
 		return errors.New("JWT_SECRET must be set in .env and be at least 32 characters")
 	}
+	// UID_ENCRYPTION_KEY is an obfuscation key (XOR-based ID encoding), not a cryptographic boundary.
+	// The env var name is kept as-is for deployment compatibility.
 	if cfg.UIDEncryptionKey == "" || len(cfg.UIDEncryptionKey) < 32 {
 		return errors.New("UID_ENCRYPTION_KEY must be set in .env and be at least 32 characters")
+	}
+	if cfg.SecretEncryptionKey == "" || len(cfg.SecretEncryptionKey) < 32 {
+		return errors.New("SECRET_ENCRYPTION_KEY must be set in .env and be at least 32 characters")
 	}
 	return nil
 }

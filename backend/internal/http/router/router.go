@@ -2,12 +2,11 @@ package router
 
 import (
 	"log/slog"
-	"strings"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
+	"omepic/backend/internal/auth"
 	"omepic/backend/internal/http/clientip"
 	"omepic/backend/internal/http/handler"
 	"omepic/backend/internal/http/middleware"
@@ -26,13 +25,14 @@ type Dependencies struct {
 	RateLimiter         ratelimit.Limiter
 	IPResolver          *clientip.Resolver
 	JWTSecret           string
+	RevChecker          *auth.RevocationChecker
 	FrontendDir         string
 }
 
 func New(deps Dependencies) *gin.Engine {
 	engine := gin.New()
 	engine.Use(gin.Recovery())
-	engine.Use(cors.New(corsConfig(deps.Settings)))
+	engine.Use(middleware.SecurityHeaders())
 	engine.Use(middleware.RequestLogger(deps.Logger))
 	apiLimiter := middleware.RateLimit(deps.RateLimiter, deps.Logger, middleware.RateLimitPolicy{
 		Scope:      "api",
@@ -59,17 +59,19 @@ func New(deps Dependencies) *gin.Engine {
 		},
 	})
 
-	engine.GET(healthRouteSpec.Path, deps.HealthHandler.Health)
-	engine.GET(runtimeSettingsRouteSpec.Path, apiLimiter, deps.ImageHandler.RuntimeSettings)
-	engine.GET(publicAnnouncementsSpec.Path, apiLimiter, deps.AnnouncementHandler.PublicList)
-	engine.POST(imageUploadRouteSpec.Path, middleware.BodyLimit(deps.ImageService.MaxUploadSizeBytes), uploadLimiter, deps.ImageHandler.Upload)
-	engine.DELETE(imageRouteSpec.Path, apiLimiter, deps.ImageHandler.Delete)
-	engine.GET(imageRouteSpec.Path, deps.ImageHandler.Serve)
-	engine.POST(adminLoginRouteSpec.Path, apiLimiter, deps.AdminHandler.Login)
+	publicCORS := middleware.PublicCORS(deps.Settings)
+
+	engine.GET(healthRouteSpec.Path, publicCORS, deps.HealthHandler.Health)
+	engine.GET(runtimeSettingsRouteSpec.Path, publicCORS, apiLimiter, deps.ImageHandler.RuntimeSettings)
+	engine.GET(publicAnnouncementsSpec.Path, publicCORS, apiLimiter, deps.AnnouncementHandler.PublicList)
+	engine.POST(imageUploadRouteSpec.Path, publicCORS, middleware.BodyLimit(deps.ImageService.MaxUploadSizeBytes), uploadLimiter, deps.ImageHandler.Upload)
+	engine.DELETE(imageRouteSpec.Path, publicCORS, apiLimiter, deps.ImageHandler.Delete)
+	engine.GET(imageRouteSpec.Path, publicCORS, deps.ImageHandler.Serve)
+	engine.POST(adminLoginRouteSpec.Path, publicCORS, apiLimiter, deps.AdminHandler.Login)
 
 	admin := engine.Group("/admin")
 	admin.Use(apiLimiter)
-	admin.Use(middleware.AdminAuth(deps.JWTSecret))
+	admin.Use(middleware.AdminAuth(deps.JWTSecret, deps.RevChecker))
 	admin.PUT(adminPath(adminPasswordRouteSpec.Path), deps.AdminHandler.ChangePassword)
 	admin.GET(adminPath(adminStatusRouteSpec.Path), deps.AdminHandler.Status)
 	admin.GET(adminPath(adminImagesRouteSpec.Path), deps.AdminHandler.Images)
@@ -104,20 +106,4 @@ func New(deps Dependencies) *gin.Engine {
 	return engine
 }
 
-func corsConfig(settings *service.RuntimeSettingsManager) cors.Config {
-	cfg := cors.Config{
-		AllowMethods:  []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:  []string{"Authorization", "Content-Type", "X-Token"},
-		ExposeHeaders: []string{"Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining"},
-	}
-	publicBaseURL := ""
-	if settings != nil {
-		publicBaseURL = strings.TrimSpace(settings.Current().PublicBaseURL)
-	}
-	if publicBaseURL != "" {
-		cfg.AllowOrigins = []string{strings.TrimRight(publicBaseURL, "/")}
-		return cfg
-	}
-	cfg.AllowAllOrigins = true
-	return cfg
-}
+

@@ -13,6 +13,7 @@ import (
 	"omepic/backend/internal/config"
 	"omepic/backend/internal/model"
 	"omepic/backend/internal/repository"
+	"omepic/backend/internal/secrets"
 	"omepic/backend/internal/storage"
 )
 
@@ -131,6 +132,7 @@ type CloudflareImageCachePurgeResult struct {
 const (
 	adminPasswordHashConfigKey = "admin_password_hash"
 	defaultAdminPassword       = "admin123"
+	adminJWTTTL                = 4 * time.Hour
 )
 
 type adminStorageManager interface {
@@ -140,29 +142,32 @@ type adminStorageManager interface {
 }
 
 type AdminService struct {
-	repo         *repository.Repository
-	storage      adminStorageManager
-	settings     *RuntimeSettingsManager
-	imageService *ImageService
-	jwtSecret    string
-	adminEnv     AdminEnvMetadata
+	repo            *repository.Repository
+	storage         adminStorageManager
+	settings        *RuntimeSettingsManager
+	imageService    *ImageService
+	jwtSecret       string
+	revChecker      *auth.RevocationChecker
+	secretEncryptor *secrets.SecretEncryptor
+	adminEnv        AdminEnvMetadata
 }
 
 type AdminEnvMetadata struct {
 	HTTPAddr         string
 	DatabasePath     string
 	RedisURL         string
-	UIDEncryptionKey string
+	UIDEncryptionKey string // Obfuscation key for UID XOR encoding (env: UID_ENCRYPTION_KEY); not a cryptographic boundary
 }
-
-func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, settingsManager *RuntimeSettingsManager, imageService *ImageService, jwtSecret string, adminEnv AdminEnvMetadata) *AdminService {
+func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, settingsManager *RuntimeSettingsManager, imageService *ImageService, jwtSecret string, revChecker *auth.RevocationChecker, secretEncryptor *secrets.SecretEncryptor, adminEnv AdminEnvMetadata) *AdminService {
 	return &AdminService{
-		repo:         repo,
-		storage:      storageManager,
-		settings:     settingsManager,
-		imageService: imageService,
-		jwtSecret:    jwtSecret,
-		adminEnv:     adminEnv,
+		repo:            repo,
+		storage:         storageManager,
+		settings:        settingsManager,
+		imageService:    imageService,
+		jwtSecret:       jwtSecret,
+		revChecker:      revChecker,
+		secretEncryptor: secretEncryptor,
+		adminEnv:        adminEnv,
 	}
 }
 
@@ -180,7 +185,7 @@ func (s *AdminService) Login(ctx context.Context, password string) (string, erro
 		return "", err
 	}
 
-	token, err := auth.GenerateJWT(s.jwtSecret, 24*time.Hour)
+	token, err := auth.GenerateJWT(s.jwtSecret, adminJWTTTL)
 	if err != nil {
 		return "", fmt.Errorf("%w: jwt sign failed", ErrDependencyUnavailable)
 	}
@@ -203,6 +208,13 @@ func (s *AdminService) ChangePassword(ctx context.Context, oldPassword string, n
 	}
 	if err := s.repo.SetConfigValue(ctx, adminPasswordHashConfigKey, string(hash)); err != nil {
 		return fmt.Errorf("%w: password save failed", ErrDependencyUnavailable)
+	}
+	// Revoke all previously issued admin JWTs so the admin must re-login.
+	// Best-effort: Redis outage should not prevent password changes.
+	if s.revChecker != nil {
+		if revokeErr := s.revChecker.RevokeAllBefore(ctx); revokeErr != nil {
+			_ = revokeErr // log but don't fail the password change
+		}
 	}
 	return nil
 }
@@ -553,8 +565,13 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 				AdminPassword: SecretStatus{
 					Configured: s.isPasswordChanged(ctx),
 				},
+				// UIDEncryptionKey is an obfuscation key (XOR-based ID encoding),
+				// not a cryptographic boundary. The env var name is kept as-is.
 				UIDEncryptionKey: SecretStatus{
 					Configured: strings.TrimSpace(s.adminEnv.UIDEncryptionKey) != "",
+				},
+				SecretEncryptionKey: SecretStatus{
+					Configured: s.secretEncryptor != nil,
 				},
 			},
 			Storage: AdminStorageStatus{

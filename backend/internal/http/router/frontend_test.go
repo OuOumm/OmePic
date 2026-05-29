@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"omepic/backend/internal/http/middleware"
 	"omepic/backend/internal/service"
 )
 
@@ -160,6 +161,7 @@ func TestFrontendFallbackServesSecurityHeaders(t *testing.T) {
 	writeTestFile(t, filepath.Join(webDir, "index.html"), "<!doctype html><title>home</title>")
 
 	engine := gin.New()
+	engine.Use(middleware.SecurityHeaders())
 	registerFrontendRoutes(engine, webDir, nil)
 
 	recorder := httptest.NewRecorder()
@@ -170,10 +172,11 @@ func TestFrontendFallbackServesSecurityHeaders(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
-	assertSecurityHeader(t, recorder, "Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+	// H-04/M-08: CSP no longer contains unsafe-inline
+	assertSecurityHeader(t, recorder, "Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 	assertSecurityHeader(t, recorder, "X-Content-Type-Options", "nosniff")
 	assertSecurityHeader(t, recorder, "Referrer-Policy", "strict-origin-when-cross-origin")
-	assertSecurityHeader(t, recorder, "Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	assertSecurityHeader(t, recorder, "X-Frame-Options", "DENY")
 }
 
 func TestFrontendFallbackDisabledWhenBuildMissing(t *testing.T) {
@@ -192,29 +195,138 @@ func TestFrontendFallbackDisabledWhenBuildMissing(t *testing.T) {
 	}
 }
 
-func TestCORSConfigAllowsAllOriginsWhenRuntimePublicBaseURLUnset(t *testing.T) {
-	cfg := corsConfig(service.NewRuntimeSettingsManager())
-	if !cfg.AllowAllOrigins {
-		t.Fatalf("expected AllowAllOrigins when runtime public base url is unset")
+func TestPublicCORSAllowsAllOriginsWhenRuntimePublicBaseURLUnset(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	settings := service.NewRuntimeSettingsManager()
+	corsMW := middleware.PublicCORS(settings)
+
+	engine := gin.New()
+	engine.Use(corsMW)
+	engine.GET("/test", func(c *gin.Context) { c.Status(200) })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Origin", "https://random.example.com")
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if len(cfg.AllowOrigins) != 0 {
-		t.Fatalf("expected no explicit AllowOrigins, got %v", cfg.AllowOrigins)
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://random.example.com" {
+		t.Fatalf("expected wildcard CORS origin, got %q", got)
 	}
 }
 
-func TestCORSConfigUsesRuntimePublicBaseURLWhenSet(t *testing.T) {
+func TestPublicCORSUsesRuntimePublicBaseURLWhenSet(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
 	settings := service.NewRuntimeSettingsManager()
 	settings.Reconfigure(service.RuntimeSettings{
 		SiteName:      service.DefaultSiteName,
 		SiteTagline:   service.DefaultSiteTagline,
 		PublicBaseURL: "https://img.example.com/",
 	})
-	cfg := corsConfig(settings)
-	if cfg.AllowAllOrigins {
-		t.Fatalf("expected AllowAllOrigins to be false when runtime public base url is set")
+	corsMW := middleware.PublicCORS(settings)
+
+	engine := gin.New()
+	engine.Use(corsMW)
+	engine.GET("/test", func(c *gin.Context) { c.Status(200) })
+
+	// Matching origin should be allowed
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Origin", "https://img.example.com")
+	engine.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://img.example.com" {
+		t.Fatalf("expected allowed origin, got %q", got)
 	}
-	if len(cfg.AllowOrigins) != 1 || cfg.AllowOrigins[0] != "https://img.example.com" {
-		t.Fatalf("unexpected AllowOrigins: %v", cfg.AllowOrigins)
+
+	// Non-matching origin should NOT get CORS headers
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2.Header.Set("Origin", "https://evil.example.com")
+	engine.ServeHTTP(rec2, req2)
+
+	if got := rec2.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("expected no CORS origin for mismatched origin, got %q", got)
+	}
+}
+
+func TestPublicCORSHotUpdatesOrigin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	settings := service.NewRuntimeSettingsManager()
+	corsMW := middleware.PublicCORS(settings)
+
+	engine := gin.New()
+	engine.Use(corsMW)
+	engine.GET("/test", func(c *gin.Context) { c.Status(200) })
+
+	// Initially no PublicBaseURL — all origins allowed
+	rec1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req1.Header.Set("Origin", "https://random.example.com")
+	engine.ServeHTTP(rec1, req1)
+	if got := rec1.Header().Get("Access-Control-Allow-Origin"); got != "https://random.example.com" {
+		t.Fatalf("before config: expected wildcard, got %q", got)
+	}
+
+	// Reconfigure with a specific origin — should now restrict
+	settings.Reconfigure(service.RuntimeSettings{
+		SiteName:      service.DefaultSiteName,
+		SiteTagline:   service.DefaultSiteTagline,
+		PublicBaseURL: "https://img.example.com",
+	})
+
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2.Header.Set("Origin", "https://random.example.com")
+	engine.ServeHTTP(rec2, req2)
+	if got := rec2.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("after config: expected no CORS for wrong origin, got %q", got)
+	}
+
+	rec3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req3.Header.Set("Origin", "https://img.example.com")
+	engine.ServeHTTP(rec3, req3)
+	if got := rec3.Header().Get("Access-Control-Allow-Origin"); got != "https://img.example.com" {
+		t.Fatalf("after config: expected allowed origin, got %q", got)
+	}
+}
+
+func TestAdminRoutesHaveNoCORSHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	settings := service.NewRuntimeSettingsManager()
+	corsMW := middleware.PublicCORS(settings)
+
+	engine := gin.New()
+	engine.Use(middleware.SecurityHeaders())
+
+	// Public route with CORS
+	engine.GET("/v1/runtime-settings", corsMW, func(c *gin.Context) { c.Status(200) })
+	// Admin route without CORS
+	engine.GET("/admin/status", func(c *gin.Context) { c.Status(200) })
+
+	// Public route should get CORS headers
+	rec1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/runtime-settings", nil)
+	req1.Header.Set("Origin", "https://random.example.com")
+	engine.ServeHTTP(rec1, req1)
+	if got := rec1.Header().Get("Access-Control-Allow-Origin"); got == "" {
+		t.Fatalf("public route should have CORS headers")
+	}
+
+	// Admin route should NOT get CORS headers
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/status", nil)
+	req2.Header.Set("Origin", "https://random.example.com")
+	engine.ServeHTTP(rec2, req2)
+	if got := rec2.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("admin route should have no CORS headers, got %q", got)
 	}
 }
 
