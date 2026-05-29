@@ -73,7 +73,7 @@ func NewCodecWithGenerator(prefix string, secret string, sidGenerator SIDGenerat
 		return nil, err
 	}
 	if strings.TrimSpace(secret) == "" {
-		return nil, errors.New("uid encryption key must not be empty")
+		return nil, errors.New("uid obfuscation key must not be empty (the UID_ENCRYPTION_KEY env var is an obfuscation key, not a cryptographic boundary)")
 	}
 	if sidGenerator == nil {
 		return nil, errors.New("sid generator must not be nil")

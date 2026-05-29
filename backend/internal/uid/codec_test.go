@@ -304,6 +304,96 @@ func TestNewCodecRejectsPrefixesThatExceedLengthBudget(t *testing.T) {
 	}
 }
 
+func TestCodecDecodeSecurityBoundaries(t *testing.T) {
+	codec, err := NewCodecWithGenerator("omeo_", "test-secret", &staticSIDGenerator{values: []int64{12345}}, nil)
+	if err != nil {
+		t.Fatalf("NewCodecWithGenerator returned error: %v", err)
+	}
+
+	validToken, err := codec.Generate()
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		token   string
+		wantErr error // nil means no error expected
+	}{
+		{
+			name:    "valid prefix decode succeeds",
+			token:   validToken,
+			wantErr: nil,
+		},
+		{
+			name:    "invalid prefix (wrong prefix) returns ErrInvalidPrefix",
+			token:   generateTokenWithOtherPrefix(t),
+			wantErr: ErrInvalidPrefix,
+		},
+		{
+			name:    "empty token returns ErrInvalidToken",
+			token:   "",
+			wantErr: ErrInvalidToken,
+		},
+		{
+			name:    "single-char token returns ErrInvalidToken",
+			token:   "0",
+			wantErr: ErrInvalidToken,
+		},
+		{
+			name:    "too-long token returns ErrInvalidToken",
+			token:   strings.Repeat("0", maxPublicUIDLength+1),
+			wantErr: ErrInvalidToken,
+		},
+		{
+			name:    "non-Base62 character in head returns ErrInvalidToken",
+			token:   "!" + validToken[1:],
+			wantErr: ErrInvalidToken,
+		},
+		{
+			name:    "non-Base62 character in body returns ErrInvalidToken",
+			token:   validToken[:2] + "!" + validToken[3:],
+			wantErr: ErrInvalidToken,
+		},
+		{
+			name:    "whitespace-only token returns ErrInvalidToken",
+			token:   "   ",
+			wantErr: ErrInvalidToken,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := codec.Decode(tt.token)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error %v, got nil", tt.wantErr)
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func generateTokenWithOtherPrefix(t *testing.T) string {
+	t.Helper()
+	otherCodec, err := NewCodecWithGenerator("other_", "test-secret", &staticSIDGenerator{values: []int64{12345}}, nil)
+	if err != nil {
+		t.Fatalf("NewCodecWithGenerator for other prefix returned error: %v", err)
+	}
+	token, err := otherCodec.Generate()
+	if err != nil {
+		t.Fatalf("Generate with other prefix returned error: %v", err)
+	}
+	return token
+}
+
 func mustDecodeCiphertext(t *testing.T, token string) []byte {
 	t.Helper()
 
