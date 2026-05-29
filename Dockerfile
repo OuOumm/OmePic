@@ -6,21 +6,20 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build:backend
 
-# Stage 2: Build Go backend (needs libavif for AVIF conversion)
+# Stage 2: Build Go backend (nodynamic: pure-Go AVIF, zero C deps)
 FROM golang:1.25-alpine AS backend-build
-RUN apk add --no-cache libavif-dev
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY --from=frontend-build /app/backend/web ./web/
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -trimpath -o /server ./cmd/server/
+RUN CGO_ENABLED=0 go build -tags nodynamic -ldflags="-s -w" -trimpath -o /server ./cmd/server/
 
-# Stage 3: Minimal runtime (~12 MB)
-FROM alpine:3.21
-RUN apk add --no-cache ca-certificates libavif
-COPY --from=backend-build /server /usr/local/bin/server
+# Stage 3: Minimal runtime — scratch, ~0 MB overhead
+FROM scratch
+COPY --from=backend-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=backend-build /server /opt/omepic/server
 COPY --from=backend-build /app/web /opt/omepic/web
 WORKDIR /opt/omepic
 EXPOSE 8080
-ENTRYPOINT ["server"]
+ENTRYPOINT ["./server"]
