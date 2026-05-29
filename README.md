@@ -388,6 +388,10 @@ Dockerfile 使用多阶段构建：前端 Node.js 构建 → Go 后端编译 →
 
 > lilliput 目前仅支持 Linux 和 macOS，不支持 Windows。Windows 本地开发时自动回退到 gen2brain/avif（纯 Go，无需 CGO），但只支持静态图片。
 
+## 🙏 致谢
+
+感谢 [Linux.do](https://linux.do/) 社区的支持与反馈。
+
 ## 📄 许可证
 
 [MIT](LICENSE) © ououmm

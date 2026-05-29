@@ -389,6 +389,10 @@ The Dockerfile uses multi-stage builds: frontend Node.js build → Go backend co
 
 > lilliput currently only supports Linux and macOS, not Windows. On Windows, the system falls back to gen2brain/avif (pure Go, no CGO) which only supports static images.
 
+## 🙏 Acknowledgements
+
+Thanks to the [Linux.do](https://linux.do/) community for their support and feedback.
+
 ## 📄 License
 
 [MIT](../../LICENSE) © ououmm
