@@ -18,16 +18,29 @@
 - **MD5 去重** — 相同内容的上传复用已有物理文件，按存储实例作用域隔离
 - **多后端存储** — 支持本地文件系统、S3 兼容服务和 WebDAV，运行时动态管理，无需重启
 - **管理后台** — JWT 保护的管理面板，支持图片管理、存储配置和系统设置
+- **凭据加密存储** — S3/WebDAV 等敏感凭据使用 AES-256-GCM 加密后存入 SQLite，纵深防御
+- **JWT 会话撤销** — 修改密码时自动撤销所有已签发的管理员 JWT，降低泄漏窗口
 - **IP 封禁与滥用监控** — 封禁恶意 IP，按 IP 和 Token 追踪上传量
 - **公告系统** — 发布带时间窗口和优先级的公告
 - **运行时配置** — 站点名称、上传限制、MIME 白名单、AVIF 参数、Cloudflare purge、维护模式、速率限制，全部可在后台 UI 中编辑
-- **Token 认证** — 无需注册账户，客户端生成的 Token 标识上传者并授权删除操作
+- **Token 认证** — 无需注册账户，客户端使用 Web Crypto API 生成的 Token 标识上传者并授权删除操作
 - **拖拽 / 粘贴 / URL 上传** — 灵活的上传方式，上传历史通过 IndexedDB 本地持久化
 - **单端口部署** — 生产构建将前端静态资源复制到 `backend/web/`，单一端口同时提供 API 和前端
 
-## 📸 演示 / 截图
+## 🔒 安全特性
 
-> 截图待补充
+| 特性 | 说明 |
+|------|------|
+| **强制密钥配置** | `JWT_SECRET`、`UID_ENCRYPTION_KEY`、`SECRET_ENCRYPTION_KEY` 缺失或不足 32 字符时服务拒绝启动 |
+| **CORS 分离** | 公开 API 支持 CORS（允许 Origin 由运行时配置热更新），管理 API 严格同源（无 CORS 头） |
+| **CSP 无 unsafe-inline** | 前端 HTML 页面 CSP 移除 `unsafe-inline`，降低 XSS 阻断能力 |
+| **JWT 短 TTL** | 管理员 JWT 有效期 4 小时（原 24 小时），降低泄漏风险 |
+| **JWT 撤销** | 修改密码后旧 JWT 立即失效（Redis `admin_revoked_before` 时间戳比对） |
+| **Body 限制** | 上传路由在 multipart 解析前设置 `MaxBytesReader`，超大请求在 HTTP 层即被拒绝 |
+| **安全头** | 全局 `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`；前端额外 `X-Frame-Options: DENY`；API 额外 `Cache-Control: no-store` |
+| **限流 fail-closed** | 上传和登录接口 Redis 故障时拒绝请求，不做本机兜底；普通 GET fail-open |
+| **凭据加密** | S3 密钥、WebDAV 密码等敏感字段 AES-256-GCM 信封加密写入 SQLite |
+| **X-Token 安全** | 前端使用 `crypto.randomUUID` / `crypto.getRandomValues` 生成 Token，无 `Math.random` 降级 |
 
 ## 🛠️ 技术栈
 
@@ -35,11 +48,12 @@
 |------|------|------|
 | 后端 | **Go** + [Gin](https://github.com/gin-gonic/gin) | HTTP API、中间件、路由 |
 | 数据库 | **SQLite** (modernc.org/sqlite) | 元数据和配置持久化（纯 Go，无 CGO） |
-| 缓存 | **Redis** (go-redis) | UID/MD5 缓存、去重查询 |
+| 缓存 | **Redis** (go-redis) | UID/MD5 缓存、去重查询、JWT 撤销、限流计数 |
 | 图片转换 | [gen2brain/avif](https://github.com/gen2brain/avif) | AVIF 编码（纯 Go） |
 | 前端 | **Svelte 5** + **SvelteKit 2** + **Tailwind CSS** | SPA，静态适配器导出 |
-| ID 生成 | Snowflake + XOR + Base62 | 不透明、URL 安全的公开 UID（XOR 混淆，不作为强加密保证） |
-| 认证 | [golang-jwt/v5](https://github.com/golang-jwt/jwt) | 管理员 JWT 会话 |
+| ID 生成 | Snowflake + XOR + Base62 | 不透明、URL 安全的公开 UID（XOR 混淆密钥，非密码学安全边界） |
+| 认证 | [golang-jwt/v5](https://github.com/golang-jwt/jwt) | 管理员 JWT 会话 + Redis 撤销 |
+| 凭据加密 | AES-256-GCM (crypto/aes) | 存储配置敏感字段信封加密 |
 | S3 | [minio-go/v7](https://github.com/minio/minio-go) | S3 兼容对象存储 |
 | WebDAV | [gowebdav](https://github.com/studio-b12/gowebdav) | WebDAV 存储客户端 |
 
@@ -55,7 +69,8 @@
                      ▼
 ┌─────────────────────────────────────────────────┐
 │            Gin HTTP 路由（Go）                   │
-│   中间件（认证 / 速率限制 / 日志）               │
+│   中间件（安全头 / CORS分离 / 认证 /            │
+│   速率限制 / Body限制 / JWT撤销 / 日志）        │
 │   处理器 · 前端静态资源托管                      │
 └───────┬──────────┬──────────┬───────────────────┘
         ▼          ▼          ▼
@@ -67,15 +82,19 @@
   ┌──────────┐          ┌──────────────────┐
   │  SQLite  │          │ 本地 / S3 /      │
   │ （仓储） │          │ WebDAV 提供者    │
-  └────┬─────┘          └──────────────────┘
+  │ + 凭据   │          │ （凭据加密存储） │
+  │  加密层  │          └──────────────────┘
+  └────┬─────┘
        ▼
   ┌──────────┐
   │  Redis   │
-  │ （缓存） │
+  │ （缓存 + │
+  │  JWT撤销 │
+  │  限流）  │
   └──────────┘
 ```
 
-**请求流向**：浏览器 → Gin 路由（中间件鉴权/限流） → 业务服务层 → SQLite 持久化 + Redis 缓存 + 存储后端写入
+**请求流向**：浏览器 → Gin 路由（安全头 → CORS分离 → Body限制 → 鉴权/限流 → JWT撤销检查） → 业务服务层 → SQLite 持久化（凭据加密） + Redis 缓存 + 存储后端写入
 
 ## 🚀 快速开始
 
@@ -94,31 +113,37 @@ cd OmePic
 
 ### 环境变量配置
 
-复制示例文件并按需编辑：
+复制示例文件并填写所有密钥：
 
 ```bash
-cp .env.example .env
+cp .env.production.example .env
 ```
 
-必需变量（完整列表见[环境变量](#-环境变量)）：
+**必填密钥**（缺失或不足 32 字符时服务拒绝启动）：
 
 ```env
-HTTP_ADDR=:8080
-DATABASE_PATH=data/omepic.db
-REDIS_URL=redis://localhost:6379/0
-UID_PREFIX=omeo_
-UID_ENCRYPTION_KEY=change-me-uid-secret
-JWT_SECRET=change-me-too
+JWT_SECRET=            # JWT 签名密钥，≥32 字符
+UID_ENCRYPTION_KEY=    # UID XOR 混淆密钥（非密码学安全边界），≥32 字符
+SECRET_ENCRYPTION_KEY= # AES-256-GCM 凭据加密密钥，恰好 32 字节
 ```
 
-### 后端启动
+完整变量列表见[环境变量](#-环境变量)。
+
+### 方式一：直接运行
 
 ```bash
 cd backend
 go run ./cmd/server
 ```
 
-服务启动在 `HTTP_ADDR`（默认 `:8080`），SQLite 数据库和本地存储目录自动创建。
+### 方式二：Docker Compose
+
+```bash
+# 编辑 .env 填入所有必填密钥后
+docker compose up -d
+```
+
+服务在 `http://localhost:8080` 启动，Redis 健康检查后自动连接。
 
 ### 前端开发启动
 
@@ -157,39 +182,41 @@ go run ./cmd/server
 | `DATABASE_PATH` | 否 | `data/omepic.db` | SQLite 数据库文件路径 |
 | `REDIS_URL` | 否 | `redis://localhost:6379/0` | Redis 连接地址 |
 | `UID_PREFIX` | 否 | `omeo_` | UID 混淆前的明文前缀（尾部下划线自动规范化） |
-| `UID_ENCRYPTION_KEY` | **是** | `change-me-uid-secret` | UID XOR 混淆密钥（为空时回退到 `JWT_SECRET`；非强加密） |
-| `JWT_SECRET` | **是** | `change-me-too` | 签发管理员 JWT 的密钥 |
+| `UID_ENCRYPTION_KEY` | **是** | — | UID XOR 混淆密钥（≥32 字符；命名保留 "encryption" 部署兼容，实际为混淆而非加密） |
+| `JWT_SECRET` | **是** | — | 管理员 JWT 签名密钥（≥32 字符；TTL 4 小时） |
+| `SECRET_ENCRYPTION_KEY` | **是** | — | AES-256-GCM 凭据加密密钥（恰好 32 字节；用于加密 SQLite 中 S3/WebDAV 等敏感凭据） |
+| `PUBLIC_BASE_URL` | 生产必填 | — | 公开访问 URL（生产环境缺填则启动失败） |
+| `APP_ENV` | 否 | — | 设为 `production` 启用严格检查；空或 `development` 为宽松模式 |
 
 > 其他所有设置（存储、上传限制、AVIF 参数、Cloudflare purge、维护模式、速率限制）均通过管理后台运行时配置，无需设置环境变量。
 
 ## 📡 API 概览
 
-### 公开端点
+### 公开端点（CORS 支持，允许 Origin 由运行时配置热更新）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/health` | 健康检查（SQLite + Redis） |
 | `GET` | `/v1/runtime-settings` | 获取公开的站点/上传配置 |
 | `GET` | `/v1/announcements` | 获取已发布的公告 |
-| `POST` | `/v1/image` | 上传图片（需要 `X-Token`） |
-| `GET` | `/i/:uid.avif` | 获取图片（返回 AVIF 字节） |
+| `POST` | `/v1/image` | 上传图片（需要 `X-Token`；Body 限制 `maxUploadSize + 1 MiB`） |
+| `GET` | `/i/:uid.avif` | 获取图片（返回 AVIF 字节；长缓存策略） |
 | `DELETE` | `/i/:uid.avif` | 删除图片（需要与上传时相同的 `X-Token`） |
 
-> 存储选项通过 `GET /v1/runtime-settings` 的 `storage.options` 返回，不再单独暴露 `/v1/storage-options`。
+> 存储选项通过 `GET /v1/runtime-settings` 的 `storage.options` 返回。
 
-### 管理端点
+### 管理端点（严格同源，无 CORS 头；需要 JWT Bearer 认证）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/admin/login` | 管理员认证，返回 JWT |
-| `PUT` | `/admin/password` | 修改管理员密码 |
+| `POST` | `/admin/login` | 管理员认证，返回 JWT（TTL 4h） |
+| `PUT` | `/admin/password` | 修改密码（同时撤销所有旧 JWT） |
 | `GET` | `/admin/status` | 全局上传统计 |
 | `GET` | `/admin/images` | 分页图片列表（支持搜索） |
 | `DELETE` | `/admin/images` | 按 UID 批量删除图片 |
-| `GET` | `/admin/system-settings` | 获取运行时 + 只读设置 |
+| `GET` | `/admin/system-settings` | 获取运行时 + 只读设置（含密钥配置状态） |
 | `PUT` | `/admin/system-settings` | 更新运行时设置 |
 | `GET` | `/admin/config` | 获取存储目录 |
-| `POST` | `/admin/config` | 更新存储配置（兼容路由） |
 | `POST` | `/admin/config/storage-instances` | 创建存储实例 |
 | `PUT` | `/admin/config/storage-instances/:storageKey` | 更新存储实例 |
 | `DELETE` | `/admin/config/storage-instances/:storageKey` | 删除存储实例 |
@@ -204,8 +231,6 @@ go run ./cmd/server
 | `GET/POST/PUT/DELETE` | `/admin/announcements` | 管理公告 |
 | `POST` | `/admin/cloudflare/purge-image-cache` | 手动清理单个 Cloudflare 图片 URL 缓存 |
 
-> 完整 API 文档：[docs/wiki/api-reference.md](docs/wiki/api-reference.md)
-
 ## 💾 存储后端
 
 OmePic 支持三种存储后端，通过管理后台运行时配置，无需重启：
@@ -219,6 +244,7 @@ OmePic 支持三种存储后端，通过管理后台运行时配置，无需重�
 - 每种后端可创建多个实例（如两个 S3 存储桶）
 - 上传时可选让用户选择存储目标
 - 每张图片记录其 `storage_key`，不允许对已使用的存储实例切换后端类型
+- **S3/WebDAV 等敏感凭据**（Access Key、Secret Key、密码）在 SQLite 中以 AES-256-GCM 加密存储
 
 ## ⚙️ 运行时配置
 
@@ -228,15 +254,16 @@ OmePic 支持三种存储后端，通过管理后台运行时配置，无需重�
 |--------|--------|------|
 | 站点名称 | `OmePic` | UI 和页面标题中显示 |
 | 站点标语 | `上传、分享和管理图片` | 浏览器标题元数据 |
-| 公开 URL | *（自动）* | 覆盖公开访问地址（默认使用请求 Host） |
-| Cloudflare purge | `false` | 可选清理单个图片 URL 缓存（Zone ID / API Token / Base URL 为后台运行时配置） |
+| 公开 URL | *（必填）* | 生产环境必须配置；覆盖公开访问地址 |
+| 真实 IP 来源 | `remote-addr` | 反向代理后解析真实 IP 的方式（可选 `x-forwarded-for`、`x-real-ip`、`cf-connecting-ip`） |
+| Cloudflare purge | `false` | 可选清理单个图片 URL 缓存 |
 | 最大上传大小 | `20` MB | 单文件上传限制 |
 | 允许的 MIME 类型 | `image/jpeg, png, gif, webp, avif` | 接受的上传格式 |
 | AVIF 质量 | `60` | 编码器质量（0=最低，100=无损） |
 | AVIF 速度 | `8` | 编码器速度（0=最慢/最佳压缩，10=最快） |
-| 最大图片像素 | `40,000,000` | 解码后像素上限，防止超大图片耗尽资源 |
-| AVIF 最大并发 | `2` | 后端 AVIF 转换并发上限，公开运行时设置也会返回给前端队列参考 |
-| AVIF 转换超时 | `30` 秒 | 单张图片转换超时时间 |
+| 最大图片像素 | `40,000,000` | 解码后像素上限 |
+| AVIF 最大并发 | `2` | 后端 AVIF 转换并发上限 |
+| AVIF 转换超时 | `30` 秒 | 单张图片转换超时 |
 | 允许选择存储 | `true` | 允许上传者选择存储目标 |
 | 维护模式 | `false` | 开启后阻止上传并显示自定义消息 |
 | 速率限制 | `120 次/分钟` | 通用 API 速率限制 |
@@ -247,47 +274,43 @@ OmePic 支持三种存储后端，通过管理后台运行时配置，无需重�
 ```
 OmePic/
 ├── backend/
-│   ├── cmd/server/              # 启动入口
+│   ├── cmd/server/              # 启动入口 + 密钥强制校验
 │   ├── internal/
-│   │   ├── auth/                # JWT 生成与验证
+│   │   ├── auth/                # JWT 生成/验证 + Redis 撤销检查
 │   │   ├── cache/               # Redis 客户端与预热
 │   │   ├── config/              # 环境变量配置加载
 │   │   ├── http/
-│   │   │   ├── clientip/        # 客户端 IP 解析
-│   │   │   ├── handler/         # HTTP 处理器（图片、管理、健康检查）
-│   │   │   ├── middleware/      # 认证、速率限制、日志
+│   │   │   ├── clientip/        # 客户端 IP 解析（运行时热更新）
+│   │   │   ├── handler/         # HTTP 处理器
+│   │   │   ├── middleware/      # 安全头、CORS分离、Body限制、认证、速率限制
 │   │   │   └── router/          # Gin 路由注册
-│   │   ├── iputil/              # IP 哈希与脱敏工具
+│   │   ├── iputil/              # IP 哈希与脱敏
 │   │   ├── model/               # 数据结构
-│   │   ├── ratelimit/           # 速率限制器
+│   │   ├── ratelimit/           # 速率限制器（Redis fail-closed/open）
 │   │   ├── repository/          # SQLite 数据访问层
 │   │   ├── response/            # JSON 响应辅助函数
-│   │   ├── service/             # 业务逻辑层
+│   │   ├── secrets/             # AES-256-GCM 信封加密/解密
+│   │   ├── service/             # 业务逻辑层（凭据加密写入/解密读取）
 │   │   ├── storage/             # 本地 / S3 / WebDAV 提供者
-│   │   └── uid/                 # UID 编码（Snowflake + XOR + Base62）
+│   │   └── uid/                 # UID 编码（Snowflake + XOR + Base62 混淆）
 │   ├── web/                     # 生产前端资源（构建生成）
 │   └── data/                    # 运行时数据（SQLite、图片）
 ├── frontend/
 │   ├── src/
 │   │   ├── lib/
 │   │   │   ├── api.ts           # API 客户端
-│   │   │   ├── components/      # UI 组件（studio/）
+│   │   │   ├── client-token.ts  # X-Token 生成（Web Crypto API，无 Math.random）
+│   │   │   ├── components/      # UI 组件
 │   │   │   ├── indexeddb/       # 上传历史持久化
 │   │   │   ├── stores/          # Svelte runes 状态管理
 │   │   │   ├── types/           # TypeScript 类型定义
-│   │   │   └── utils/           # 工具函数（剪贴板、Token、i18n）
+│   │   │   └── i18n.ts          # 国际化
 │   │   └── routes/              # SvelteKit 页面
-│   │       ├── +page.svelte     # 首页 / 上传
-│   │       ├── admin/           # 管理后台
-│   │       └── history/         # 上传历史
 │   └── package.json
-└── docs/
-    ├── wiki/
-    │   ├── api-reference.md
-    │   ├── architecture-overview.md
-    │   └── CODE_WIKI.md
-    └── language/
-        └── README_EN.md
+├── .github/workflows/ci.yml     # CI 流水线
+├── Dockerfile                   # 多阶段构建
+├── docker-compose.yml           # Docker Compose 配置
+└── .env.production.example      # 生产环境变量示例
 ```
 
 ## 🧑‍💻 开发指南
@@ -297,17 +320,14 @@ OmePic/
 ```bash
 cd backend
 
-# 启动服务
+# 启动服务（需先配置 .env 中的必填密钥）
 go run ./cmd/server
 
 # 运行所有测试
 go test ./...
 
-# 格式检查
-gofmt -l .
-
-# 运行特定测试
-go test ./internal/service/ -run TestUpload
+# Vet 检查
+go vet ./...
 ```
 
 ### 前端
@@ -331,15 +351,31 @@ npm run test
 npm run build:backend
 ```
 
-### 完整验证
+### 完整验证（与 CI 流水线一致）
 
 ```bash
 # 后端
-cd backend && go test ./...
+cd backend && go vet ./... && go test ./... && go build ./...
 
 # 前端
 cd frontend && npm run lint && npm run typecheck && npm run test && npm run build:backend
 ```
+
+## 🐳 Docker 部署
+
+```bash
+# 1. 复制并编辑环境变量
+cp .env.production.example .env
+# 必须填写: JWT_SECRET, UID_ENCRYPTION_KEY, SECRET_ENCRYPTION_KEY, PUBLIC_BASE_URL
+
+# 2. 启动
+docker compose up -d
+
+# 3. 查看日志
+docker compose logs -f omepic
+```
+
+Dockerfile 使用多阶段构建：前端 Node.js 构建 → Go 后端编译 → Alpine 运行时镜像。
 
 ## 📄 许可证
 

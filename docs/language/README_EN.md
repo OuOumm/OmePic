@@ -16,16 +16,29 @@
 - **MD5 deduplication** — identical uploads reuse the existing physical file, scoped per storage instance
 - **Multi-backend storage** — local filesystem, S3-compatible, and WebDAV, managed at runtime without restarts
 - **Admin dashboard** — JWT-protected panel for image management, storage configuration, and system settings
+- **Credential encryption** — S3/WebDAV secrets are AES-256-GCM encrypted in SQLite for defense-in-depth
+- **JWT session revocation** — changing the admin password invalidates all previously issued JWTs, reducing the leak window
 - **IP banning & abuse monitoring** — block abusive IPs, track upload volume by IP and token
 - **Announcements** — publish time-windowed announcements with priority levels
 - **Runtime configuration** — site name, upload limits, MIME allowlist, AVIF parameters, Cloudflare purge, maintenance mode, and rate limits — all editable from the admin UI
-- **Token-based auth** — no user accounts; client-generated tokens identify uploaders and authorize deletes
+- **Token-based auth** — no user accounts; client-generated tokens (Web Crypto API, no `Math.random` fallback) identify uploaders and authorize deletes
 - **Drag & drop / paste / URL upload** — flexible upload UX with upload history persisted in IndexedDB
 - **Single-port deployment** — production build copies static frontend assets into `backend/web/`
 
-## 📸 Demo / Screenshots
+## 🔒 Security Features
 
-> Screenshots coming soon
+| Feature | Description |
+|---------|-------------|
+| **Enforced secret configuration** | `JWT_SECRET`, `UID_ENCRYPTION_KEY`, `SECRET_ENCRYPTION_KEY` must be ≥32 chars; server refuses to start if any is missing |
+| **CORS separation** | Public APIs support CORS (allowed origins hot-updated from runtime settings); admin APIs enforce same-origin (no CORS headers) |
+| **CSP without unsafe-inline** | Frontend HTML pages use CSP that removes `unsafe-inline`, reducing XSS attack surface |
+| **Short JWT TTL** | Admin JWT validity is 4 hours (previously 24), reducing leak window |
+| **JWT revocation** | Changing password invalidates all old JWTs via Redis `admin_revoked_before` timestamp comparison |
+| **Body size limit** | Upload routes set `MaxBytesReader` before multipart parsing; oversized requests are rejected at the HTTP layer |
+| **Security headers** | Global `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`; frontend also gets `X-Frame-Options: DENY`; API gets `Cache-Control: no-store` |
+| **Rate-limit fail-closed** | Upload and login endpoints reject requests when Redis is unavailable; normal GET requests fail-open |
+| **Credential encryption** | S3 keys, WebDAV passwords and other secrets are AES-256-GCM envelope-encrypted before SQLite storage |
+| **X-Token security** | Tokens generated with `crypto.randomUUID` / `crypto.getRandomValues`; no `Math.random` fallback — unsupported browsers throw an error |
 
 ## 🛠️ Tech Stack
 
@@ -33,11 +46,12 @@
 |-------|-----------|---------|
 | Backend | **Go** + [Gin](https://github.com/gin-gonic/gin) | HTTP API, middleware, routing |
 | Database | **SQLite** (modernc.org/sqlite) | Persistent metadata & config (pure Go, no CGO) |
-| Cache | **Redis** (go-redis) | UID/MD5 cache, deduplication lookups |
+| Cache | **Redis** (go-redis) | UID/MD5 cache, deduplication, JWT revocation, rate limiting |
 | Image | [gen2brain/avif](https://github.com/gen2brain/avif) | AVIF encoding (pure Go) |
 | Frontend | **Svelte 5** + **SvelteKit 2** + **Tailwind CSS** | SPA with static adapter export |
-| ID | Snowflake + XOR + Base62 | Opaque, URL-safe public UIDs (XOR obfuscation, not strong encryption) |
-| Auth | [golang-jwt/v5](https://github.com/golang-jwt/jwt) | Admin JWT sessions |
+| ID | Snowflake + XOR + Base62 | Opaque, URL-safe public UIDs (XOR obfuscation key, not a cryptographic boundary) |
+| Auth | [golang-jwt/v5](https://github.com/golang-jwt/jwt) | Admin JWT sessions + Redis revocation |
+| Encryption | AES-256-GCM (crypto/aes) | Envelope encryption for storage credentials in DB |
 | S3 | [minio-go/v7](https://github.com/minio/minio-go) | S3-compatible object storage |
 | WebDAV | [gowebdav](https://github.com/studio-b12/gowebdav) | WebDAV storage client |
 
@@ -53,7 +67,9 @@
                      ▼
 ┌─────────────────────────────────────────────────┐
 │            Gin HTTP Router (Go)                  │
-│   Middleware (Auth / Rate Limit / Logging)        │
+│   Middleware (Security Headers / CORS Split /    │
+│   Body Limit / Auth / Rate Limit /               │
+│   JWT Revocation / Logging)                      │
 │   Handlers · Frontend Static Serving             │
 └───────┬──────────┬──────────┬───────────────────┘
         ▼          ▼          ▼
@@ -64,14 +80,22 @@
        ▼                        ▼
   ┌──────────┐          ┌──────────────────┐
   │  SQLite  │          │ Local / S3 /     │
-  │  (repo)  │          │ WebDAV Provider  │
-  └────┬─────┘          └──────────────────┘
-       ▼
+  │  (repo + │          │ WebDAV Provider  │
+  │  cred    │          │ (credentials     │
+  │  encrypt)│          │  encrypted at    │
+  └────┬─────┘          │  rest)           │
+       ▼                └──────────────────┘
   ┌──────────┐
   │  Redis   │
-  │  (cache) │
+  │  (cache +│
+  │  JWT     │
+  │  revoke +│
+  │  rate    │
+  │  limit)  │
   └──────────┘
 ```
+
+**Request flow**: Browser → Gin router (security headers → CORS split → body limit → auth/rate limit → JWT revocation check) → service layer → SQLite persistence (credential encryption) + Redis cache + storage backend write
 
 ## 🚀 Quick Start
 
@@ -90,31 +114,37 @@ cd OmePic
 
 ### Environment Variables
 
-Copy the example and edit as needed:
+Copy the example and fill in all required secrets:
 
 ```bash
-cp .env.example .env
+cp .env.production.example .env
 ```
 
-Required variables (see [Environment Variables](#-environment-variables) for full list):
+**Required secrets** (server refuses to start if any is missing or <32 chars):
 
 ```env
-HTTP_ADDR=:8080
-DATABASE_PATH=data/omepic.db
-REDIS_URL=redis://localhost:6379/0
-UID_PREFIX=omeo_
-UID_ENCRYPTION_KEY=change-me-uid-secret
-JWT_SECRET=change-me-too
+JWT_SECRET=            # JWT signing key, ≥32 characters
+UID_ENCRYPTION_KEY=    # UID XOR obfuscation key (not a cryptographic boundary), ≥32 characters
+SECRET_ENCRYPTION_KEY= # AES-256-GCM credential encryption key, exactly 32 bytes
 ```
 
-### Backend
+See [Environment Variables](#-environment-variables) for the full list.
+
+### Option 1: Direct Run
 
 ```bash
 cd backend
 go run ./cmd/server
 ```
 
-The server starts on `HTTP_ADDR` (default `:8080`). SQLite database and local storage are created automatically.
+### Option 2: Docker Compose
+
+```bash
+# Edit .env with all required secrets, then:
+docker compose up -d
+```
+
+The server starts at `http://localhost:8080` after Redis health checks pass.
 
 ### Frontend (Development)
 
@@ -153,39 +183,41 @@ go run ./cmd/server
 | `DATABASE_PATH` | No | `data/omepic.db` | Path to the SQLite database file |
 | `REDIS_URL` | No | `redis://localhost:6379/0` | Redis connection URL |
 | `UID_PREFIX` | No | `omeo_` | Plaintext prefix for obfuscated UIDs (trailing underscores normalized) |
-| `UID_ENCRYPTION_KEY` | **Yes** | `change-me-uid-secret` | XOR secret for UID obfuscation (falls back to `JWT_SECRET` if empty; not strong encryption) |
-| `JWT_SECRET` | **Yes** | `change-me-too` | Secret key for signing admin JWT tokens |
+| `UID_ENCRYPTION_KEY` | **Yes** | — | XOR obfuscation key for UID encoding (≥32 chars; name kept as "encryption" for deployment compat; this is NOT a cryptographic boundary) |
+| `JWT_SECRET` | **Yes** | — | Secret for signing admin JWT tokens (≥32 chars; TTL 4 hours) |
+| `SECRET_ENCRYPTION_KEY` | **Yes** | — | AES-256-GCM key for encrypting storage credentials in SQLite (exactly 32 bytes) |
+| `PUBLIC_BASE_URL` | Production | — | Public-facing URL (required in production; server fails to start if unset) |
+| `APP_ENV` | No | — | Set to `production` for strict checks; empty or `development` for relaxed mode |
 
 > All other settings (storage, upload limits, AVIF parameters, Cloudflare purge, maintenance mode, rate limits) are managed at runtime through the admin dashboard — no environment variables needed.
 
 ## 📡 API Overview
 
-### Public Endpoints
+### Public Endpoints (CORS supported; allowed origins hot-updated from runtime settings)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check (SQLite + Redis) |
 | `GET` | `/v1/runtime-settings` | Public site/upload configuration |
 | `GET` | `/v1/announcements` | Active published announcements |
-| `POST` | `/v1/image` | Upload image (requires `X-Token`) |
-| `GET` | `/i/:uid.avif` | Serve image (returns AVIF bytes) |
+| `POST` | `/v1/image` | Upload image (requires `X-Token`; body limited to `maxUploadSize + 1 MiB`) |
+| `GET` | `/i/:uid.avif` | Serve image (returns AVIF bytes; long cache policy) |
 | `DELETE` | `/i/:uid.avif` | Delete image (requires same `X-Token` as upload) |
 
-> Storage options are returned by `GET /v1/runtime-settings` as `storage.options`; `/v1/storage-options` is not a separate endpoint.
+> Storage options are returned by `GET /v1/runtime-settings` as `storage.options`.
 
-### Admin Endpoints
+### Admin Endpoints (strict same-origin; no CORS headers; requires JWT Bearer auth)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/admin/login` | Authenticate, returns JWT |
-| `PUT` | `/admin/password` | Change admin password |
+| `POST` | `/admin/login` | Authenticate, returns JWT (TTL 4h) |
+| `PUT` | `/admin/password` | Change password (also revokes all existing JWTs) |
 | `GET` | `/admin/status` | Global upload statistics |
 | `GET` | `/admin/images` | Paginated image list with search |
 | `DELETE` | `/admin/images` | Batch delete images by UID |
-| `GET` | `/admin/system-settings` | Get runtime + readonly settings |
+| `GET` | `/admin/system-settings` | Get runtime + readonly settings (includes secret configuration status) |
 | `PUT` | `/admin/system-settings` | Update runtime settings |
 | `GET` | `/admin/config` | Get storage catalog |
-| `POST` | `/admin/config` | Update storage config (compat) |
 | `POST` | `/admin/config/storage-instances` | Create storage instance |
 | `PUT` | `/admin/config/storage-instances/:storageKey` | Update storage instance |
 | `DELETE` | `/admin/config/storage-instances/:storageKey` | Delete storage instance |
@@ -200,8 +232,6 @@ go run ./cmd/server
 | `GET/POST/PUT/DELETE` | `/admin/announcements` | Manage announcements |
 | `POST` | `/admin/cloudflare/purge-image-cache` | Purge one Cloudflare image URL cache entry |
 
-> Full API reference: [docs/wiki/api-reference.md](../wiki/api-reference.md)
-
 ## 💾 Storage Backends
 
 OmePic supports three storage backends, configurable at runtime through the admin dashboard:
@@ -215,6 +245,7 @@ OmePic supports three storage backends, configurable at runtime through the admi
 - Multiple instances of each backend can coexist (e.g., two S3 buckets)
 - Uploads can optionally let the user choose a storage target
 - Each image stores its `storage_key` — switching a backend type for an in-use instance is blocked
+- **Sensitive credentials** (S3 access/secret keys, WebDAV passwords) are AES-256-GCM encrypted in SQLite
 
 ## ⚙️ Runtime Settings
 
@@ -223,15 +254,16 @@ All runtime settings are managed from the admin dashboard (`/admin → Settings`
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Site Name | `OmePic` | Displayed in UI and page title |
-| Site Tagline | `上传、分享和管理图片` | Browser title metadata |
-| Public Base URL | *(auto)* | Override public URL (defaults to request Host) |
-| Cloudflare purge | `false` | Optional single-image URL cache purge (Zone ID / API Token / Base URL are admin runtime settings) |
+| Site Tagline | `Upload, share, and manage images` | Browser title metadata |
+| Public Base URL | *(required)* | Must be configured in production; overrides the public URL |
+| Real IP Source | `remote-addr` | How to resolve real client IP behind proxies (`x-forwarded-for`, `x-real-ip`, `cf-connecting-ip`, or `remote-addr`) |
+| Cloudflare purge | `false` | Optional single-image URL cache purge |
 | Max Upload Size | `20` MB | Per-file upload limit |
 | Allowed MIME Types | `image/jpeg, png, gif, webp, avif` | Accepted upload formats |
 | AVIF Quality | `60` | Encoder quality (0=worst, 100=lossless) |
 | AVIF Speed | `8` | Encoder speed (0=slowest/best compression, 10=fastest) |
-| Max Image Pixels | `40,000,000` | Decoded pixel limit to prevent oversized images from exhausting resources |
-| AVIF Max Concurrency | `2` | Backend AVIF conversion concurrency limit, also exposed in public runtime settings for frontend queue guidance |
+| Max Image Pixels | `40,000,000` | Decoded pixel limit to prevent oversized images |
+| AVIF Max Concurrency | `2` | Backend AVIF conversion concurrency limit |
 | AVIF Conversion Timeout | `30` seconds | Per-image conversion timeout |
 | Allow Storage Selection | `true` | Let uploaders pick storage target |
 | Maintenance Mode | `false` | Block uploads with a custom message |
@@ -243,47 +275,43 @@ All runtime settings are managed from the admin dashboard (`/admin → Settings`
 ```
 OmePic/
 ├── backend/
-│   ├── cmd/server/              # Entry point
+│   ├── cmd/server/              # Entry point + enforced secret validation
 │   ├── internal/
-│   │   ├── auth/                # JWT generation & validation
+│   │   ├── auth/                # JWT generation/validation + Redis revocation check
 │   │   ├── cache/               # Redis client & preheat
 │   │   ├── config/              # Env config loading
 │   │   ├── http/
-│   │   │   ├── clientip/        # Client IP resolution
-│   │   │   ├── handler/         # HTTP handlers (image, admin, health)
-│   │   │   ├── middleware/      # Auth, rate limit, logging
+│   │   │   ├── clientip/        # Client IP resolution (runtime hot-update)
+│   │   │   ├── handler/         # HTTP handlers
+│   │   │   ├── middleware/      # Security headers, CORS split, body limit, auth, rate limit
 │   │   │   └── router/          # Gin route registration
-│   │   ├── iputil/              # IP hashing and masking helpers
+│   │   ├── iputil/              # IP hashing and masking
 │   │   ├── model/               # Data structures
-│   │   ├── ratelimit/           # Rate limiter
+│   │   ├── ratelimit/           # Rate limiter (Redis fail-closed/open)
 │   │   ├── repository/          # SQLite data access
 │   │   ├── response/            # JSON response helpers
-│   │   ├── service/             # Business logic
+│   │   ├── secrets/             # AES-256-GCM envelope encryption/decryption
+│   │   ├── service/             # Business logic (credential encrypt-on-write/decrypt-on-read)
 │   │   ├── storage/             # Local / S3 / WebDAV providers
-│   │   └── uid/                 # UID encoding (Snowflake + XOR + Base62)
+│   │   └── uid/                 # UID encoding (Snowflake + XOR + Base62 obfuscation)
 │   ├── web/                     # Production frontend assets (generated)
 │   └── data/                    # Runtime data (SQLite, images)
 ├── frontend/
 │   ├── src/
 │   │   ├── lib/
 │   │   │   ├── api.ts           # API client
-│   │   │   ├── components/      # UI components (studio/)
+│   │   │   ├── client-token.ts  # X-Token generation (Web Crypto API, no Math.random)
+│   │   │   ├── components/      # UI components
 │   │   │   ├── indexeddb/       # Upload history persistence
 │   │   │   ├── stores/          # Svelte runes stores
 │   │   │   ├── types/           # TypeScript type definitions
-│   │   │   └── utils/           # Helpers (clipboard, token, i18n)
+│   │   │   └── i18n.ts          # Internationalization
 │   │   └── routes/              # SvelteKit pages
-│   │       ├── +page.svelte     # Homepage / upload
-│   │       ├── admin/           # Admin dashboard
-│   │       └── history/         # Upload history
 │   └── package.json
-└── docs/
-    ├── wiki/
-    │   ├── api-reference.md
-    │   ├── architecture-overview.md
-    │   └── CODE_WIKI.md
-    └── language/
-        └── README_EN.md
+├── .github/workflows/ci.yml     # CI pipeline
+├── Dockerfile                   # Multi-stage build
+├── docker-compose.yml           # Docker Compose config
+└── .env.production.example      # Production env example
 ```
 
 ## 🧑‍💻 Development
@@ -293,17 +321,14 @@ OmePic/
 ```bash
 cd backend
 
-# Run server
+# Run server (requires .env with mandatory secrets)
 go run ./cmd/server
 
 # Run all tests
 go test ./...
 
-# Format check
-gofmt -l .
-
-# Run specific test
-go test ./internal/service/ -run TestUpload
+# Vet check
+go vet ./...
 ```
 
 ### Frontend
@@ -327,15 +352,31 @@ npm run test
 npm run build:backend
 ```
 
-### Full Verification
+### Full Verification (matches CI pipeline)
 
 ```bash
 # Backend
-cd backend && go test ./...
+cd backend && go vet ./... && go test ./... && go build ./...
 
 # Frontend
 cd frontend && npm run lint && npm run typecheck && npm run test && npm run build:backend
 ```
+
+## 🐳 Docker Deployment
+
+```bash
+# 1. Copy and edit environment variables
+cp .env.production.example .env
+# Must fill: JWT_SECRET, UID_ENCRYPTION_KEY, SECRET_ENCRYPTION_KEY, PUBLIC_BASE_URL
+
+# 2. Start
+docker compose up -d
+
+# 3. View logs
+docker compose logs -f omepic
+```
+
+The Dockerfile uses multi-stage builds: frontend Node.js build → Go backend compile → Alpine runtime image.
 
 ## 📄 License
 
