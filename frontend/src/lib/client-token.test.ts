@@ -38,4 +38,30 @@ describe('getClientToken', () => {
     expect(getClientToken()).toBe('generated-token');
     expect(storage.setItem).toHaveBeenCalledWith('omepic-client-token', 'generated-token');
   });
+
+  it('throws when Web Crypto API is unavailable', () => {
+    const storage = createStorage();
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('crypto', undefined);
+
+    expect(() => getClientToken()).toThrowError('Web Crypto API is required');
+  });
+
+  it('falls back to getRandomValues when randomUUID is absent', () => {
+    const storage = createStorage();
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('crypto', {
+      getRandomValues: (arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = 0xab;
+        return arr;
+      },
+    });
+
+    const token = getClientToken();
+    // 32 bytes -> 64 hex chars, all 'ab'
+    expect(token).toBe('ab'.repeat(32));
+    expect(storage.setItem).toHaveBeenCalledWith('omepic-client-token', token);
+  });
 });

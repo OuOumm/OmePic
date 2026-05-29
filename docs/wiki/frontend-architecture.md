@@ -55,8 +55,8 @@ frontend/
 │       ├── clipboard.ts       # 剪贴板操作
 │       ├── upload-queue.ts    # 上传队列控制
 │       ├── ui-errors.ts       # UI 错误处理
-│       ├── performance-utils.ts # 性能工具
-│       ├── preferences.ts     # 废弃的偏好设置（旧版）
+│       ├── password-policy.ts # 管理员密码策略提示
+│       ├── preferences.ts     # 兼容 re-export（Token helpers）
 │       ├── components/studio/ # UI 组件
 │       ├── stores/            # Svelte 5 stores (runes)
 │       ├── actions/           # Svelte actions
@@ -139,9 +139,10 @@ let previewRecord = $state<UploadHistoryRecord | null>(null); // 预览
 | **CanvasDropzone.svelte** | 文件拖拽/点击上传区域 |
 | **ImageDataTable.svelte** | 图片数据表格（含复制链接、预览、删除） |
 | **ImagePreviewDialog.svelte** | 图片预览对话框 |
+| **ImageDetailDrawer.svelte** | 管理端图片详情抽屉（删除、IP 详情、封禁） |
 | **ImageSwitchButton.svelte** | 切换视图模式按钮 |
 | **StorageInspector.svelte** | 存储实例选择器 |
-| **StorageInstanceManager.svelte** | 存储实例管理（Admin） |
+| **StorageInstanceManager.svelte** | 存储实例管理与存储健康状态/趋势（Admin） |
 | **MetricStrip.svelte** | 统计数据显示条 |
 | **PageTitle.svelte** | 页面标题组件 |
 | **AnnouncementDialog.svelte** | 公告显示对话框 |
@@ -149,7 +150,7 @@ let previewRecord = $state<UploadHistoryRecord | null>(null); // 预览
 | **ConfirmDialog.svelte** | 确认操作对话框 |
 | **BanIPDialog.svelte** | IP 封禁对话框 |
 | **IPDetailPanel.svelte** | IP 详情面板 |
-| **BlueprintFlow.svelte** | 蓝图流程图组件 |
+| **LineChart.svelte** | 存储健康历史趋势图 |
 | **MarkdownContent.svelte** | Markdown 安全渲染 |
 | **ToastViewport.svelte** | Toast 通知容器 |
 
@@ -180,7 +181,7 @@ class ApiError extends Error {
 |------|------|
 | `getRuntimeSettings()` | `GET /v1/runtime-settings` |
 | `getAnnouncements()` | `GET /v1/announcements` |
-| `deleteImageByUid(uid, token)` | `DELETE /i/:uid` |
+| `deleteImageByUid(uid, token)` | `DELETE /i/:uid.avif` |
 | `uploadImageWithProgress(file, token, onProgress, storageKey?)` | `POST /v1/image` |
 
 ### 管理 API
@@ -204,6 +205,11 @@ class ApiError extends Error {
 | `adminSetDefaultStorage(token, key)` | `POST /admin/config/default` |
 | `adminGetSystemSettings(token)` | `GET /admin/system-settings` |
 | `adminUpdateSystemSettings(token, settings)` | `PUT /admin/system-settings` |
+| `adminPurgeCloudflareImageCache(token, url)` | `POST /admin/cloudflare/purge-image-cache` |
+| `adminGetStorageHealth(token)` | `GET /admin/storage/health` |
+| `adminGetStorageHealthHistory(token, key, since?)` | `GET /admin/storage/:key/health-history` |
+| `adminCheckStorageHealth(token, key)` | `POST /admin/storage/:key/health-check` |
+| `adminCheckAllStorageHealth(token)` | `POST /admin/storage/health-check-all` |
 | `adminGetAnnouncements(token)` | `GET /admin/announcements` |
 | `adminCreateAnnouncement(token, input)` | `POST /admin/announcements` |
 | `adminUpdateAnnouncement(token, id, input)` | `PUT /admin/announcements/:id` |
@@ -221,7 +227,6 @@ class ApiError extends Error {
 preferences:
   - language: 'en' | 'zh'          # 语言
   - theme: 'light' | 'dark' | 'system' # 主题
-  - viewMode: 'grid' | 'list'      # 视图模式
   - adminToken: string | null       # 管理 JWT
   - runtimeSettings: PublicRuntimeSettings | null  # 运行时配置
   - selectedStorageKey: string      # 用户选择的存储实例
@@ -269,13 +274,20 @@ preferences:
 
 - `copyToClipboard(text, lang)`: 复制文本到剪贴板（含反馈 Toast）
 
-### 7.6 UI 错误处理
+### 7.6 Svelte Actions
+
+**路径**: [src/lib/actions/](file:///d:/Works/MyProject/OmePic/frontend/src/lib/actions/)
+
+- `accessible-dialog.ts`: 对话框焦点陷阱、Escape 关闭、销毁时恢复焦点。
+- `viewport-portal.ts`: 将 `fixed inset-0` 模态根节点移动到 `document.body`，避免 history/admin 等嵌套路由容器裁剪遮罩层。
+
+### 7.7 UI 错误处理
 
 **路径**: [src/lib/ui-errors.ts](file:///d:/Works/MyProject/OmePic/frontend/src/lib/ui-errors.ts)
 
 - `errorMessage(err, lang, fallback?)`: 统一错误消息格式化
 
-### 7.7 类型定义
+### 7.8 类型定义
 
 **路径**: [src/lib/types/index.ts](file:///d:/Works/MyProject/OmePic/frontend/src/lib/types/index.ts)
 
@@ -283,10 +295,10 @@ preferences:
 - `UploadResult`, `StorageOption`
 - `AdminStatus`, `AdminImage`, `AdminIPBan`
 - `AdminAbuseOverview`, `AdminAbuseIPRankItem`, `AdminAbuseTokenRankItem`
-- `AdminConfig`, `StorageInstance`, `RuntimeSettings`
+- `AdminConfig`, `StorageInstance`, `RuntimeSettings`, `AdminStorageHealthCheck`
 - `PublicRuntimeSettings`, `AdminSystemSettings`
 - `Announcement`, `UploadHistoryRecord`
-- `Language`, `Theme`, `ViewMode`
+- `Language`, `Theme`, `ViewMode`（类型保留；当前偏好 store 未持久化 viewMode）
 
 ## 8. 构建配置
 
@@ -307,7 +319,7 @@ adapter: adapter({
 
 | 命令 | 说明 |
 |------|------|
-| `npm run dev` | 开发服务器（port 3000） |
+| `npm run dev` | Vite 开发服务器（默认通常为 5173，以终端输出为准） |
 | `npm run build` | Vite 构建 |
 | `npm run build:backend` | 构建并复制到 `backend/web/` |
 | `npm run lint` | ESLint 检查 |

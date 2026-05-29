@@ -46,7 +46,7 @@
 | `DATABASE_PATH`      | `data/omepic.db`           | SQLite 数据库文件路径              |
 | `REDIS_URL`          | `redis://localhost:6379/0` | Redis 连接 URL                     |
 | `UID_PREFIX`         | `omeo_`                    | UID 明文前缀（尾部下划线会规范化） |
-| `UID_ENCRYPTION_KEY` | `change-me-uid-secret`     | UID XOR 加密密钥                   |
+| `UID_ENCRYPTION_KEY` | `change-me-uid-secret`     | UID XOR 混淆密钥（非强加密）       |
 | `JWT_SECRET`         | `change-me-too`            | JWT 签名密钥                       |
 
 存储配置、公开访问基准 URL、上传策略、AVIF 参数、维护模式、限流、管理员密码和 Cloudflare 图片 URL 清理配置均保存在 SQLite。Cloudflare API Token 是 admin-only runtime secret：SQLite 保存真实值，后台读取时返回遮罩值。首次登录或首次修改密码时，如果尚无密码哈希，程序会写入默认 `admin123` 的 bcrypt 哈希；登录后可在管理端设置页修改密码。
@@ -88,7 +88,7 @@ npm install
 npm run dev
 ```
 
-前端将在 `http://localhost:3000` 启动。开发/构建如需覆盖 API 基准地址，使用当前 Vite 配置约定；生产单端口部署默认走同源相对路径。
+前端 Vite 开发服务器通常在 `http://localhost:5173` 启动；实际端口以终端输出为准。开发/构建如需覆盖 API 基准地址，使用当前 Vite 配置约定；生产单端口部署默认走同源相对路径。
 
 ---
 
@@ -96,7 +96,7 @@ npm run dev
 
 ### 4.1 单端口部署（推荐）
 
-前端静态导出并嵌入后端，统一端口提供服务：
+前端静态导出并复制到 `backend/web/`，由后端从文件系统统一端口提供服务：
 
 ```powershell
 # 1. 构建前端并复制到后端
@@ -228,6 +228,8 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ .
+# build:backend 会把 frontend/out 复制到相邻的 /app/backend/web
+RUN mkdir -p /app/backend
 RUN npm run build:backend
 
 # 构建阶段 2: 后端

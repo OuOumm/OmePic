@@ -2,7 +2,7 @@
 
 **A self-hosted image hosting service with automatic AVIF conversion, MD5 deduplication, and multi-backend storage.**
 
-![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)
 ![SvelteKit](https://img.shields.io/badge/SvelteKit-2-FF3E00?logo=svelte&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7+-DC382D?logo=redis&logoColor=white)
@@ -12,16 +12,16 @@
 
 ## ✨ Features
 
-- **Automatic AVIF conversion** — uploads are converted to AVIF with configurable quality (0–100) and speed (0–10)
+- **Automatic AVIF conversion** — uploads are converted to AVIF with configurable quality, speed, concurrency, timeout, and pixel limit
 - **MD5 deduplication** — identical uploads reuse the existing physical file, scoped per storage instance
 - **Multi-backend storage** — local filesystem, S3-compatible, and WebDAV, managed at runtime without restarts
 - **Admin dashboard** — JWT-protected panel for image management, storage configuration, and system settings
 - **IP banning & abuse monitoring** — block abusive IPs, track upload volume by IP and token
 - **Announcements** — publish time-windowed announcements with priority levels
-- **Runtime configuration** — site name, upload limits, MIME allowlist, AVIF parameters, maintenance mode, and rate limits — all editable from the admin UI
+- **Runtime configuration** — site name, upload limits, MIME allowlist, AVIF parameters, Cloudflare purge, maintenance mode, and rate limits — all editable from the admin UI
 - **Token-based auth** — no user accounts; client-generated tokens identify uploaders and authorize deletes
 - **Drag & drop / paste / URL upload** — flexible upload UX with upload history persisted in IndexedDB
-- **Single-port deployment** — production build compiles frontend into the Go binary
+- **Single-port deployment** — production build copies static frontend assets into `backend/web/`
 
 ## 📸 Demo / Screenshots
 
@@ -36,7 +36,7 @@
 | Cache | **Redis** (go-redis) | UID/MD5 cache, deduplication lookups |
 | Image | [gen2brain/avif](https://github.com/gen2brain/avif) | AVIF encoding (pure Go) |
 | Frontend | **Svelte 5** + **SvelteKit 2** + **Tailwind CSS** | SPA with static adapter export |
-| ID | Snowflake + XOR + Base62 | Opaque, URL-safe, unpredictable UIDs |
+| ID | Snowflake + XOR + Base62 | Opaque, URL-safe public UIDs (XOR obfuscation, not strong encryption) |
 | Auth | [golang-jwt/v5](https://github.com/golang-jwt/jwt) | Admin JWT sessions |
 | S3 | [minio-go/v7](https://github.com/minio/minio-go) | S3-compatible object storage |
 | WebDAV | [gowebdav](https://github.com/studio-b12/gowebdav) | WebDAV storage client |
@@ -77,8 +77,8 @@
 
 ### Prerequisites
 
-- **Go** 1.22+
-- **Node.js** 18+ (with npm)
+- **Go** 1.25+
+- **Node.js** 20+ (with npm)
 - **Redis** 7+
 
 ### Clone
@@ -143,7 +143,7 @@ go run ./cmd/server
 2. Log in with the default password: **`admin123`**
 3. Change the password immediately in **Settings → Password**
 
-> ⚠️ The default password is auto-hashed into SQLite on first login. Change it before exposing the service publicly.
+> ⚠️ The default password is auto-hashed into SQLite on first login. Change it before exposing the service publicly; high-risk updates such as storage and system settings are rejected until the default password is changed.
 
 ## 🔧 Environment Variables
 
@@ -152,11 +152,11 @@ go run ./cmd/server
 | `HTTP_ADDR` | No | `:8080` | Listen address for the HTTP server |
 | `DATABASE_PATH` | No | `data/omepic.db` | Path to the SQLite database file |
 | `REDIS_URL` | No | `redis://localhost:6379/0` | Redis connection URL |
-| `UID_PREFIX` | No | `omeo_` | Plaintext prefix for encrypted UIDs (trailing underscores normalized) |
-| `UID_ENCRYPTION_KEY` | **Yes** | `change-me-uid-secret` | XOR secret for UID encryption (falls back to `JWT_SECRET` if empty) |
+| `UID_PREFIX` | No | `omeo_` | Plaintext prefix for obfuscated UIDs (trailing underscores normalized) |
+| `UID_ENCRYPTION_KEY` | **Yes** | `change-me-uid-secret` | XOR secret for UID obfuscation (falls back to `JWT_SECRET` if empty; not strong encryption) |
 | `JWT_SECRET` | **Yes** | `change-me-too` | Secret key for signing admin JWT tokens |
 
-> All other settings (storage, upload limits, AVIF parameters, maintenance mode, rate limits) are managed at runtime through the admin dashboard — no environment variables needed.
+> All other settings (storage, upload limits, AVIF parameters, Cloudflare purge, maintenance mode, rate limits) are managed at runtime through the admin dashboard — no environment variables needed.
 
 ## 📡 API Overview
 
@@ -167,10 +167,11 @@ go run ./cmd/server
 | `GET` | `/health` | Health check (SQLite + Redis) |
 | `GET` | `/v1/runtime-settings` | Public site/upload configuration |
 | `GET` | `/v1/announcements` | Active published announcements |
-| `GET` | `/v1/storage-options` | Available storage instances (display only) |
 | `POST` | `/v1/image` | Upload image (requires `X-Token`) |
 | `GET` | `/i/:uid.avif` | Serve image (returns AVIF bytes) |
 | `DELETE` | `/i/:uid.avif` | Delete image (requires same `X-Token` as upload) |
+
+> Storage options are returned by `GET /v1/runtime-settings` as `storage.options`; `/v1/storage-options` is not a separate endpoint.
 
 ### Admin Endpoints
 
@@ -185,14 +186,21 @@ go run ./cmd/server
 | `PUT` | `/admin/system-settings` | Update runtime settings |
 | `GET` | `/admin/config` | Get storage catalog |
 | `POST` | `/admin/config` | Update storage config (compat) |
-| `POST/PUT/DELETE` | `/admin/config/storage-instances` | CRUD storage instances |
+| `POST` | `/admin/config/storage-instances` | Create storage instance |
+| `PUT` | `/admin/config/storage-instances/:storageKey` | Update storage instance |
+| `DELETE` | `/admin/config/storage-instances/:storageKey` | Delete storage instance |
 | `POST` | `/admin/config/default` | Set default storage |
+| `GET` | `/admin/storage/health` | Latest storage health states |
+| `GET` | `/admin/storage/:key/health-history` | Storage health history |
+| `POST` | `/admin/storage/:key/health-check` | Run one storage health check |
+| `POST` | `/admin/storage/health-check-all` | Run health checks for all storage instances |
 | `GET/POST/DELETE` | `/admin/ip-bans` | Manage IP bans |
 | `GET` | `/admin/abuse/overview` | Abuse statistics |
 | `GET` | `/admin/abuse/ip` | IP-specific abuse detail |
 | `GET/POST/PUT/DELETE` | `/admin/announcements` | Manage announcements |
+| `POST` | `/admin/cloudflare/purge-image-cache` | Purge one Cloudflare image URL cache entry |
 
-> Full API reference: [docs/api-reference.md](docs/api-reference.md)
+> Full API reference: [docs/wiki/api-reference.md](../wiki/api-reference.md)
 
 ## 💾 Storage Backends
 
@@ -217,10 +225,14 @@ All runtime settings are managed from the admin dashboard (`/admin → Settings`
 | Site Name | `OmePic` | Displayed in UI and page title |
 | Site Tagline | `上传、分享和管理图片` | Browser title metadata |
 | Public Base URL | *(auto)* | Override public URL (defaults to request Host) |
+| Cloudflare purge | `false` | Optional single-image URL cache purge (Zone ID / API Token / Base URL are admin runtime settings) |
 | Max Upload Size | `20` MB | Per-file upload limit |
 | Allowed MIME Types | `image/jpeg, png, gif, webp, avif` | Accepted upload formats |
 | AVIF Quality | `60` | Encoder quality (0=worst, 100=lossless) |
 | AVIF Speed | `8` | Encoder speed (0=slowest/best compression, 10=fastest) |
+| Max Image Pixels | `40,000,000` | Decoded pixel limit to prevent oversized images from exhausting resources |
+| AVIF Max Concurrency | `2` | Backend AVIF conversion concurrency limit, also exposed in public runtime settings for frontend queue guidance |
+| AVIF Conversion Timeout | `30` seconds | Per-image conversion timeout |
 | Allow Storage Selection | `true` | Let uploaders pick storage target |
 | Maintenance Mode | `false` | Block uploads with a custom message |
 | Rate Limit | `120 req/min` | General API rate limit |
@@ -237,10 +249,11 @@ OmePic/
 │   │   ├── cache/               # Redis client & preheat
 │   │   ├── config/              # Env config loading
 │   │   ├── http/
+│   │   │   ├── clientip/        # Client IP resolution
 │   │   │   ├── handler/         # HTTP handlers (image, admin, health)
 │   │   │   ├── middleware/      # Auth, rate limit, logging
 │   │   │   └── router/          # Gin route registration
-│   │   ├── iputil/              # Trusted IP resolution
+│   │   ├── iputil/              # IP hashing and masking helpers
 │   │   ├── model/               # Data structures
 │   │   ├── ratelimit/           # Rate limiter
 │   │   ├── repository/          # SQLite data access
@@ -265,8 +278,12 @@ OmePic/
 │   │       └── history/         # Upload history
 │   └── package.json
 └── docs/
-    ├── api-reference.md
-    └── architecture-overview.md
+    ├── wiki/
+    │   ├── api-reference.md
+    │   ├── architecture-overview.md
+    │   └── CODE_WIKI.md
+    └── language/
+        └── README_EN.md
 ```
 
 ## 🧑‍💻 Development
@@ -322,4 +339,4 @@ cd frontend && npm run lint && npm run typecheck && npm run test && npm run buil
 
 ## 📄 License
 
-[MIT](LICENSE) © ououmm
+[MIT](../../LICENSE) © ououmm

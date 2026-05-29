@@ -157,6 +157,7 @@ export interface RuntimeSettings {
   rate_limit_max_requests: number;
   upload_rate_limit_window_minutes: number;
   upload_rate_limit_max_requests: number;
+  real_ip_source: string;
 }
 
 export interface PublicRuntimeSettings {
@@ -212,7 +213,6 @@ export interface AdminSystemSettings {
 
 export interface SecretStatus {
   configured: boolean;
-  using_default: boolean;
 }
 
 export type AnnouncementStatus = "draft" | "published" | "archived";

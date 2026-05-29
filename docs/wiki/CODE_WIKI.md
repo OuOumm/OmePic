@@ -13,10 +13,12 @@ OmePic 是一个单仓库图片托管系统。后端使用 Go + Gin 提供图片
 - Redis 用于 UID 图片缓存、MD5 去重缓存、API/upload fixed-window 限流
 - 本地文件系统、S3 兼容对象存储、WebDAV 三类存储 provider
 - 按 storage key 隔离的 MD5 去重
-- 运行时配置：站点名称、标语、公开 URL、上传大小、MIME 白名单、维护模式、限流策略
+- 运行时配置：站点名称、标语、公开 URL、上传大小、MIME 白名单、AVIF 质量/速度/并发/超时、像素上限、维护模式、限流策略
 - 公告系统：公开列表与后台 CRUD/archive
 - 可信代理真实 IP 解析
 - IP 封禁、滥用概览、IP 详情、封禁 IP 图片清理
+- 存储健康检查与历史趋势
+- Cloudflare 图片 URL 缓存清理
 - 前端 IndexedDB 本地上传历史
 - SvelteKit 静态构建后复制到 `backend/web/`，由 Go 后端单端口托管
 
@@ -29,19 +31,19 @@ OmePic/
 │   ├── internal/
 │   │   ├── auth/                          JWT 与 Bearer token 处理
 │   │   ├── cache/                         Redis 图片 UID/MD5 缓存
-│   │   ├── config/                        环境变量、存储配置、可信代理配置
+│   │   ├── config/                        启动环境变量配置（HTTP/DB/Redis/UID/JWT）
 │   │   ├── http/
 │   │   │   ├── clientip/                  可信代理真实客户端 IP 解析
 │   │   │   ├── handler/                   Gin HTTP handlers
 │   │   │   ├── middleware/                管理鉴权、日志、限流中间件
 │   │   │   └── router/                    路由注册与静态前端 fallback
-│   │   ├── model/                         图片、公告、IP ban、abuse 模型
+│   │   ├── model/                         图片、公告、IP ban、abuse、storage health 模型
 │   │   ├── ratelimit/                     Redis fixed-window 限流器
 │   │   ├── repository/                    SQLite schema、迁移、查询、聚合
 │   │   ├── response/                      统一 JSON 响应 envelope
-│   │   ├── service/                       图片、后台、公告、运行时设置、安全治理业务
+│   │   ├── service/                       图片、后台、公告、运行时设置、安全治理、存储健康业务
 │   │   ├── storage/                       local / S3 / WebDAV 存储抽象
-│   │   └── uid/                           加密公开 UID 编码器
+│   │   └── uid/                           公开 UID 编码/混淆器
 │   ├── go.mod
 │   └── go.sum
 ├── frontend/
@@ -63,7 +65,7 @@ OmePic/
 │   ├── tailwind.config.ts
 │   └── package.json
 ├── docs/
-│   └── CODE_WIKI.md                       本文档
+│   └── wiki/CODE_WIKI.md                  本文档
 ├── .env.example                           环境变量示例
 ├── README.md                              项目说明
 └── AGENTS.md                              Trellis 协作说明
@@ -133,13 +135,13 @@ SQLite / Redis / Local FS / S3 / WebDAV
 ### 4.2 后端分层职责
 
 - `cmd/server`：进程入口，集中装配配置、数据库、缓存、限流、存储、service、handler、router。
-- `config`：读取环境变量，提供 app config、S3/WebDAV config、默认 storage config、可信代理配置。
+- `config`：读取启动环境变量，提供 HTTP、SQLite、Redis、UID、JWT 和初始默认存储配置；可信代理当前不从环境变量读取。
 - `http/router`：注册公共 API、管理 API、中间件和静态前端 fallback。
 - `http/handler`：HTTP 参数解析、文件读取、调用 service、错误映射。
 - `http/middleware`：Admin JWT 鉴权、请求日志、Redis 限流。
-- `http/clientip`：可信代理下解析真实客户端 IP。
-- `service`：业务流程，包括上传、去重、删除、解析、配置、公告、IP ban、abuse。
-- `repository`：SQLite schema、迁移、CRUD、搜索、聚合查询。
+- `http/clientip`：可信代理下解析真实客户端 IP；当前启动配置默认不信任转发头。
+- `service`：业务流程，包括上传、去重、删除、解析、配置、公告、IP ban、abuse、Cloudflare purge、storage health。
+- `repository`：SQLite schema、迁移、CRUD、搜索、聚合查询、storage health 历史。
 - `cache`：Redis UID 缓存与 MD5 去重缓存。
 - `ratelimit`：Redis Lua fixed-window 限流。
 - `storage`：统一 local/S3/WebDAV 存储 provider。
@@ -177,6 +179,9 @@ main.go
 → NewImageService(...)
 → NewAdminService(...)
 → NewAnnouncementService(...)
+→ NewHealthService(...)
+→ NewStorageHealthService(...)
+→ storageHealthService.StartHeartbeat(...)
 → clientip.NewResolver(nil, "")
 → imageService.Preheat(ctx)
 → router.New(router.Dependencies{...})
@@ -197,11 +202,11 @@ POST /v1/image
 → 校验 X-Token
 → 校验维护模式、文件大小、扩展名、MIME 白名单
 → 解析 storage_key 或默认存储
-→ 计算原始上传字节 MD5
+→ 计算原始上传字节 MD5，并按 storage_key+md5 加 keyed mutex
 → scoped MD5 查重：Redis + SQLite
-→ 重复：复用已有物理文件，写入新 UID 记录
-→ 不重复：转换 AVIF，保存到 provider，写入 SQLite
-→ 写 Redis uid 与 md5 cache
+→ 重复：复用同存储实例已有物理文件，写入新 UID 记录
+→ 不重复：校验 max_image_pixels → 受 avif_max_concurrency / avif_conversion_timeout_seconds 约束流式转换 AVIF → Provider.SaveStream → 写入 SQLite
+→ 写 Redis uid 与 scoped md5 cache
 → 返回 UploadOutput
 ```
 
@@ -243,7 +248,21 @@ DELETE /admin/images
 → AdminAuth
 → AdminHandler.DeleteImages
 → AdminService.DeleteImages
+→ 若启用 Cloudflare purge，先批量清理 public_base_url 下的图片 URL
 → ImageService.Delete(isAdmin=true)
+```
+
+#### 存储健康检查
+
+```text
+/admin/storage/*
+→ apiLimiter
+→ AdminAuth
+→ AdminHandler
+→ AdminService
+→ StorageHealthService
+→ Provider probe
+→ Repository storage_health_checks
 ```
 
 #### IP 封禁与滥用治理
@@ -273,9 +292,10 @@ DELETE /admin/images
 - 初始化 UID codec。
 - 初始化 Redis client、图片 cache、rate limiter。
 - 加载 runtime settings。
-- 创建 `ImageService`、`AdminService`、`AnnouncementService`。
-- 创建 `clientip.Resolver`。
+- 创建 `ImageService`、`StorageHealthService`、`AdminService`、`AnnouncementService`、`HealthService`。
+- 创建 `clientip.Resolver`（当前默认不信任转发头）。
 - 启动前预热图片缓存。
+- 启动 storage health heartbeat。
 - 注入 router dependencies 并启动 Gin server。
 
 关键函数：
@@ -361,8 +381,8 @@ DELETE /admin/images
 | `GET` | `/v1/runtime-settings` | 公开运行时设置 |
 | `GET` | `/v1/announcements` | 公开公告列表 |
 | `POST` | `/v1/image` | 上传图片 |
-| `GET` | `/i/:uid` | 获取图片 |
-| `DELETE` | `/i/:uid` | 普通用户删除图片 |
+| `GET` | `/i/:uid.avif` | 获取图片 |
+| `DELETE` | `/i/:uid.avif` | 普通用户删除图片 |
 | `POST` | `/admin/login` | 管理员登录 |
 
 管理路由：
@@ -387,6 +407,11 @@ DELETE /admin/images
 | `POST` | `/admin/config/default` | 设置默认存储 |
 | `GET` | `/admin/system-settings` | 获取系统设置 |
 | `PUT` | `/admin/system-settings` | 更新系统设置 |
+| `POST` | `/admin/cloudflare/purge-image-cache` | 清理 Cloudflare 图片 URL 缓存 |
+| `GET` | `/admin/storage/health` | 最新存储健康状态 |
+| `GET` | `/admin/storage/:key/health-history` | 存储健康历史（可选 `since`） |
+| `POST` | `/admin/storage/:key/health-check` | 立即检查单个存储 |
+| `POST` | `/admin/storage/health-check-all` | 立即检查全部存储 |
 | `GET` | `/admin/announcements` | 管理端公告列表 |
 | `POST` | `/admin/announcements` | 创建公告 |
 | `PUT` | `/admin/announcements/:id` | 更新公告 |
@@ -440,6 +465,8 @@ DELETE /admin/images
 - `DeleteIPBanImages`
 - `AbuseOverview`
 - `AbuseIPDetail`
+- `PurgeCloudflareImageCache`
+- `StorageHealth` / `StorageHealthHistory` / `CheckStorageHealth` / `CheckAllStorageHealth`
 - `GetConfig`
 - `UpdateConfig`
 - storage instance CRUD/default
@@ -510,9 +537,8 @@ DELETE /admin/images
 - `Preheat(ctx)`：启动时预热 Redis cache。
 - `EffectivePublicBaseURL(requestBase)`：按 SQLite runtime setting 或请求 Host 计算公开 URL base。
 - `ensureIPAllowed(ctx, ipAddress)`：检查 active IP ban。
-- `convertToAVIFWithSettings(data, settings)`：按 runtime AVIF 质量/速度参数转换图片。
+- `convertToAVIFWithSettings(data, settings)`：按 runtime AVIF 质量/速度转换图片（兼容路径；主上传路径使用流式转换与 `SaveStream`）。
 - `ipHash(ip)`：SHA-256 IP hash。
-- `maskIPAddress(ip)`：IPv4/IPv6 脱敏展示。
 
 上传规则：
 
@@ -523,7 +549,7 @@ DELETE /admin/images
 - MIME 默认允许 `image/jpeg`、`image/png`、`image/gif`、`image/webp`、`image/avif`。
 - 文件扩展名支持常见 raster 图片。
 - 查重按 `storage_key + md5_hash` scope。
-- 新文件保存为 AVIF。
+- 新文件先校验像素上限，再按 runtime AVIF 并发/超时限制流式转换并通过 `Provider.SaveStream` 保存为 AVIF。
 - 删除当前只删除逻辑记录与缓存，不主动删除物理文件。
 
 #### `AdminService`
@@ -556,6 +582,8 @@ DELETE /admin/images
 - `AbuseIPDetail(ctx, ip)`：IP 详情。
 - `GetConfig(ctx)` / storage CRUD / `SetDefaultStorageConfig(ctx, key)`。
 - `GetSystemSettings(ctx)` / `UpdateSystemSettings(ctx, input)`。
+- `PurgeCloudflareImageCache(ctx, url)`：手动清理单个 Cloudflare 图片 URL 缓存。
+- `StorageHealth(ctx)` / `StorageHealthHistory(ctx, key, since)` / `CheckStorageHealth(ctx, key)` / `CheckAllStorageHealth(ctx)`：存储健康查询与手动检查（当前按调用创建 `StorageHealthService`）。
 
 #### `RuntimeSettingsManager`
 
@@ -578,6 +606,13 @@ DELETE /admin/images
 - `allowed_mime_types`
 - `avif_quality`
 - `avif_speed`
+- `max_image_pixels`
+- `avif_max_concurrency`
+- `avif_conversion_timeout_seconds`
+- `cloudflare_purge_enabled`
+- `cloudflare_zone_id`
+- `cloudflare_api_token`
+- `cloudflare_api_base_url`
 - `allow_storage_selection`
 - `maintenance_mode`
 - `maintenance_message`
@@ -595,6 +630,10 @@ DELETE /admin/images
 - 上传限流：10 分钟 20 次
 - AVIF 质量：60（范围 0..100，100 表示无损）
 - AVIF 速度：8（范围 0..10，数值越低通常越慢但压缩/质量取舍更好）
+- 最大图片像素：40000000
+- AVIF 最大并发：2
+- AVIF 转换超时：30 秒
+- Cloudflare purge：默认关闭，Zone ID / API Token / API Base URL 为空
 
 关键函数：
 
@@ -677,8 +716,12 @@ announcements
 - created_at, updated_at
 
 ip_bans
-- id, ip_hash, ip_address, ip_address_masked
+- id, ip_hash, ip_address
 - reason, expires_at, created_at, updated_at
+
+storage_health_checks
+- id, storage_key, status, latency_ms, error_message, consecutive_failures
+- created_at, updated_at
 ```
 
 关键索引：
@@ -716,6 +759,8 @@ ip_bans
 - `TopAbuseTokens(ctx, from, to, limit)`
 - `IPDetail(ctx, ip)`
 - announcement CRUD functions
+- storage config CRUD/default functions
+- `UpsertStorageHealthCheck`, `GetStorageHealthCheck`, `ListStorageHealthChecks`, `ListStorageHealthHistory`
 
 ### 5.9 `internal/cache`
 
@@ -723,20 +768,17 @@ ip_bans
 
 关键接口：
 
-- `ImageCache`
-  - `GetImage(ctx, uid)`
-  - `SetImage(ctx, record)`
-  - `DeleteImage(ctx, uid)`
-  - `GetMD5(ctx, md5Hash)`
-  - `SetMD5(ctx, md5Hash, uid)`
-  - `SetMD5IfAbsent(ctx, md5Hash, uid)`
-  - `DeleteMD5(ctx, md5Hash)`
-  - `Ping(ctx)`
+- `ImageLookupCache`: `GetImage`, `SetImage`, `DeleteImage`
+- `ImagePreheatCache`: `SetImages`
+- `MD5MappingCache`: `GetMD5(ctx, model.MD5MappingKey)`, `SetMD5`, `SetMD5IfAbsent`, `DeleteMD5`
+- `MD5MappingPreheatCache`: `SetMD5Mappings(ctx, []model.MD5Mapping)`
+- `HealthCache`: `Ping(ctx)`
+- `ImageCache`: 兼容聚合接口；业务调用点优先依赖上面的窄接口
 
 Key 约定：
 
 - `uid:<uid>`：图片元数据 JSON。
-- `md5:<scoped-hash>`：MD5 查重映射。service 层 scoped hash 含 storage key 语义。
+- `md5:<storage_key>:<md5_hash>`：按存储实例隔离的 MD5 查重映射；必须通过 `model.MD5MappingKey.CacheScope()` 生成。
 
 ### 5.10 `internal/ratelimit`
 
@@ -763,7 +805,8 @@ Key 约定：
 ```go
 Provider interface {
   Name() string
-  Save(ctx, objectKey, data, contentType) (string, error)
+  Save(ctx, objectKey, data, contentType) (string, error)       // compatibility helper
+  SaveStream(ctx, objectKey, reader, size, contentType) (string, error)
   Open(ctx, objectKey) (OpenResult, error)
   Delete(ctx, objectKey) error
 }
@@ -807,7 +850,7 @@ Provider interface {
 
 职责：
 
-- Snowflake SID + prefix + secret + XOR + base64/base62 生成短公开 UID。
+- Snowflake SID + prefix + secret + XOR 混淆 + base64/base62 生成短公开 UID；XOR 不作为强加密安全边界。
 - 解码并校验 prefix。
 - 最大 public UID 长度约束为 30。
 
@@ -835,6 +878,7 @@ Provider interface {
 - `AbuseIPRankItem`
 - `AbuseTokenRankItem`
 - `AbuseIPDetail`
+- `StorageHealthCheck`
 
 统一响应：
 
@@ -925,7 +969,7 @@ Provider interface {
 关键目录：`frontend/src/lib/actions/`
 
 - `accessible-dialog.ts`：焦点捕获、Escape 关闭、销毁时恢复焦点。
-- `click-outside.ts`：监听组件外点击。
+- `viewport-portal.ts`：把 `fixed inset-0` 模态根节点挂载到 `document.body`，避免遮罩被 route/layout 容器裁剪。
 
 ### 6.5 Stores / 客户端状态
 
@@ -1266,12 +1310,12 @@ src/routes
 
 ```text
 SQLite
-- images、config、storage_configs、announcements、ip_bans
+- images、config、storage_configs、announcements、ip_bans、storage_health_checks
 - 事实来源
 
 Redis
 - uid:<uid> 图片访问缓存
-- md5:<scoped-hash> 去重缓存
+- md5:<storage_key>:<md5_hash> 去重缓存
 - ratelimit:<scope>:ip:<hash> 限流窗口
 
 Storage Provider
@@ -1295,7 +1339,7 @@ localStorage
 | `DATABASE_PATH` | `data/omepic.db` | SQLite 文件路径 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 地址 |
 | `UID_PREFIX` | `omeo_` | UID 编码前缀 |
-| `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | UID 编码密钥 |
+| `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | UID XOR 混淆密钥（非强加密） |
 | `JWT_SECRET` | `change-me-too` | 管理 JWT 签名密钥，生产必须修改 |
 
 存储配置、公开访问基准 URL、上传策略、维护模式、限流和管理员密码均保存在 SQLite。

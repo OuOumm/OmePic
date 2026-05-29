@@ -37,14 +37,17 @@
 12. repo.Ping() + imageCache.Ping() → 双依赖健康检查
 13. service.NewRuntimeSettingsManager() → 运行时配置管理器
 14. settings.Load() → 补齐缺失的默认运行时配置并从数据库加载
-15. 创建三个 Service：
+15. 创建 Service：
     - ImageService（图片上传/删除/解析/预热）
-    - AdminService（管理后台逻辑）
+    - AdminService（管理后台逻辑、Cloudflare purge、存储健康 API 代理）
     - AnnouncementService（公告管理）
-16. clientip.NewResolver() → IP 解析器（代理信任）
-17. imageService.Preheat() → Redis 预热
-18. router.New() → 组装 Gin Engine
-19. engine.Run() → 启动 HTTP 服务器
+    - HealthService（SQLite/Redis 健康检查）
+    - StorageHealthService（存储健康检查与历史）
+16. storageHealthService.StartHeartbeat(...) → 后台存储健康心跳
+17. clientip.NewResolver(nil, "") → IP 解析器（当前启动配置默认不信任转发头）
+18. imageService.Preheat() → Redis 预热
+19. router.New() → 组装 Gin Engine
+20. engine.Run() → 启动 HTTP 服务器
 ```
 
 ### 关键依赖关系
@@ -60,10 +63,12 @@ main.go
 │                         └─ NewRedisLimiter()
 ├─ service:
 │  ├─ NewRuntimeSettingsManager() ── Load()
-│  ├─ NewImageService(repo, cache, storage, settings, uid.Generate, uid.Validate)
+│  ├─ NewImageService(repo, cache, storage, settings, uid.Generate, uid.Validate, logger)
 │  ├─ NewAdminService(repo, storage, settings, imageService, jwtSecret, adminEnv)
-│  └─ NewAnnouncementService(repo)
-├─ clientip.NewResolver()
+│  ├─ NewAnnouncementService(repo)
+│  ├─ NewHealthService(repo, cache)
+│  └─ NewStorageHealthService(repo, storage, logger)
+├─ clientip.NewResolver(nil, "")
 └─ router.New(handler, middleware, ...)
 ```
 
@@ -83,7 +88,7 @@ main.go
 | DatabasePath | `DATABASE_PATH` | `data/omepic.db` | SQLite 文件路径 |
 | RedisURL | `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接 URL |
 | UIDPrefix | `UID_PREFIX` | `omeo_` | UID 前缀 |
-| UIDEncryptionKey | `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | XOR 加密密钥 |
+| UIDEncryptionKey | `UID_ENCRYPTION_KEY` | `change-me-uid-secret` | XOR 混淆密钥（非强加密） |
 | JWTSecret | `JWT_SECRET` | `change-me-too` | JWT 签名密钥 |
 
 公开访问基准 URL、存储配置、上传策略、维护模式、限流和管理员密码均由 SQLite 管理，不再读取环境变量。
@@ -132,7 +137,7 @@ PRAGMA temp_store = MEMORY;    // 临时表存内存
 PRAGMA mmap_size = 268435456;  // 256MB 内存映射
 ```
 
-### 数据表（5张）
+### 数据表（6张）
 
 | 表名 | 用途 | 关键字段 |
 |------|------|----------|
@@ -141,11 +146,12 @@ PRAGMA mmap_size = 268435456;  // 256MB 内存映射
 | `storage_configs` | 存储实例配置 | storage_key (UNIQUE), backend, is_default, 各后端参数字段 |
 | `announcements` | 公告 | title, content, status, priority, starts_at, ends_at |
 | `ip_bans` | IP 封禁 | ip_hash, ip_address, reason, expires_at |
+| `storage_health_checks` | 存储健康历史 | storage_key, status, latency_ms, error_message, consecutive_failures |
 
 ### 核心方法分类
 
 **图片操作**:
-- `InsertImage`, `FindByUID`, `FindByMD5`, `FindByMD5AndStorageKey`
+- `InsertImage`, `FindByUID`, `FindByMD5AndStorageKey`
 - `DeleteByUID`, `CountByMD5`, `CountByMD5AndStorageKey`, `CountByStoredFile`
 - `ListAllImages`, `SearchImages` (分页+搜索), `ImageSummaryByIP`, `ListImagesByIP`
 - `AggregateStatus` (总览统计)
@@ -157,7 +163,7 @@ PRAGMA mmap_size = 268435456;  // 256MB 内存映射
 - `InitializeStorageCatalog` (引导初始化)
 
 **KV 配置**:
-- `GetAllConfig`, `UpsertConfigValues`
+- `GetAllConfig`, `GetConfigValue`, `SetConfigValue`, `UpsertConfigValues`, `InsertMissingConfigValues`
 
 **IP 封禁**:
 - `CreateIPBan`, `ListIPBans`, `GetIPBan`, `DeleteIPBan`
@@ -167,6 +173,10 @@ PRAGMA mmap_size = 268435456;  // 256MB 内存映射
 **公告**:
 - `ListPublicAnnouncements`, `ListAnnouncements`, `GetAnnouncement`
 - `CreateAnnouncement`, `UpdateAnnouncement`, `DeleteAnnouncement`, `ArchiveAnnouncement`
+
+**存储健康**:
+- `UpsertStorageHealthCheck`, `GetStorageHealthCheck`, `GetStorageHealthCheckByID`
+- `ListStorageHealthChecks`, `ListStorageHealthHistory`
 
 **滥用统计**:
 - `AbuseOverviewTotals`, `TopAbuseIPs`, `TopAbuseTokens`, `IPDetail`
@@ -184,30 +194,42 @@ PRAGMA mmap_size = 268435456;  // 256MB 内存映射
 
 **路径**: [backend/internal/cache/redis_cache.go](file:///d:/Works/MyProject/OmePic/backend/internal/cache/redis_cache.go)
 
-### ImageCache 接口
+### 缓存接口
+
+`ImageCache` 是兼容聚合接口，业务代码优先依赖更窄的 seam，避免上传/访问路径拿到不需要的能力：
 
 ```go
-type ImageCache interface {
+type ImageLookupCache interface {
     GetImage(ctx, uid) → *CachedImage
     SetImage(ctx, record) → error
-    SetImages(ctx, records) → error     // Pipeline 批量写入
     DeleteImage(ctx, uid) → error
-
-    GetMD5(ctx, hash) → string (UID)
-    SetMD5(ctx, hash, uid) → error
-    SetMD5Mappings(ctx, map[hash]uid) → error  // Pipeline 批量写入
-    SetMD5IfAbsent(ctx, hash, uid) → error     // SETNX
-    DeleteMD5(ctx, hash) → error
-
-    Ping(ctx) → error
 }
+
+type ImagePreheatCache interface {
+    SetImages(ctx, records) → error
+}
+
+type MD5MappingCache interface {
+    GetMD5(ctx, key model.MD5MappingKey) → string
+    SetMD5(ctx, key model.MD5MappingKey, uid) → error
+    SetMD5IfAbsent(ctx, key model.MD5MappingKey, uid) → error
+    DeleteMD5(ctx, key model.MD5MappingKey) → error
+}
+
+type MD5MappingPreheatCache interface {
+    SetMD5Mappings(ctx, []model.MD5Mapping) → error
+}
+
+type HealthCache interface { Ping(ctx) → error }
 ```
+
+MD5 cache key 必须通过 `model.MD5MappingKey.CacheScope()` 生成，调用方不要手写 storage/hash 字符串。
 
 ### Redis 键设计
 
 ```text
 uid:{uid}              → JSON(CachedImage)   # 图片元数据缓存
-md5:{storageKey}:{hash} → uid                # MD5 → UID 映射（去重）
+md5:{storageKey}:{hash} → uid                 # MD5 → UID 映射（按存储实例隔离去重）
 ```
 
 ### Redis 连接配置
@@ -241,6 +263,7 @@ ContextTimeoutEnabled: true
 type Provider interface {
     Name() string
     Save(ctx, objectKey, data, contentType) → (string, error)
+    SaveStream(ctx, objectKey, reader, size, contentType) → (string, error)
     Open(ctx, objectKey) → (OpenResult, error)
     Delete(ctx, objectKey) → error
 }
@@ -249,20 +272,23 @@ type Provider interface {
 ### 三种实现
 
 #### localProvider
-- `Save`: `os.WriteFile` + `os.MkdirAll`
+- `Save`: compatibility helper，内部转为 reader 写入
+- `SaveStream`: `os.Create` + `io.Copy` + `os.MkdirAll`
 - `Open`: `os.Open` + `file.Stat`
 - `Delete`: `os.Remove`
 
 #### s3Provider
 - 依赖: `minio-go/v7`
-- `Save`: `client.PutObject`
+- `Save`: compatibility helper，内部转为 `bytes.Reader`
+- `SaveStream`: `client.PutObject`
 - `Open`: `client.GetObject` + `object.Stat`
 - `Delete`: `client.RemoveObject`
 - 支持 `BucketLookupPath` (路径风格) 和 `BucketLookupAuto`
 
 #### webdavProvider
 - 依赖: `gowebdav`
-- `Save`: `client.MkdirAll` + `client.Write`
+- `Save`: compatibility helper，内部转为 reader 写入
+- `SaveStream`: `client.MkdirAll` + 流式上传/写入
 - `Open`: `client.ReadStream` + `client.Stat`
 - `Delete`: `client.Remove`
 
@@ -311,15 +337,22 @@ BuildObjectKey(uid, extension) → "2025/12/uid.avif"
 
 ```go
 type ImageService struct {
-    repo         *repository.Repository
-    cache        cache.ImageCache
-    storage      *storage.Manager
-    settings     *RuntimeSettingsManager
-    logger       *slog.Logger
-    generateUID  UIDGenerator    // func() (string, error)
-    validateUID  UIDValidator    // func(string) error
-    transformer  func([]byte, AVIFConversionSettings) ([]byte, error)  // → AVIF
-    hashLocks    *keyedMutex     // 按 storage+MD5 缩小上传去重临界区
+    repo                *repository.Repository
+    imageCache          cache.ImageLookupCache
+    preheat             cache.ImagePreheatCache
+    md5Cache            cache.MD5MappingCache
+    md5Preheat          cache.MD5MappingPreheatCache
+    storage             uploadStorageResolver
+    settings            *RuntimeSettingsManager
+    logger              *slog.Logger
+    generateUID         UIDGenerator
+    validateUID         UIDValidator
+    encoder             func(io.Reader, io.Writer, AVIFConversionSettings) error
+    avifLimiterMu       sync.Mutex
+    avifLimiter         chan struct{}
+    avifLimiterSize     int
+    hashLocks           *keyedMutex
+    imageURLCachePurger ImageURLCachePurger
 }
 ```
 
@@ -342,13 +375,13 @@ type ImageService struct {
 3. 检查维护模式
 4. 检查文件大小（运行时配置 vs 硬上限 20MB）
 5. 检查 MIME 类型白名单
-6. **加锁** `operationMux.Lock()`（串行化）
-7. 确定目标存储（按 storage_key 参数或默认）
-8. 计算 MD5 哈希
-9. 查重：先查 Redis → 回退 SQLite
-10. 去重命中：创建新 UID 行，复用文件路径
-11. 新文件：AVIF 转换 → Provider.Save() → SQLite Insert → Redis Set
-12. 返回 UploadOutput（含 URL/Markdown/BBCode）
+6. 确定目标存储（按 storage_key 参数或默认）
+7. 将上传源按需 spool 到临时文件，并计算原始上传字节 MD5
+8. **按 `storage_key + md5` 加 keyed mutex**，只串行化同一去重范围，避免全局上传锁
+9. 查重：先查 Redis scoped MD5 → 回退 SQLite
+10. 去重命中：创建新 UID 行，复用同存储实例下的文件路径，跳过 AVIF 转换
+11. 新文件：按 `max_image_pixels` 校验像素 → 受 `avif_max_concurrency` 与 `avif_conversion_timeout_seconds` 限制的流式 AVIF 转换 → Provider.SaveStream() → SQLite Insert → Redis Set
+12. 返回 UploadOutput（只含 URL 与 duplicate；Markdown/BBCode 由前端派生）
 
 #### 删除流程
 
@@ -379,7 +412,7 @@ storedUID: "abc123"      → 直接验证
 | `Login(password)` | 校验 SQLite bcrypt 密码哈希并返回 JWT（24h 有效期） |
 | `ChangePassword(ctx, oldPassword, newPassword)` | 校验旧密码和新密码强度（至少 8 位，包含大写、小写和符号）后写入新的 bcrypt 哈希 |
 | `Status(ctx)` | 获取全局统计 |
-| `Images(ctx, page, pageSize)` | 分页查询图片列表 |
+| `Images(ctx, page, pageSize, search)` | 分页搜索图片列表 |
 | `DeleteImages(ctx, uids)` | 批量删除图片 |
 | `CreateIPBan(ctx, input)` | 创建 IP 封禁（支持按 UID 或 IP 地址） |
 | `IPBans(ctx)` | 列出所有封禁记录 |
@@ -395,10 +428,13 @@ storedUID: "abc123"      → 直接验证
 | `SetDefaultStorageConfig(ctx, key)` | 设置默认存储 |
 | `GetSystemSettings(ctx)` | 获取系统设置（含只读环境状态） |
 | `UpdateSystemSettings(ctx, input)` | 更新运行时配置 |
+| `PurgeCloudflareImageCache(ctx, url)` | 手动清理单个 Cloudflare 图片 URL 缓存 |
+| `StorageHealth(ctx)` / `StorageHealthHistory(ctx, key, since)` | 查询存储健康状态与历史（当前按调用创建 `StorageHealthService`，`since` 为可选 RFC3339 时间） |
+| `CheckStorageHealth(ctx, key)` / `CheckAllStorageHealth(ctx)` | 立即执行存储健康检查 |
 
 #### 存储配置管理规则
 
-- 删除默认存储或不含图片引用的存储会被拒绝
+- 删除默认存储或仍有图片引用的存储会被拒绝
 - 后端类型变更时不幂等，需先确保无图片引用
 - 秘密字段（S3 SecretKey、WebDAV Pass）在 API 中脱敏显示（保留后4字符）
 - 创建时自动生成 storage_key（slug + timestamp hex）
@@ -443,6 +479,9 @@ storedUID: "abc123"      → 直接验证
 | AllowedMIMETypes | `image/jpeg,image/png,...` | 允许的 MIME 类型 |
 | AvifQuality | `60` | AVIF 编码质量，范围 `0..100`，`100` 表示无损 |
 | AvifSpeed | `8` | AVIF 编码速度，范围 `0..10`，数值越低通常越慢但压缩/质量取舍更好 |
+| MaxImagePixels | `40000000` | 解码后像素上限，防止超大图片耗尽资源 |
+| AVIFMaxConcurrency | `2` | AVIF 转换最大并发数，公开运行时设置也返回该值 |
+| AVIFConversionTimeoutSeconds | `30` | 单张图片 AVIF 转换超时时间 |
 | AllowStorageSelect | `true` | 允许用户选择存储 |
 | MaintenanceMode | `false` | 维护模式 |
 | MaintenanceMessage | `系统维护中，请稍后再试` | 维护提示信息 |
@@ -456,7 +495,7 @@ storedUID: "abc123"      → 直接验证
 - `RuntimeSettingsManager.Load()` 会先把缺失的默认 runtime settings 写入 SQLite `config` 表。
 - 缺失补齐只使用 `INSERT ... ON CONFLICT DO NOTHING`，不会覆盖已有管理员配置。
 - `public_base_url` 只来自 SQLite；未配置时请求处理使用 request host 作为运行时回退。
-- 新上传且未命中去重的图片会使用当前 `avif_quality` / `avif_speed` 转换；重复上传复用已有物理对象，不重新转换。
+- 新上传且未命中去重的图片会使用当前 `avif_quality` / `avif_speed` / `avif_max_concurrency` / `avif_conversion_timeout_seconds` 转换，并先校验 `max_image_pixels`；重复上传复用已有物理对象，不重新转换。
 
 ### 6.5 错误定义
 
@@ -487,8 +526,8 @@ var (
 |------|------|------|
 | `Upload` | `POST /v1/image` | 处理 multipart 文件上传 |
 | `RuntimeSettings` | `GET /v1/runtime-settings` | 返回公开运行时配置 |
-| `Delete` | `DELETE /i/:uid` | 图片删除（需 X-Token） |
-| `Serve` | `GET /i/:uid` | 图片服务（返回文件内容） |
+| `Delete` | `DELETE /i/:uid.avif` | 图片删除（需 X-Token） |
+| `Serve` | `GET /i/:uid.avif` | 图片服务（返回 AVIF 文件内容） |
 
 ### 7.2 AdminHandler
 
@@ -514,6 +553,11 @@ var (
 | `SetDefaultStorageConfig` | `POST /admin/config/default` | 设置默认存储 |
 | `GetSystemSettings` | `GET /admin/system-settings` | 系统设置查看 |
 | `UpdateSystemSettings` | `PUT /admin/system-settings` | 系统设置更新 |
+| `PurgeCloudflareImageCache` | `POST /admin/cloudflare/purge-image-cache` | 手动清理 Cloudflare 图片 URL 缓存 |
+| `StorageHealth` | `GET /admin/storage/health` | 最新存储健康状态 |
+| `StorageHealthHistory` | `GET /admin/storage/:key/health-history` | 存储健康历史 |
+| `CheckStorageHealth` | `POST /admin/storage/:key/health-check` | 立即检查单个存储 |
+| `CheckAllStorageHealth` | `POST /admin/storage/health-check-all` | 立即检查全部存储 |
 
 ### 7.3 AnnouncementHandler
 
@@ -607,7 +651,7 @@ return {current, ttl}
 ```
 Gin Engine 组装顺序：
 1. gin.Recovery() — 异常恢复
-2. cors.New() — 允许所有来源
+2. cors.New() — 未配置 runtime `public_base_url` 时允许所有来源；配置后仅允许该 public origin
 3. RequestLogger — 日志
 4. RateLimit (api scope) — API 通用限流
 5. RateLimit (upload scope) — 上传限流
@@ -640,7 +684,7 @@ Gin Engine 组装顺序：
 
 UID 生成特性：
 - **Snowflake ID**: 41bit 时间戳 + 5bit 数据中心 + 5bit 工作节点 + 12bit 序列号
-- **XOR 加密**: 用密钥对 SID + 前缀做循环 XOR 加密（偏移量由 SID % 62 决定）
+- **XOR 混淆**: 用密钥对 SID + 前缀做循环 XOR 混淆（偏移量由 SID % 62 决定；不作为强加密安全边界）
 - **Base64 编码**: XOR 结果用标准 Base64 编码
 - **Base62 压缩**: Base64 字符串转 Base62（URL 安全）
 - 最终格式: `{1个Base62字符(偏移)} + {Base62字符串}`
@@ -673,6 +717,7 @@ func Mask(ip) → "192.168.*.*"  // 脱敏
 
 - 支持根据代理信任配置解析真实客户端 IP
 - 支持 `X-Forwarded-For` 和 `X-Real-IP`
+- 当前 `main.go` 使用 `clientip.NewResolver(nil, "")`，默认不信任转发头；部署在反向代理后时需先实现/配置可信代理 CIDR 后再信任这些头
 
 ---
 
@@ -686,3 +731,4 @@ func Mask(ip) → "192.168.*.*"  // 脱敏
 | [ip_ban.go](file:///d:/Works/MyProject/OmePic/backend/internal/model/ip_ban.go) | `IPBan`, `IPImageSummary` | IP 封禁、IP 图片汇总 |
 | [abuse.go](file:///d:/Works/MyProject/OmePic/backend/internal/model/abuse.go) | `AbuseOverview`, `AbuseIPRankItem`, `AbuseTokenRankItem`, `AbuseIPDetail` | 滥用统计数据 |
 | [announcement.go](file:///d:/Works/MyProject/OmePic/backend/internal/model/announcement.go) | `Announcement` | 公告（含状态/优先级常量） |
+| [storage_health.go](file:///d:/Works/MyProject/OmePic/backend/internal/model/storage_health.go) | `StorageHealthCheck` | 存储健康状态与历史 |

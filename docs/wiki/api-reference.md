@@ -99,7 +99,8 @@ GET /v1/runtime-settings
         "image/gif",
         "image/webp",
         "image/avif"
-      ]
+      ],
+      "avif_max_concurrency": 2
     },
     "features": {
       "allow_storage_selection": true,
@@ -224,7 +225,7 @@ DELETE /i/:uid.avif
 
 ## 3. 管理员 API
 
-所有管理员 API 需在请求头携带 `Authorization: Bearer <jwt>`。
+所有管理员 API 需在请求头携带 `Authorization: Bearer <jwt>`。未修改默认管理员密码 `admin123` 前，存储配置、系统设置等高风险更新接口会返回 `403 forbidden`，要求先修改管理员密码。
 
 ### 3.1 管理员登录
 
@@ -266,7 +267,7 @@ PUT /admin/password
 { "success": true, "data": {} }
 ```
 
-规则：旧密码必须正确；新密码至少 8 位，并包含大写字母、小写字母和符号。密码仅以 bcrypt 哈希形式保存到 SQLite `config.admin_password_hash`，响应不会返回明文或哈希。弱密码返回 `invalid_input`；旧密码错误返回明确的密码错误消息。
+规则：旧密码必须正确；新密码至少 8 位，并包含大写字母、小写字母和符号。当前实现保留 `admin123` 作为启动兼容特殊值，但公开部署不得使用该值。密码仅以 bcrypt 哈希形式保存到 SQLite `config.admin_password_hash`，响应不会返回明文或哈希。弱密码返回 `invalid_input`；旧密码错误返回明确的密码错误消息。
 
 ### 3.3 获取全局统计
 
@@ -288,7 +289,7 @@ GET /admin/status
 }
 ```
 
-### 3.3 图片管理列表
+### 3.4 图片管理列表
 
 ```
 GET /admin/images?page=1&pageSize=20&search=abc
@@ -317,7 +318,6 @@ GET /admin/images?page=1&pageSize=20&search=abc
         "size": 12345,
         "md5_hash": "d41d8cd98f00b204e9800998ecf8427e",
         "ip_address": "192.168.1.1",
-        "ip_address_masked": "192.168.1.*",
         "created_at": "2025-01-01T00:00:00Z"
       }
     ],
@@ -328,7 +328,7 @@ GET /admin/images?page=1&pageSize=20&search=abc
 }
 ```
 
-### 3.4 批量删除图片
+### 3.5 批量删除图片
 
 ```
 DELETE /admin/images
@@ -346,7 +346,7 @@ DELETE /admin/images
 { "success": true, "data": {} }
 ```
 
-### 3.5 IP 封禁管理
+### 3.6 IP 封禁管理
 
 #### 创建封禁
 
@@ -373,7 +373,7 @@ POST /admin/ip-bans
 {
   "success": true,
   "data": {
-    "ban": { "id": 1, "ip_hash": "...", "ip_address": "192.168.1.1", "ip_address_masked": "192.168.1.*", "reason": "Abusive upload", "expires_at": "2025-01-02T00:00:00Z", ... },
+    "ban": { "id": 1, "ip_hash": "...", "ip_address": "192.168.1.1", "reason": "Abusive upload", "expires_at": "2025-01-02T00:00:00Z", ... },
     "affected_image_count": 10,
     "affected_total_size": 500000
   }
@@ -404,7 +404,7 @@ DELETE /admin/ip-bans/:id/images
 { "success": true, "data": { "deleted_count": 10 } }
 ```
 
-### 3.6 滥用监控
+### 3.7 滥用监控
 
 #### 滥用概览
 
@@ -431,7 +431,6 @@ GET /admin/abuse/overview?from=2025-01-01T00:00:00Z&to=2025-01-02T00:00:00Z
     "top_ips": [
       {
         "ip_address": "192.168.1.1",
-        "ip_address_masked": "192.168.1.*",
         "upload_count": 50,
         "total_size": 250000,
         "latest_upload_at": "2025-01-01T12:00:00Z",
@@ -465,7 +464,6 @@ GET /admin/abuse/ip?ip=192.168.1.1
   "success": true,
   "data": {
     "ip_address": "192.168.1.1",
-    "ip_address_masked": "192.168.1.*",
     "upload_count": 50,
     "total_size": 250000,
     "is_banned": true,
@@ -474,7 +472,7 @@ GET /admin/abuse/ip?ip=192.168.1.1
 }
 ```
 
-### 3.7 存储配置管理
+### 3.8 存储配置管理
 
 #### 获取存储配置
 
@@ -573,7 +571,7 @@ POST /admin/config/default
 { "storage_key": "my-s3" }
 ```
 
-### 3.8 系统设置
+### 3.9 系统设置
 
 #### 获取系统设置
 
@@ -605,6 +603,9 @@ GET /admin/system-settings
       ],
       "avif_quality": 60,
       "avif_speed": 8,
+      "max_image_pixels": 40000000,
+      "avif_max_concurrency": 2,
+      "avif_conversion_timeout_seconds": 30,
       "allow_storage_selection": true,
       "maintenance_mode": false,
       "maintenance_message": "",
@@ -647,9 +648,65 @@ GET /admin/system-settings
 PUT /admin/system-settings
 ```
 
-**请求体**: 同 `runtime` 字段结构。`avif_quality` 范围为 `0..100`（`100` 表示无损），`avif_speed` 范围为 `0..10`（数值越低通常越慢但压缩/质量取舍更好）。Cloudflare 字段包括 `cloudflare_zone_id`、`cloudflare_api_token`、`cloudflare_api_base_url`；Token 是 admin-only secret，GET 只返回遮罩值，PUT 原样提交遮罩值会保留旧 Token，提交空值会清空 Token。`cloudflare_api_base_url` 非空时必须是 http/https URL，保存时会 trim 并去掉末尾 `/`。`cloudflare_purge_enabled=true` 时必须配置合法 `public_base_url`、Zone ID 和 API Token。越界或依赖字段缺失返回 `invalid_input`，不会保存部分配置。
+**请求体**: 同 `runtime` 字段结构。`avif_quality` 范围为 `0..100`（`100` 表示无损），`avif_speed` 范围为 `0..10`（数值越低通常越慢但压缩/质量取舍更好），`max_image_pixels`、`avif_max_concurrency`、`avif_conversion_timeout_seconds` 必须为正数。Cloudflare 字段包括 `cloudflare_zone_id`、`cloudflare_api_token`、`cloudflare_api_base_url`；Token 是 admin-only secret，GET 只返回遮罩值，PUT 原样提交遮罩值会保留旧 Token，提交空值会清空 Token。`cloudflare_api_base_url` 非空时必须是 http/https URL，保存时会 trim 并去掉末尾 `/`。`cloudflare_purge_enabled=true` 时必须配置合法 `public_base_url`、Zone ID 和 API Token。越界或依赖字段缺失返回 `invalid_input`，不会保存部分配置。
 
-### 3.9 Cloudflare 图片 URL 缓存清理
+### 3.10 存储健康检查
+
+#### 获取最新健康状态
+
+```
+GET /admin/storage/health
+```
+
+返回每个存储实例最新一次健康检查记录。
+
+**响应** (200):
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "storage_key": "local-default",
+      "status": 1,
+      "latency_ms": 12,
+      "error_message": "",
+      "consecutive_failures": 0,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+`status` 为后端枚举数值：前端应按共享类型和 i18n 展示含义，不要硬编码为字符串响应。
+
+#### 获取健康历史
+
+```
+GET /admin/storage/:key/health-history
+```
+
+可选查询参数：`since`（RFC3339 时间）。返回同上记录数组，按时间升序。
+
+#### 立即检查单个存储
+
+```
+POST /admin/storage/:key/health-check
+```
+
+返回该存储实例最新健康检查记录。
+
+#### 立即检查全部存储
+
+```
+POST /admin/storage/health-check-all
+```
+
+返回所有存储实例本次检查结果数组。
+
+### 3.11 Cloudflare 图片 URL 缓存清理
 
 ```
 POST /admin/cloudflare/purge-image-cache
@@ -688,7 +745,7 @@ POST /admin/cloudflare/purge-image-cache
 - `cloudflare_api_token` 持久化在 SQLite 中，作为 admin-only secret 处理；后台读取只返回遮罩值，公开 API 不返回该字段。
 - URL 无效或未启用清理返回 `invalid_input`；Cloudflare 凭据缺失、网络错误、非 2xx 或 `success=false` 返回 `dependency_unavailable`。
 
-### 3.10 公告管理
+### 3.12 公告管理
 
 #### 获取所有公告
 

@@ -5,10 +5,11 @@ import (
 	"testing"
 )
 
-func TestLoadUsesExplicitUIDEncryptionKey(t *testing.T) {
+func TestLoadUsesExplicitSecrets(t *testing.T) {
 	t.Setenv("UID_PREFIX", "custom_")
 	t.Setenv("UID_ENCRYPTION_KEY", "uid-secret")
 	t.Setenv("JWT_SECRET", "jwt-secret")
+	t.Setenv("ADMIN_PASSWORD", "admin-secret")
 
 	cfg := Load()
 
@@ -17,6 +18,12 @@ func TestLoadUsesExplicitUIDEncryptionKey(t *testing.T) {
 	}
 	if cfg.UIDEncryptionKey != "uid-secret" {
 		t.Fatalf("expected explicit UID encryption key, got %q", cfg.UIDEncryptionKey)
+	}
+	if cfg.JWTSecret != "jwt-secret" {
+		t.Fatalf("expected explicit JWT secret, got %q", cfg.JWTSecret)
+	}
+	if cfg.AdminPassword != "admin-secret" {
+		t.Fatalf("expected explicit admin password, got %q", cfg.AdminPassword)
 	}
 }
 
@@ -41,11 +48,11 @@ func TestLoadUsesOnlyStartupEnvironmentContract(t *testing.T) {
 	if cfg.HTTPAddr != ":9090" || cfg.DatabasePath != "data/custom.db" || cfg.RedisURL != "redis://localhost:6380/1" {
 		t.Fatalf("unexpected startup config: %+v", cfg)
 	}
-	if cfg.UIDPrefix != "custom_" || cfg.JWTSecret != "jwt-secret" {
+	if cfg.UIDPrefix != "custom_" || cfg.JWTSecret != "jwt-secret" || cfg.AdminPassword != "secret" {
 		t.Fatalf("unexpected security config: %+v", cfg)
 	}
-	if cfg.UIDEncryptionKey != "change-me-uid-secret" {
-		t.Fatalf("expected UID encryption key default independent from JWT secret, got %q", cfg.UIDEncryptionKey)
+	if cfg.UIDEncryptionKey != "" {
+		t.Fatalf("expected UID encryption key to have no default, got %q", cfg.UIDEncryptionKey)
 	}
 	cfgType := reflect.TypeOf(cfg)
 	for _, field := range []string{"CloudflareZoneID", "CloudflareAPIToken", "CloudflareAPIBaseURL"} {

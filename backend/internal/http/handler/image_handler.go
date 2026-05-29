@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"omepic/backend/internal/http/clientip"
+	"omepic/backend/internal/http/middleware"
 	"omepic/backend/internal/response"
 	"omepic/backend/internal/service"
 )
@@ -32,6 +33,9 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 	limit := h.service.MaxUploadSizeBytes()
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
+		if middleware.RespondMaxBytesError(c, err) {
+			return
+		}
 		response.Error(c, http.StatusBadRequest, "invalid_input", "file is required")
 		return
 	}

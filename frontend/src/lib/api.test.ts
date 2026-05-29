@@ -50,6 +50,7 @@ const runtimeSettings: RuntimeSettings = {
   rate_limit_max_requests: 120,
   upload_rate_limit_window_minutes: 10,
   upload_rate_limit_max_requests: 20,
+  real_ip_source: "remote-addr",
 };
 
 describe("admin API helpers", () => {
@@ -288,9 +289,9 @@ describe("admin API helpers", () => {
           runtime_public_base_url_set: false,
         },
         security: {
-          jwt_secret: { configured: true, using_default: false },
-          admin_password: { configured: true, using_default: false },
-          uid_encryption_key: { configured: true, using_default: false },
+          jwt_secret: { configured: true },
+          admin_password: { configured: true },
+          uid_encryption_key: { configured: true },
         },
         storage: {
           default_storage_key: "local",

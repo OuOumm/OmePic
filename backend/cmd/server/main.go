@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"omepic/backend/internal/cache"
@@ -22,11 +26,10 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	cfg := config.Load()
 
-	if cfg.JWTSecret == "change-me-too" {
-		logger.Warn("JWT_SECRET is set to the default value 'change-me-too' — set a strong secret in production")
-	}
-	if cfg.UIDEncryptionKey == "change-me-uid-secret" {
-		logger.Warn("UID_ENCRYPTION_KEY is set to the default value 'change-me-uid-secret' — set a strong secret in production")
+	// H-01: enforce required secrets at startup.
+	if err := enforceRequiredSecrets(cfg); err != nil {
+		logger.Error("startup failed", "error", err.Error())
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -90,8 +93,18 @@ func main() {
 		logger.Error("failed to load runtime settings", "error", err.Error())
 		os.Exit(1)
 	}
-	if usesDefaultAdminPassword(ctx, repo) {
-		logger.Warn("admin password is still using the documented first-boot default 'admin123' — change it immediately in production")
+
+	// M-03: seed PUBLIC_BASE_URL env into runtime settings and enforce in production.
+	if cfg.PublicBaseURL != "" {
+		s := settingsManager.Current()
+		if s.PublicBaseURL == "" {
+			s.PublicBaseURL = cfg.PublicBaseURL
+			settingsManager.Reconfigure(s)
+		}
+	}
+	if cfg.IsProduction() && settingsManager.Current().PublicBaseURL == "" {
+		logger.Error("PUBLIC_BASE_URL must be configured in production (set PUBLIC_BASE_URL env or configure public_base_url in runtime settings)")
+		os.Exit(1)
 	}
 
 	imageService := service.NewImageService(repo, imageCache, storageManager, settingsManager, uidCodec.Generate, uidCodec.Validate, logger)
@@ -100,13 +113,15 @@ func main() {
 		DatabasePath:     cfg.DatabasePath,
 		RedisURL:         cfg.RedisURL,
 		UIDEncryptionKey: cfg.UIDEncryptionKey,
+		AdminPassword:    cfg.AdminPassword,
 	})
 	announcementService := service.NewAnnouncementService(repo)
 	healthService := service.NewHealthService(repo, imageCache)
 	storageHealthService := service.NewStorageHealthService(repo, storageManager, logger)
 	stopStorageHealthHeartbeat := storageHealthService.StartHeartbeat(context.Background(), service.StorageHealthDefaultInterval)
-	defer stopStorageHealthHeartbeat()
-	ipResolver := clientip.NewResolver(nil, "")
+	ipResolver := clientip.NewResolver(nil, func() string {
+		return settingsManager.Current().RealIPSource
+	})
 
 	if _, err := imageService.Preheat(ctx); err != nil {
 		logger.Error("redis preheat failed", "error", err.Error())
@@ -126,17 +141,65 @@ func main() {
 		FrontendDir:         "web",
 	})
 
-	logger.Info("server starting", "addr", cfg.HTTPAddr, "default_storage_key", storageManager.CurrentKey(), "storage_backend", storageManager.CurrentBackend())
-	if err := engine.Run(cfg.HTTPAddr); err != nil {
-		logger.Error("server stopped", "error", err.Error())
-		os.Exit(1)
+	// --- Graceful shutdown ---
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	srv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           engine,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      300 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		logger.Info("server starting", "addr", cfg.HTTPAddr, "default_storage_key", storageManager.CurrentKey(), "storage_backend", storageManager.CurrentBackend())
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+		close(serverErr)
+	}()
+
+	select {
+	case sig := <-sigCh:
+		logger.Info("shutdown signal received", "signal", sig.String())
+	case err := <-serverErr:
+		if err != nil {
+			logger.Error("server stopped unexpectedly", "error", err.Error())
+			os.Exit(1)
+		}
+	}
+
+	// Phase 1: stop accepting new HTTP requests
+	shutdownCtx, shutdownCancel := context.WithTimeout(rootCtx, 15*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error", "error", err.Error())
+	}
+
+	// Phase 2: stop background heartbeat
+	stopStorageHealthHeartbeat()
+
+	// Phase 3: close Redis and SQLite (deferred in reverse order)
+	logger.Info("server stopped gracefully")
 }
 
-func usesDefaultAdminPassword(ctx context.Context, repo *repository.Repository) bool {
-	adminService := service.NewAdminService(repo, nil, nil, nil, "", service.AdminEnvMetadata{})
-	if _, err := adminService.Login(ctx, service.DefaultAdminPassword); err != nil {
-		return false
+func enforceRequiredSecrets(cfg config.AppConfig) error {
+	if cfg.AdminPassword == "" {
+		return errors.New("ADMIN_PASSWORD must be set in .env")
 	}
-	return true
+	if cfg.JWTSecret == "" || len(cfg.JWTSecret) < 32 {
+		return errors.New("JWT_SECRET must be set in .env and be at least 32 characters")
+	}
+	if cfg.UIDEncryptionKey == "" || len(cfg.UIDEncryptionKey) < 32 {
+		return errors.New("UID_ENCRYPTION_KEY must be set in .env and be at least 32 characters")
+	}
+	return nil
 }

@@ -36,6 +36,7 @@ func New(deps Dependencies) *gin.Engine {
 	apiLimiter := middleware.RateLimit(deps.RateLimiter, deps.Logger, middleware.RateLimitPolicy{
 		Scope:      "api",
 		IPResolver: deps.IPResolver,
+		FailClosed: true,
 		LimitFunc: func() (int, time.Duration) {
 			if deps.Settings == nil {
 				return 0, 0
@@ -47,6 +48,7 @@ func New(deps Dependencies) *gin.Engine {
 	uploadLimiter := middleware.RateLimit(deps.RateLimiter, deps.Logger, middleware.RateLimitPolicy{
 		Scope:      "upload",
 		IPResolver: deps.IPResolver,
+		FailClosed: true,
 		LimitFunc: func() (int, time.Duration) {
 			if deps.Settings == nil {
 				return 0, 0
@@ -59,7 +61,7 @@ func New(deps Dependencies) *gin.Engine {
 	engine.GET(healthRouteSpec.Path, deps.HealthHandler.Health)
 	engine.GET(runtimeSettingsRouteSpec.Path, apiLimiter, deps.ImageHandler.RuntimeSettings)
 	engine.GET(publicAnnouncementsSpec.Path, apiLimiter, deps.AnnouncementHandler.PublicList)
-	engine.POST(imageUploadRouteSpec.Path, uploadLimiter, deps.ImageHandler.Upload)
+	engine.POST(imageUploadRouteSpec.Path, middleware.BodyLimit(deps.Settings), uploadLimiter, deps.ImageHandler.Upload)
 	engine.DELETE(imageRouteSpec.Path, apiLimiter, deps.ImageHandler.Delete)
 	engine.GET(imageRouteSpec.Path, deps.ImageHandler.Serve)
 	engine.POST(adminLoginRouteSpec.Path, apiLimiter, deps.AdminHandler.Login)

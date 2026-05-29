@@ -26,12 +26,18 @@
   const activeTab = $derived(page.url.searchParams.get('tab') ?? 'runtime');
   const siteName = $derived(system?.runtime.site_name || preferences.runtimeSettings?.site.name || 'OmePic');
   const cloudflarePurgeConfigured = $derived(system?.readonly.service.cloudflare_purge_configured ?? false);
+  const realIpSourceOptions = [
+    { value: 'remote-addr', labelKey: 'admin.realIpSourceRemoteAddr' },
+    { value: 'x-forwarded-for', labelKey: 'admin.realIpSourceXForwardedFor' },
+    { value: 'x-real-ip', labelKey: 'admin.realIpSourceXRealIp' },
+    { value: 'cf-connecting-ip', labelKey: 'admin.realIpSourceCfConnectingIp' },
+  ] as const;
   const securityWarnings = $derived.by(() => {
     const warnings: string[] = [];
     if (!system) return warnings;
-    if (system.readonly.security.jwt_secret.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningJwtDefault'));
-    if (system.readonly.security.uid_encryption_key.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningUidDefault'));
-    if (!system.readonly.security.admin_password.configured || system.readonly.security.admin_password.using_default) warnings.push(t(preferences.language, 'admin.runtimeWarningAdminPasswordBootstrap'));
+    if (!system.readonly.security.jwt_secret.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningJwtDefault'));
+    if (!system.readonly.security.uid_encryption_key.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningUidDefault'));
+    if (!system.readonly.security.admin_password.configured) warnings.push(t(preferences.language, 'admin.runtimeWarningAdminPasswordBootstrap'));
     return warnings;
   });
 
@@ -226,6 +232,15 @@
             <label class="grid gap-2 text-sm font-black md:col-span-2">
               {t(preferences.language, 'admin.runtimePublicUrl')}
               <input class="studio-input" bind:value={system.runtime.public_base_url} />
+            </label>
+            <label class="grid gap-2 text-sm font-black md:col-span-2">
+              {t(preferences.language, 'admin.realIpSource')}
+              <select class="studio-input" bind:value={system.runtime.real_ip_source}>
+                {#each realIpSourceOptions as option (option.value)}
+                  <option value={option.value}>{t(preferences.language, option.labelKey)}</option>
+                {/each}
+              </select>
+              <span class="text-sm font-bold text-[hsl(var(--ink-muted))]">{t(preferences.language, 'admin.realIpSourceHint')}</span>
             </label>
           </div>
 

@@ -6,13 +6,32 @@ import (
 	"strings"
 )
 
+// Resolver extracts the real client IP from an HTTP request.
+//
+// The header source is resolved dynamically on every call via the
+// realIPSourceFunc callback so that runtime settings changes (hot-reload)
+// take effect without restarting the server.
 type Resolver struct {
 	trustedProxyCIDRs []*net.IPNet
-	realIPHeader      string
+	realIPSourceFunc  func() string
 }
 
-func NewResolver(trustedProxyCIDRs []string, realIPHeader string) *Resolver {
-	resolver := &Resolver{realIPHeader: normalizeHeader(realIPHeader)}
+// NewResolver creates a Resolver.
+//
+// trustedProxyCIDRs is a list of CIDR ranges or single IPs that are
+// considered trusted proxies; only requests from these addresses will
+// have their forwarding headers honoured.
+//
+// realIPSourceFunc is called on every Resolve invocation to determine
+// which header (or direct RemoteAddr) to use.  If nil, the resolver
+// always returns RemoteAddr.  Recognised return values:
+//
+//   - "remote-addr"     – use RemoteAddr directly (default, no proxy)
+//   - "x-forwarded-for" – first IP from X-Forwarded-For
+//   - "x-real-ip"       – X-Real-IP header
+//   - "cf-connecting-ip"– CF-Connecting-IP header (Cloudflare)
+func NewResolver(trustedProxyCIDRs []string, realIPSourceFunc func() string) *Resolver {
+	resolver := &Resolver{realIPSourceFunc: realIPSourceFunc}
 	for _, value := range trustedProxyCIDRs {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
@@ -41,10 +60,23 @@ func (r *Resolver) Resolve(req *http.Request) string {
 	if remoteIP == "" {
 		return ""
 	}
+
+	source := ""
+	if r.realIPSourceFunc != nil {
+		source = r.realIPSourceFunc()
+	}
+
+	// remote-addr or empty → always use direct IP, ignore headers.
+	if source == "" || source == "remote-addr" {
+		return remoteIP
+	}
+
+	// For header-based sources, only honour the header when the direct
+	// connection comes from a trusted proxy.
 	if !r.isTrustedProxy(remoteIP) {
 		return remoteIP
 	}
-	if headerIP := r.headerIP(req); headerIP != "" {
+	if headerIP := r.headerIP(req, source); headerIP != "" {
 		return headerIP
 	}
 	return remoteIP
@@ -63,10 +95,14 @@ func (r *Resolver) isTrustedProxy(ip string) bool {
 	return false
 }
 
-func (r *Resolver) headerIP(req *http.Request) string {
-	switch r.realIPHeader {
+func (r *Resolver) headerIP(req *http.Request, source string) string {
+	switch source {
 	case "x-real-ip":
 		return firstValidIP(req.Header.Get("X-Real-IP"))
+	case "cf-connecting-ip":
+		return firstValidIP(req.Header.Get("CF-Connecting-IP"))
+	case "x-forwarded-for":
+		return firstForwardedIP(req.Header.Get("X-Forwarded-For"))
 	default:
 		return firstForwardedIP(req.Header.Get("X-Forwarded-For"))
 	}
@@ -98,12 +134,4 @@ func firstValidIP(value string) string {
 		return ""
 	}
 	return parsed.String()
-}
-
-func normalizeHeader(value string) string {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	if normalized == "x-real-ip" {
-		return normalized
-	}
-	return "x-forwarded-for"
 }

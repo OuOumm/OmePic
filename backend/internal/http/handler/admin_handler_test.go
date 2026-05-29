@@ -21,6 +21,8 @@ import (
 	"omepic/backend/internal/storage"
 )
 
+const testAdminPassword = "Admin-start!"
+
 func TestAdminChangePasswordWrongOldPasswordReturnsClearMessage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := NewAdminHandler(newTestAdminService(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -56,7 +58,7 @@ func TestAdminChangePasswordWeakNewPasswordReturnsInvalidInput(t *testing.T) {
 	handler := NewAdminHandler(newTestAdminService(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPut, "/admin/password", bytes.NewBufferString(`{"old_password":"`+service.DefaultAdminPassword+`","new_password":"nosymbol1"}`))
+	request := httptest.NewRequest(http.MethodPut, "/admin/password", bytes.NewBufferString(`{"old_password":"`+testAdminPassword+`","new_password":"nosymbol1"}`))
 	request.Header.Set("Content-Type", "application/json")
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = request
@@ -84,7 +86,7 @@ func TestAdminChangePasswordWeakNewPasswordReturnsInvalidInput(t *testing.T) {
 func TestAdminUpdateSystemSettingsRejectsInvalidAVIFSettings(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	adminService := newTestAdminService(t)
-	if err := adminService.ChangePassword(context.Background(), service.DefaultAdminPassword, "New-secret!"); err != nil {
+	if err := adminService.ChangePassword(context.Background(), testAdminPassword, "New-secret!"); err != nil {
 		t.Fatalf("ChangePassword returned error: %v", err)
 	}
 	handler := NewAdminHandler(adminService, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -122,7 +124,7 @@ func TestAdminUpdateSystemSettingsRejectsInvalidAVIFSettings(t *testing.T) {
 func TestAdminUpdateSystemSettingsSuccessIncludesAVIFFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	adminService := newTestAdminService(t)
-	if err := adminService.ChangePassword(context.Background(), service.DefaultAdminPassword, "New-secret!"); err != nil {
+	if err := adminService.ChangePassword(context.Background(), testAdminPassword, "New-secret!"); err != nil {
 		t.Fatalf("ChangePassword returned error: %v", err)
 	}
 	handler := NewAdminHandler(adminService, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -256,5 +258,5 @@ func newTestAdminServiceWithRepo(t *testing.T) (*service.AdminService, *reposito
 		t.Fatalf("storage.NewManager returned error: %v", err)
 	}
 	settings := service.NewRuntimeSettingsManager()
-	return service.NewAdminService(repo, manager, settings, nil, "test-secret", service.AdminEnvMetadata{}), repo
+	return service.NewAdminService(repo, manager, settings, nil, "test-secret", service.AdminEnvMetadata{AdminPassword: testAdminPassword}), repo
 }

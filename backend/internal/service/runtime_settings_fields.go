@@ -260,6 +260,17 @@ var runtimeConfigFields = []ConfigField{
 			settings.UploadRateLimitMaxRequests = value
 		}),
 	},
+	{
+		Key:     "real_ip_source",
+		Type:    FieldTypeString,
+		Default: DefaultRealIPSource,
+		Get: func(settings *RuntimeSettings) (interface{}, error) {
+			return settings.RealIPSource, nil
+		},
+		Set: setStringRuntimeField("real_ip_source", func(settings *RuntimeSettings, value string) {
+			settings.RealIPSource = value
+		}),
+	},
 }
 
 // configFieldsMap is the descriptor table for all runtime config fields.

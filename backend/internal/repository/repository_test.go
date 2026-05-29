@@ -49,6 +49,28 @@ func TestMigrateCreatesImagesSchemaWithoutOriginalFilenameColumnAndWithStorageKe
 	}
 }
 
+func TestMigrateSetsSchemaUserVersion(t *testing.T) {
+	ctx := context.Background()
+	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = repo.Close()
+	})
+
+	if err := repo.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	version, err := repo.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("SchemaVersion returned error: %v", err)
+	}
+	if version != CurrentSchemaVersion {
+		t.Fatalf("expected schema user_version %d, got %d", CurrentSchemaVersion, version)
+	}
+}
+
 func TestMigrateCreatesCoreImageIndexesIdempotently(t *testing.T) {
 	ctx := context.Background()
 	repo, err := New(filepath.Join(t.TempDir(), "test.sqlite"))

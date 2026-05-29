@@ -22,6 +22,11 @@ type RateLimitPolicy struct {
 	Scope      string
 	LimitFunc  func() (int, time.Duration)
 	IPResolver *clientip.Resolver
+	// FailClosed rejects requests with 503 when the rate limiter backend is
+	// unavailable. Use this for sensitive endpoints (upload, login) where
+	// losing rate-limit protection is unacceptable. Default (false) is
+	// fail-open: the request proceeds without rate limiting.
+	FailClosed bool
 }
 
 func RateLimit(limiter ratelimit.Limiter, logger *slog.Logger, policy RateLimitPolicy) gin.HandlerFunc {
@@ -40,6 +45,11 @@ func RateLimit(limiter ratelimit.Limiter, logger *slog.Logger, policy RateLimitP
 		if err != nil {
 			if logger != nil {
 				logger.WarnContext(context.Background(), "rate limiter unavailable", "scope", policy.Scope, "error", err.Error())
+			}
+			if policy.FailClosed {
+				response.Error(c, http.StatusServiceUnavailable, "dependency_unavailable", "rate limiter is temporarily unavailable")
+				c.Abort()
+				return
 			}
 			c.Next()
 			return

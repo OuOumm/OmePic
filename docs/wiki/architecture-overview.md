@@ -7,12 +7,14 @@ OmePic 是一个功能完整的自托管图片托管服务，支持图片上传�
 ### 核心特性
 
 - 图片上传（支持拖拽、粘贴、URL 抓取）
-- 自动转换为 AVIF 格式（默认质量 60、速度 8，可在后台 runtime/system settings 中调整）
+- 自动转换为 AVIF 格式（质量、速度、并发、超时和像素上限可在后台 runtime/system settings 中调整）
 - Redis 支持的 MD5 去重（按存储实例作用域）
 - 多种存储后端：本地文件系统、S3 兼容、WebDAV
 - 前端 Upload History（IndexedDB 持久化）
 - JWT 保护的管理后台
 - 运行时动态配置（无需重启）
+- 存储健康检查与历史趋势
+- Cloudflare 图片 URL 缓存清理
 - 公告系统
 - IP 封禁与滥用监控
 - 令牌认证（非用户系统，基于 X-Token 头）
@@ -40,24 +42,18 @@ OmePic 是一个功能完整的自托管图片托管服务，支持图片上传�
 │                      │                               │
 └──────────────────────┼───────────────────────────────┘
                        │
-          ┌────────────┼────────────┬────────────────┐
-          ▼            ▼            ▼                ▼
-   ┌──────────┐ ┌──────────┐ ┌──────────┐  ┌──────────────┐
-   │ Service  │ │ Service  │ │ Service  │  │  Storage     │
-   │ Image    │ │ Admin    │ │ Announce │  │  Manager     │
-   └────┬─────┘ └──────────┘ └──────────┘  └──────┬───────┘
-        │                                          │
-        ▼                                          ▼
-   ┌──────────┐                           ┌──────────────────┐
-   │ Repository│                          │ Local / S3 /     │
-   │ (SQLite)  │                          │ WebDAV Provider  │
-   └──────────┘                           └──────────────────┘
-        │
-        ▼
-   ┌──────────┐
-   │ Cache    │
-   │ (Redis)  │
-   └──────────┘
+          ┌────────────┼────────────┬────────────────┬────────────────┐
+          ▼            ▼            ▼                ▼                ▼
+   ┌──────────┐ ┌──────────┐ ┌──────────┐  ┌──────────────┐ ┌──────────────┐
+   │ Service  │ │ Service  │ │ Service  │  │  Storage     │ │ Health /     │
+   │ Image    │ │ Admin    │ │ Announce │  │  Manager     │ │ StorageHealth│
+   └────┬─────┘ └────┬─────┘ └──────────┘  └──────┬───────┘ └──────┬───────┘
+        │          │                               │                │
+        ▼          ▼                               ▼                ▼
+   ┌──────────┐ ┌──────────┐              ┌──────────────────┐ ┌──────────┐
+   │Repository│ │  Cache   │              │ Local / S3 /     │ │Health    │
+   │(SQLite)  │ │ (Redis)  │              │ WebDAV Provider  │ │History DB │
+   └──────────┘ └──────────┘              └──────────────────┘ └──────────┘
 ```
 
 ## 三、后端分层
@@ -68,8 +64,8 @@ OmePic 是一个功能完整的自托管图片托管服务，支持图片上传�
 | **路由层** | `internal/http/router` | Gin 路由注册，CORS/中间件组装 |
 | **中间件层** | `internal/http/middleware` | JWT 认证、速率限制、请求日志 |
 | **处理器层** | `internal/http/handler` | HTTP 请求解析、Service 调用、响应构造 |
-| **服务层** | `internal/service` | 业务逻辑：图片上传/删除、管理操作、公告、滥用检测 |
-| **仓储层** | `internal/repository` | SQLite 数据访问，所有 CRUD 操作 |
+| **服务层** | `internal/service` | 业务逻辑：图片上传/删除、管理操作、公告、滥用检测、存储健康、Cloudflare purge |
+| **仓储层** | `internal/repository` | SQLite 数据访问、schema migration、CRUD、聚合与存储健康历史 |
 | **缓存层** | `internal/cache` | Redis 缓存：UID 元数据、MD5 去重映射 |
 | **存储层** | `internal/storage` | 存储抽象：Local / S3 / WebDAV 实现 |
 | **模型层** | `internal/model` | 数据结构和类型定义 |
@@ -80,7 +76,7 @@ OmePic 是一个功能完整的自托管图片托管服务，支持图片上传�
 | 层次 | 路径 | 职责 |
 |------|------|------|
 | **页面层** | `src/routes/` | SvelteKit 页面路由 |
-| **组件层** | `src/lib/components/studio/` | UI 组件（上传区、数据表格、对话框等） |
+| **组件层** | `src/lib/components/studio/` | UI 组件（上传区、数据表格、对话框、存储健康图表等） |
 | **API 层** | `src/lib/api.ts` | 后端 API 调用封装 |
 | **状态层** | `src/lib/stores/` | 偏好设置（Svelte runes）、Toast 通知 |
 | **工具层** | `src/lib/` | 剪贴板、客户端令牌、i18n、上传队列、IndexedDB |
@@ -101,17 +97,17 @@ OmePic 是一个功能完整的自托管图片托管服务，支持图片上传�
 6. ImageService.Upload
    ├─ 检查维护模式、IP 封禁
    ├─ 校验 runtime settings（大小/MIME）
-   ├─ 计算 MD5 哈希 → 调用 findExistingByMD5
-   │   ├─ 查 Redis (md5:{storageKey}:{hash})
-   │   └─ 查 SQLite (images 表)
-   ├─ [去重] → 创建新 UID 行，复用文件路径
-   ├─ [新文件] → 转换为 AVIF → Storage.Provider.Save()
-   │   ├─ Local → os.WriteFile
-   │   ├─ S3 → minio.PutObject
-   │   └─ WebDAV → gowebdav.Write
+   ├─ 解析目标 storage_key 或默认存储
+   ├─ 计算原始上传字节 MD5，并按 storage_key+md5 加 keyed mutex
+   ├─ 查 Redis (md5:{storageKey}:{hash}) → 回退 SQLite
+   ├─ [去重] → 创建新 UID 行，复用同存储实例文件路径
+   ├─ [新文件] → 像素上限校验 → 流式 AVIF 转换 → Storage.Provider.SaveStream()
+   │   ├─ Local → io.Copy 到文件
+   │   ├─ S3 → minio.PutObject(stream)
+   │   └─ WebDAV → 流式写入
    ├─ 写入 SQLite (images 表)
    └─ 写入 Redis (uid:{uid}, md5:{storageKey}:{hash})
-7. 前端接收 UploadOutput → 显示 URL/Markdown/BBCode
+7. 前端接收 UploadOutput.url/duplicate → 派生 UID、Markdown、BBCode
 8. 保存到 IndexedDB (upload_history) 持久化
 ```
 
@@ -123,7 +119,7 @@ OmePic 是一个功能完整的自托管图片托管服务，支持图片上传�
 | 数据库 | SQLite (modernc.org/sqlite) | 纯 Go 实现，无需外部依赖，适合中小规模 |
 | 缓存 | Redis (go-redis) | 高性能 KV 缓存，支持去重预热 |
 | 图片转换 | gen2brain/avif | 纯 Go AVIF 编码，无需 CGO |
-| ID 生成 | Snowflake + XOR + Base62 | 分布式友好，不可预测，URL 安全 |
+| ID 生成 | Snowflake + XOR + Base62 | 分布式友好、URL 安全、公开 token 不透明；XOR 属于混淆而非强加密 |
 | 前端框架 | Svelte 5 + SvelteKit | 编译型框架，打包体积小，响应式新 runes API |
 | 样式 | Tailwind CSS 3 | 实用优先，快速构建 |
 | JWT | golang-jwt/v5 | 成熟标准库 |

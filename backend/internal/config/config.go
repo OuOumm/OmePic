@@ -18,6 +18,14 @@ type AppConfig struct {
 	UIDPrefix        string
 	UIDEncryptionKey string
 	JWTSecret        string
+	AdminPassword    string
+	AppEnv           string
+	PublicBaseURL    string
+}
+
+// IsProduction returns true when APP_ENV is not "development".
+func (c AppConfig) IsProduction() bool {
+	return !strings.EqualFold(strings.TrimSpace(c.AppEnv), "development")
 }
 
 type RuntimeStorageConfig struct {
@@ -59,14 +67,20 @@ type RuntimeStorageUpdate struct {
 	WebDAVPass       *string `json:"webdav_pass"`
 }
 
+// Load reads configuration from environment variables.
+// H-01: ADMIN_PASSWORD, JWT_SECRET, and UID_ENCRYPTION_KEY have no defaults.
+// They must be set explicitly in .env; startup will fail if any is missing.
 func Load() AppConfig {
 	return AppConfig{
 		HTTPAddr:         envOrDefault("HTTP_ADDR", ":8080"),
 		DatabasePath:     envOrDefault("DATABASE_PATH", "data/omepic.db"),
 		RedisURL:         envOrDefault("REDIS_URL", "redis://localhost:6379/0"),
 		UIDPrefix:        envOrDefault("UID_PREFIX", "omeo_"),
-		UIDEncryptionKey: envOrDefault("UID_ENCRYPTION_KEY", "change-me-uid-secret"),
-		JWTSecret:        envOrDefault("JWT_SECRET", "change-me-too"),
+		UIDEncryptionKey: strings.TrimSpace(os.Getenv("UID_ENCRYPTION_KEY")),
+		JWTSecret:        strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		AdminPassword:    strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")),
+		AppEnv:           envOrDefault("APP_ENV", ""),
+		PublicBaseURL:    strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "/"),
 	}
 }
 

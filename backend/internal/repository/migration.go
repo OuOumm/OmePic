@@ -6,6 +6,10 @@ import (
 	"fmt"
 )
 
+// CurrentSchemaVersion is the expected PRAGMA user_version for this codebase.
+// Bump this value whenever the schema changes (new table, column, index, etc.).
+const CurrentSchemaVersion = 1
+
 func (r *Repository) Migrate(ctx context.Context) error {
 	schema := []string{
 		`CREATE TABLE IF NOT EXISTS images (
@@ -108,7 +112,21 @@ func (r *Repository) Migrate(ctx context.Context) error {
 			return err
 		}
 	}
+
+	// Q-02: set schema version via PRAGMA user_version.
+	if _, err := r.db.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d;", CurrentSchemaVersion)); err != nil {
+		return fmt.Errorf("set user_version: %w", err)
+	}
 	return nil
+}
+
+// SchemaVersion returns the current PRAGMA user_version from the database.
+func (r *Repository) SchemaVersion(ctx context.Context) (int, error) {
+	var version int
+	if err := r.db.QueryRowContext(ctx, "PRAGMA user_version;").Scan(&version); err != nil {
+		return 0, fmt.Errorf("query user_version: %w", err)
+	}
+	return version, nil
 }
 
 func testTableColumnExists(ctx context.Context, db *sql.DB, table string, column string) (bool, error) {

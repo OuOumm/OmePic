@@ -115,9 +115,7 @@ type CloudflareImageCachePurgeResult struct {
 }
 
 const (
-	DefaultAdminPassword          = "admin123"
-	adminPasswordHashConfigKey    = "admin_password_hash"
-	adminPasswordDefaultConfigKey = "admin_password_uses_default"
+	adminPasswordHashConfigKey = "admin_password_hash"
 )
 
 type adminStorageManager interface {
@@ -140,6 +138,7 @@ type AdminEnvMetadata struct {
 	DatabasePath     string
 	RedisURL         string
 	UIDEncryptionKey string
+	AdminPassword    string
 }
 
 func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, settingsManager *RuntimeSettingsManager, imageService *ImageService, jwtSecret string, adminEnv AdminEnvMetadata) *AdminService {
@@ -156,40 +155,6 @@ func NewAdminService(repo *repository.Repository, storageManager *storage.Manage
 func (s *AdminService) isPasswordSet(ctx context.Context) bool {
 	_, err := s.repo.GetConfigValue(ctx, adminPasswordHashConfigKey)
 	return err == nil
-}
-
-func (s *AdminService) isAdminPasswordUsingDefault(ctx context.Context) (bool, error) {
-	value, err := s.repo.GetConfigValue(ctx, adminPasswordDefaultConfigKey)
-	if err == nil {
-		return parseBoolValue(value), nil
-	}
-	if !repository.IsNotFound(err) {
-		return false, fmt.Errorf("%w: password default status lookup failed", ErrDependencyUnavailable)
-	}
-
-	storedHash, hashErr := s.repo.GetConfigValue(ctx, adminPasswordHashConfigKey)
-	if hashErr != nil {
-		if repository.IsNotFound(hashErr) {
-			return true, nil
-		}
-		return false, fmt.Errorf("%w: password lookup failed", ErrDependencyUnavailable)
-	}
-	usingDefault := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(DefaultAdminPassword)) == nil
-	if err := s.repo.SetConfigValue(ctx, adminPasswordDefaultConfigKey, boolStringValue(usingDefault)); err != nil {
-		return false, fmt.Errorf("%w: password default status save failed", ErrDependencyUnavailable)
-	}
-	return usingDefault, nil
-}
-
-func (s *AdminService) rejectIfDefaultAdminPassword(ctx context.Context) error {
-	usingDefault, err := s.isAdminPasswordUsingDefault(ctx)
-	if err != nil {
-		return err
-	}
-	if usingDefault {
-		return WithUserMessage(ErrForbidden, "change the default admin password before modifying high-risk settings")
-	}
-	return nil
 }
 
 func (s *AdminService) Login(ctx context.Context, password string) (string, error) {
@@ -221,16 +186,10 @@ func (s *AdminService) ChangePassword(ctx context.Context, oldPassword string, n
 	if err := s.repo.SetConfigValue(ctx, adminPasswordHashConfigKey, string(hash)); err != nil {
 		return fmt.Errorf("%w: password save failed", ErrDependencyUnavailable)
 	}
-	if err := s.repo.SetConfigValue(ctx, adminPasswordDefaultConfigKey, boolStringValue(newPassword == DefaultAdminPassword)); err != nil {
-		return fmt.Errorf("%w: password default status save failed", ErrDependencyUnavailable)
-	}
 	return nil
 }
 
 func validateAdminPasswordStrength(password string) error {
-	if password == DefaultAdminPassword {
-		return nil
-	}
 	if strings.TrimSpace(password) == "" {
 		return WithUserMessage(ErrInvalidInput, "new password is required")
 	}
@@ -266,18 +225,18 @@ func (s *AdminService) verifyAdminPassword(ctx context.Context, password string)
 		if !repository.IsNotFound(err) {
 			return fmt.Errorf("%w: password lookup failed", ErrDependencyUnavailable)
 		}
-		// First boot: no hash stored yet, hash the documented compatibility default and persist it.
-		defaultHash, hashErr := bcrypt.GenerateFromPassword([]byte(DefaultAdminPassword), bcrypt.DefaultCost)
+		// First boot: no hash stored yet, bootstrap from ADMIN_PASSWORD env.
+		if s.adminEnv.AdminPassword == "" {
+			return fmt.Errorf("%w: admin password not configured", ErrDependencyUnavailable)
+		}
+		bootstrapHash, hashErr := bcrypt.GenerateFromPassword([]byte(s.adminEnv.AdminPassword), bcrypt.DefaultCost)
 		if hashErr != nil {
 			return fmt.Errorf("%w: password hash failed", ErrDependencyUnavailable)
 		}
-		if err := s.repo.SetConfigValue(ctx, adminPasswordHashConfigKey, string(defaultHash)); err != nil {
+		if err := s.repo.SetConfigValue(ctx, adminPasswordHashConfigKey, string(bootstrapHash)); err != nil {
 			return fmt.Errorf("%w: password save failed", ErrDependencyUnavailable)
 		}
-		if err := s.repo.SetConfigValue(ctx, adminPasswordDefaultConfigKey, boolStringValue(true)); err != nil {
-			return fmt.Errorf("%w: password default status save failed", ErrDependencyUnavailable)
-		}
-		storedHash = string(defaultHash)
+		storedHash = string(bootstrapHash)
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)); err != nil {
@@ -456,9 +415,6 @@ func (s *AdminService) GetConfig(ctx context.Context) (AdminConfigView, error) {
 }
 
 func (s *AdminService) UpdateConfig(ctx context.Context, input AdminConfigUpdateInput) (AdminConfigView, error) {
-	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
 	view, err := s.storageCatalog().ApplyLegacyPatch(ctx, legacyStorageConfigPatch{
 		TargetStorageKey:  trimStringPointer(input.StorageKey),
 		DefaultStorageKey: input.DefaultStorageKey,
@@ -472,9 +428,6 @@ func (s *AdminService) UpdateConfig(ctx context.Context, input AdminConfigUpdate
 }
 
 func (s *AdminService) CreateStorageConfig(ctx context.Context, input AdminStorageConfigCreateInput) (AdminConfigView, error) {
-	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
 	view, err := s.storageCatalog().Create(ctx, input)
 	if err != nil {
 		return AdminConfigView{}, err
@@ -483,9 +436,6 @@ func (s *AdminService) CreateStorageConfig(ctx context.Context, input AdminStora
 }
 
 func (s *AdminService) UpdateStorageConfig(ctx context.Context, storageKey string, input AdminStorageConfigUpdateInput) (AdminConfigView, error) {
-	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
 	view, err := s.storageCatalog().Patch(ctx, storageKey, input)
 	if err != nil {
 		return AdminConfigView{}, err
@@ -494,9 +444,6 @@ func (s *AdminService) UpdateStorageConfig(ctx context.Context, storageKey strin
 }
 
 func (s *AdminService) DeleteStorageConfig(ctx context.Context, storageKey string) (AdminConfigView, error) {
-	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
 	view, err := s.storageCatalog().Delete(ctx, storageKey)
 	if err != nil {
 		return AdminConfigView{}, err
@@ -505,9 +452,6 @@ func (s *AdminService) DeleteStorageConfig(ctx context.Context, storageKey strin
 }
 
 func (s *AdminService) SetDefaultStorageConfig(ctx context.Context, storageKey string) (AdminConfigView, error) {
-	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
-		return AdminConfigView{}, err
-	}
 	view, err := s.storageCatalog().SetDefault(ctx, storageKey)
 	if err != nil {
 		return AdminConfigView{}, err
@@ -540,9 +484,6 @@ func (s *AdminService) reloadStorageManager(ctx context.Context) error {
 }
 
 func (s *AdminService) UpdateSystemSettings(ctx context.Context, input RuntimeSettingsUpdateInput) (AdminSystemSettingsView, error) {
-	if err := s.rejectIfDefaultAdminPassword(ctx); err != nil {
-		return AdminSystemSettingsView{}, err
-	}
 	current := defaultRuntimeSettings()
 	if s.settings != nil {
 		current = s.settings.Current()
@@ -580,11 +521,6 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 			break
 		}
 	}
-	adminPasswordUsingDefault, err := s.isAdminPasswordUsingDefault(ctx)
-	if err != nil {
-		return AdminSystemSettingsView{}, err
-	}
-
 	return AdminSystemSettingsView{
 		Runtime: maskRuntimeSettings(settings),
 		Readonly: AdminReadonlySettings{
@@ -597,16 +533,13 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 			},
 			Security: AdminSecurityStatus{
 				JWTSecret: SecretStatus{
-					Configured:   strings.TrimSpace(s.jwtSecret) != "",
-					UsingDefault: s.jwtSecret == "change-me-too",
+					Configured: strings.TrimSpace(s.jwtSecret) != "",
 				},
 				AdminPassword: SecretStatus{
-					Configured:   s.isPasswordSet(ctx),
-					UsingDefault: adminPasswordUsingDefault,
+					Configured: s.isPasswordSet(ctx),
 				},
 				UIDEncryptionKey: SecretStatus{
-					Configured:   strings.TrimSpace(s.adminEnv.UIDEncryptionKey) != "",
-					UsingDefault: s.adminEnv.UIDEncryptionKey == "change-me-uid-secret",
+					Configured: strings.TrimSpace(s.adminEnv.UIDEncryptionKey) != "",
 				},
 			},
 			Storage: AdminStorageStatus{

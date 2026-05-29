@@ -24,8 +24,29 @@ const (
 	DefaultMaxImagePixels               = 40000000
 	DefaultAVIFMaxConcurrency           = 2
 	DefaultAVIFConversionTimeoutSeconds = 30
+	DefaultRealIPSource                 = RealIPSourceRemoteAddr
 	bytesPerMB                          = 1024 * 1024
 )
+
+// Valid RealIPSource values.
+const (
+	RealIPSourceRemoteAddr     = "remote-addr"
+	RealIPSourceXForwardedFor  = "x-forwarded-for"
+	RealIPSourceXRealIP        = "x-real-ip"
+	RealIPSourceCFConnectingIP = "cf-connecting-ip"
+)
+
+var validRealIPSources = map[string]bool{
+	RealIPSourceRemoteAddr:     true,
+	RealIPSourceXForwardedFor:  true,
+	RealIPSourceXRealIP:        true,
+	RealIPSourceCFConnectingIP: true,
+}
+
+// IsValidRealIPSource reports whether the given value is a recognized source.
+func IsValidRealIPSource(value string) bool {
+	return validRealIPSources[value]
+}
 
 var defaultAllowedMIMETypes = []string{
 	"image/avif",
@@ -57,6 +78,7 @@ type RuntimeSettings struct {
 	RateLimitMaxRequests         int      `json:"rate_limit_max_requests"`
 	UploadRateLimitWindowMinutes int      `json:"upload_rate_limit_window_minutes"`
 	UploadRateLimitMaxRequests   int      `json:"upload_rate_limit_max_requests"`
+	RealIPSource                 string   `json:"real_ip_source"`
 }
 
 type PublicRuntimeSettingsView struct {
@@ -77,9 +99,9 @@ type PublicAccessSettingsView struct {
 }
 
 type PublicUploadSettingsView struct {
-	MaxUploadSizeMB   int      `json:"max_upload_size_mb"`
-	AllowedMIMETypes  []string `json:"allowed_mime_types"`
-	AVIFMaxConcurrency int     `json:"avif_max_concurrency"`
+	MaxUploadSizeMB    int      `json:"max_upload_size_mb"`
+	AllowedMIMETypes   []string `json:"allowed_mime_types"`
+	AVIFMaxConcurrency int      `json:"avif_max_concurrency"`
 }
 
 type PublicFeatureSettingsView struct {
@@ -113,8 +135,7 @@ type AdminEnvironmentStatus struct {
 }
 
 type SecretStatus struct {
-	Configured   bool `json:"configured"`
-	UsingDefault bool `json:"using_default"`
+	Configured bool `json:"configured"`
 }
 
 type AdminSecurityStatus struct {
@@ -156,6 +177,7 @@ type RuntimeSettingsUpdateInput struct {
 	RateLimitMaxRequests         int      `json:"rate_limit_max_requests"`
 	UploadRateLimitWindowMinutes int      `json:"upload_rate_limit_window_minutes"`
 	UploadRateLimitMaxRequests   int      `json:"upload_rate_limit_max_requests"`
+	RealIPSource                 string   `json:"real_ip_source"`
 }
 
 type RuntimeSettingsManager struct {
@@ -260,6 +282,7 @@ func validateRuntimeSettingsInput(input RuntimeSettingsUpdateInput, strictCloudf
 		RateLimitMaxRequests:         input.RateLimitMaxRequests,
 		UploadRateLimitWindowMinutes: input.UploadRateLimitWindowMinutes,
 		UploadRateLimitMaxRequests:   input.UploadRateLimitMaxRequests,
+		RealIPSource:                 strings.TrimSpace(input.RealIPSource),
 	}
 	if settings.PublicBaseURL != "" {
 		parsed, err := url.Parse(settings.PublicBaseURL)
@@ -301,6 +324,9 @@ func validateRuntimeSettingsInput(input RuntimeSettingsUpdateInput, strictCloudf
 	}
 	if settings.AVIFConversionTimeoutSeconds < 1 {
 		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "avif conversion timeout seconds must be greater than 0")
+	}
+	if settings.RealIPSource != "" && !IsValidRealIPSource(settings.RealIPSource) {
+		return RuntimeSettings{}, WithUserMessage(ErrInvalidInput, "real ip source must be one of: remote-addr, x-forwarded-for, x-real-ip, cf-connecting-ip")
 	}
 	allowed, err := normalizeMIMETypes(settings.AllowedMIMETypes)
 	if err != nil {
@@ -366,6 +392,9 @@ func normalizeRuntimeSettings(settings RuntimeSettings) RuntimeSettings {
 	settings.CloudflareAPIToken = strings.TrimSpace(settings.CloudflareAPIToken)
 	settings.CloudflareAPIBaseURL = normalizeCloudflareAPIBaseURL(settings.CloudflareAPIBaseURL)
 	settings.MaintenanceMessage = strings.TrimSpace(settings.MaintenanceMessage)
+	if settings.RealIPSource == "" {
+		settings.RealIPSource = DefaultRealIPSource
+	}
 	allowed, _ := normalizeMIMETypes(settings.AllowedMIMETypes)
 	if allowed == nil {
 		allowed = []string{}
