@@ -1,6 +1,6 @@
 # Stage 1: Build frontend static files, copy into backend/web/
 FROM node:24-alpine AS frontend-build
-WORKDIR /app
+WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
