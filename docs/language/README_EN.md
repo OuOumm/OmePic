@@ -10,6 +10,17 @@
 
 ---
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="../../docs/screenshots/home.png" width="90%" alt="Upload Homepage" />
+</p>
+
+<p align="center">
+  <img src="../../docs/screenshots/admin-login.png" width="44%" alt="Admin Login" />
+  <img src="../../docs/screenshots/admin-dashboard.png" width="44%" alt="Admin Dashboard" />
+</p>
+
 ## ✨ Features
 
 - **Automatic AVIF conversion** — uploads are converted to AVIF with configurable quality, speed, concurrency, timeout, and pixel limit

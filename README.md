@@ -12,6 +12,17 @@
 
 ---
 
+## 📸 截图
+
+<p align="center">
+  <img src="docs/screenshots/home.png" width="90%" alt="上传首页" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/admin-login.png" width="44%" alt="管理后台登录" />
+  <img src="docs/screenshots/admin-dashboard.png" width="44%" alt="管理后台" />
+</p>
+
 ## ✨ 核心功能
 
 - **自动 AVIF 转换** — 上传图片自动转换为 AVIF 格式，支持后台可配置质量/速度/并发/超时和像素上限
