@@ -11,6 +11,7 @@ FROM golang:1.25-alpine AS backend-build
 RUN apk add --no-cache \
     libavif-dev libwebp-dev libjpeg-turbo-dev \
     libpng-dev giflib-dev pkgconf build-base
+ENV CGO_CFLAGS="-I/usr/include/libpng16"
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -21,7 +22,7 @@ RUN CGO_ENABLED=1 go build -ldflags="-s -w" -trimpath -o /server ./cmd/server/
 # Stage 3: Runtime with C libraries (~30 MB)
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates \
-    libavif libwebp libjpeg-turbo libpng giflib
+    libavif libwebp libjpeg-turbo libpng16 giflib
 COPY --from=backend-build /server /opt/omepic/server
 COPY --from=backend-build /app/web /opt/omepic/web
 WORKDIR /opt/omepic
