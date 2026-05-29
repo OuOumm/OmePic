@@ -9,12 +9,7 @@ RUN npm run build:backend
 # Stage 2: Build Go backend (lilliput requires CGO + C libraries)
 FROM golang:1.25-alpine AS backend-build
 ARG TARGETARCH
-RUN apk add --no-cache \
-    libavif-dev libwebp-dev libjpeg-turbo-dev \
-    libpng16-dev giflib-dev pkgconf build-base && \
-    ln -sf /usr/include/libpng16/png.h /usr/include/png.h && \
-    ln -sf /usr/include/libpng16/pngconf.h /usr/include/pngconf.h && \
-    ln -sf /usr/include/libpng16/pnglibconf.h /usr/include/pnglibconf.h
+RUN apk add --no-cache build-base
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
