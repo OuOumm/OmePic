@@ -187,7 +187,7 @@ func NewImageServiceWithCaches(
 		logger:      logger,
 		generateUID: generateUID,
 		validateUID: validateUID,
-		encoder:     encodeAVIFToWriterLilliput,
+		encoder:     defaultEncoder(),
 		hashLocks:   newKeyedMutex(),
 	}
 }
