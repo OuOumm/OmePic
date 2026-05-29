@@ -10,8 +10,10 @@ RUN npm run build:backend
 FROM golang:1.25-alpine AS backend-build
 RUN apk add --no-cache \
     libavif-dev libwebp-dev libjpeg-turbo-dev \
-    libpng-dev giflib-dev pkgconf build-base
-ENV CGO_CFLAGS="-I/usr/include/libpng16"
+    libpng16-dev giflib-dev pkgconf build-base && \
+    ln -sf /usr/include/libpng16/png.h /usr/include/png.h && \
+    ln -sf /usr/include/libpng16/pngconf.h /usr/include/pngconf.h && \
+    ln -sf /usr/include/libpng16/pnglibconf.h /usr/include/pnglibconf.h
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
