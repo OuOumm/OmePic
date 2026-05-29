@@ -9,7 +9,7 @@
     "build:backend": "vite build && node scripts/copy-static-to-backend.mjs",
     "lint": "eslint .",
     "test": "vitest run",
-    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@sveltejs/adapter-static": "^3.0.10",
