@@ -15,6 +15,7 @@
 ## ✨ 核心功能
 
 - **自动 AVIF 转换** — 上传图片自动转换为 AVIF 格式，支持后台可配置质量/速度/并发/超时和像素上限
+- **动画 GIF 保留** — 上传的动图 GIF 自动转为动画 AVIF，保留所有帧（最多 300 帧）
 - **MD5 去重** — 相同内容的上传复用已有物理文件，按存储实例作用域隔离
 - **多后端存储** — 支持本地文件系统、S3 兼容服务和 WebDAV，运行时动态管理，无需重启
 - **管理后台** — JWT 保护的管理面板，支持图片管理、存储配置和系统设置
@@ -49,7 +50,7 @@
 | 后端 | **Go** + [Gin](https://github.com/gin-gonic/gin) | HTTP API、中间件、路由 |
 | 数据库 | **SQLite** (modernc.org/sqlite) | 元数据和配置持久化（纯 Go，无 CGO） |
 | 缓存 | **Redis** (go-redis) | UID/MD5 缓存、去重查询、JWT 撤销、限流计数 |
-| 图片转换 | [gen2brain/avif](https://github.com/gen2brain/avif) | AVIF 编码（纯 Go） |
+| 图片转换 | [discord/lilliput](https://github.com/discord/lilliput) + [gen2brain/avif](https://github.com/gen2brain/avif) | lilliput 负责 Linux/macOS 动图 AVIF 编码（CGO）；gen2brain/avif 为 Windows 回退（纯 Go，仅静态） |
 | 前端 | **Svelte 5** + **SvelteKit 2** + **Tailwind CSS** | SPA，静态适配器导出 |
 | ID 生成 | Snowflake + XOR + Base62 | 不透明、URL 安全的公开 UID（XOR 混淆密钥，非密码学安全边界） |
 | 认证 | [golang-jwt/v5](https://github.com/golang-jwt/jwt) | 管理员 JWT 会话 + Redis 撤销 |
@@ -375,7 +376,17 @@ docker compose up -d
 docker compose logs -f omepic
 ```
 
-Dockerfile 使用多阶段构建：前端 Node.js 构建 → Go 后端编译 → Alpine 运行时镜像。
+Dockerfile 使用多阶段构建：前端 Node.js 构建 → Go 后端编译 → Debian 运行时镜像（lilliput CGO 依赖需要 glibc）。
+
+## 🖥️ 平台支持
+
+| 环境 | AVIF 编码器 | GIF 动图 | 说明 |
+|------|-------------|----------|------|
+| **Docker/Linux** | [discord/lilliput](https://github.com/discord/lilliput) | ✅ 支持 | 生产推荐，动图 GIF 自动转动画 AVIF |
+| **macOS** | [discord/lilliput](https://github.com/discord/lilliput) | ✅ 支持 | 需要安装 lilliput 的 C 依赖 |
+| **Windows** | [gen2brain/avif](https://github.com/gen2brain/avif) | ❌ 不支持 | 仅静态 AVIF；上传动画 GIF 会报错提示使用 Docker |
+
+> lilliput 目前仅支持 Linux 和 macOS，不支持 Windows。Windows 本地开发时自动回退到 gen2brain/avif（纯 Go，无需 CGO），但只支持静态图片。
 
 ## 📄 许可证
 

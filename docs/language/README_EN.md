@@ -13,6 +13,7 @@
 ## ✨ Features
 
 - **Automatic AVIF conversion** — uploads are converted to AVIF with configurable quality, speed, concurrency, timeout, and pixel limit
+- **Animated GIF preservation** — animated GIFs are automatically converted to animated AVIF, preserving all frames (up to 300 frames)
 - **MD5 deduplication** — identical uploads reuse the existing physical file, scoped per storage instance
 - **Multi-backend storage** — local filesystem, S3-compatible, and WebDAV, managed at runtime without restarts
 - **Admin dashboard** — JWT-protected panel for image management, storage configuration, and system settings
@@ -47,7 +48,7 @@
 | Backend | **Go** + [Gin](https://github.com/gin-gonic/gin) | HTTP API, middleware, routing |
 | Database | **SQLite** (modernc.org/sqlite) | Persistent metadata & config (pure Go, no CGO) |
 | Cache | **Redis** (go-redis) | UID/MD5 cache, deduplication, JWT revocation, rate limiting |
-| Image | [gen2brain/avif](https://github.com/gen2brain/avif) | AVIF encoding (pure Go) |
+| Image | [discord/lilliput](https://github.com/discord/lilliput) + [gen2brain/avif](https://github.com/gen2brain/avif) | lilliput for animated AVIF encoding on Linux/macOS (CGO); gen2brain/avif as Windows fallback (pure Go, static only) |
 | Frontend | **Svelte 5** + **SvelteKit 2** + **Tailwind CSS** | SPA with static adapter export |
 | ID | Snowflake + XOR + Base62 | Opaque, URL-safe public UIDs (XOR obfuscation key, not a cryptographic boundary) |
 | Auth | [golang-jwt/v5](https://github.com/golang-jwt/jwt) | Admin JWT sessions + Redis revocation |
@@ -376,7 +377,17 @@ docker compose up -d
 docker compose logs -f omepic
 ```
 
-The Dockerfile uses multi-stage builds: frontend Node.js build → Go backend compile → Alpine runtime image.
+The Dockerfile uses multi-stage builds: frontend Node.js build → Go backend compile → Debian runtime image (lilliput CGO dependencies require glibc).
+
+## 🖥️ Platform Support
+
+| Environment | AVIF Encoder | Animated GIF | Notes |
+|-------------|-------------|--------------|-------|
+| **Docker/Linux** | [discord/lilliput](https://github.com/discord/lilliput) | ✅ Supported | Recommended for production; animated GIFs auto-converted to animated AVIF |
+| **macOS** | [discord/lilliput](https://github.com/discord/lilliput) | ✅ Supported | Requires lilliput C dependencies installed |
+| **Windows** | [gen2brain/avif](https://github.com/gen2brain/avif) | ❌ Not supported | Static AVIF only; uploading animated GIF returns an error suggesting Docker |
+
+> lilliput currently only supports Linux and macOS, not Windows. On Windows, the system falls back to gen2brain/avif (pure Go, no CGO) which only supports static images.
 
 ## 📄 License
 
