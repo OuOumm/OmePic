@@ -22,17 +22,15 @@ async def main():
 
         # 2. Admin login page
         print("[2/4] Capturing admin login...")
-        await page.goto(f"{BASE_URL}/admin", wait_until="networkidle")
+        await page.goto(f"{BASE_URL}/admin/dashboard", wait_until="networkidle")
         await page.wait_for_timeout(1000)
         await page.screenshot(path=f"{OUTPUT_DIR}/admin-login.png", full_page=False)
 
         # 3. Login and go to admin dashboard
         print("[3/4] Logging in to admin...")
-        # Try to find and fill the password input
         pwd_input = page.locator('input[type="password"]')
         if await pwd_input.count() > 0:
             await pwd_input.fill("admin123")
-            # Find submit button
             submit_btn = page.locator('button[type="submit"]')
             if await submit_btn.count() > 0:
                 await submit_btn.click()
@@ -40,9 +38,8 @@ async def main():
                 await pwd_input.press("Enter")
             await page.wait_for_timeout(2000)
 
-        # 4. Admin dashboard / images page
+        # 4. Admin dashboard (after login, still /admin/dashboard)
         print("[4/4] Capturing admin dashboard...")
-        await page.goto(f"{BASE_URL}/admin", wait_until="networkidle")
         await page.wait_for_timeout(1000)
         await page.screenshot(path=f"{OUTPUT_DIR}/admin-dashboard.png", full_page=False)
 
