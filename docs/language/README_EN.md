@@ -31,7 +31,7 @@
 |---------|-------------|
 | **Enforced secret configuration** | `JWT_SECRET`, `UID_ENCRYPTION_KEY`, `SECRET_ENCRYPTION_KEY` must be ≥32 chars; server refuses to start if any is missing |
 | **CORS separation** | Public APIs support CORS (allowed origins hot-updated from runtime settings); admin APIs enforce same-origin (no CORS headers) |
-| **CSP without unsafe-inline** | Frontend HTML pages use CSP that removes `unsafe-inline`, reducing XSS attack surface |
+| **CSP compatible with SvelteKit static output** | Frontend HTML allows inline scripts/styles for SvelteKit bootstrap scripts and dynamic styling, while keeping constraints like `object-src 'none'`, `frame-ancestors 'none'`, and `base-uri 'self'` |
 | **Short JWT TTL** | Admin JWT validity is 4 hours (previously 24), reducing leak window |
 | **JWT revocation** | Changing password invalidates all old JWTs via Redis `admin_revoked_before` timestamp comparison |
 | **Body size limit** | Upload routes set `MaxBytesReader` before multipart parsing; oversized requests are rejected at the HTTP layer |

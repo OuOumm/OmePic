@@ -33,7 +33,7 @@
 |------|------|
 | **强制密钥配置** | `JWT_SECRET`、`UID_ENCRYPTION_KEY`、`SECRET_ENCRYPTION_KEY` 缺失或不足 32 字符时服务拒绝启动 |
 | **CORS 分离** | 公开 API 支持 CORS（允许 Origin 由运行时配置热更新），管理 API 严格同源（无 CORS 头） |
-| **CSP 无 unsafe-inline** | 前端 HTML 页面 CSP 移除 `unsafe-inline`，降低 XSS 阻断能力 |
+| **CSP 兼容 SvelteKit 静态输出** | 前端 HTML 页面允许内联脚本/样式以兼容 SvelteKit 启动脚本和动态样式，同时保留 `object-src 'none'`、`frame-ancestors 'none'`、`base-uri 'self'` 等约束 |
 | **JWT 短 TTL** | 管理员 JWT 有效期 4 小时（原 24 小时），降低泄漏风险 |
 | **JWT 撤销** | 修改密码后旧 JWT 立即失效（Redis `admin_revoked_before` 时间戳比对） |
 | **Body 限制** | 上传路由在 multipart 解析前设置 `MaxBytesReader`，超大请求在 HTTP 层即被拒绝 |

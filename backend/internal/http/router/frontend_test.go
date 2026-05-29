@@ -158,7 +158,7 @@ func TestFrontendFallbackPreservesAPINotFoundBehaviorByMethod(t *testing.T) {
 func TestFrontendFallbackServesSecurityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	webDir := t.TempDir()
-	writeTestFile(t, filepath.Join(webDir, "index.html"), "<!doctype html><title>home</title>")
+	writeTestFile(t, filepath.Join(webDir, "index.html"), "<!doctype html><title>home</title><script>console.log('boot')</script>")
 
 	engine := gin.New()
 	engine.Use(middleware.SecurityHeaders())
@@ -172,8 +172,8 @@ func TestFrontendFallbackServesSecurityHeaders(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
-	// H-04/M-08: CSP no longer contains unsafe-inline
-	assertSecurityHeader(t, recorder, "Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+	// H-04/M-08: allow inline script/style for SvelteKit static output compatibility.
+	assertSecurityHeader(t, recorder, "Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 	assertSecurityHeader(t, recorder, "X-Content-Type-Options", "nosniff")
 	assertSecurityHeader(t, recorder, "Referrer-Policy", "strict-origin-when-cross-origin")
 	assertSecurityHeader(t, recorder, "X-Frame-Options", "DENY")
