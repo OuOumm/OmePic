@@ -113,7 +113,6 @@ func main() {
 		DatabasePath:     cfg.DatabasePath,
 		RedisURL:         cfg.RedisURL,
 		UIDEncryptionKey: cfg.UIDEncryptionKey,
-		AdminPassword:    cfg.AdminPassword,
 	})
 	announcementService := service.NewAnnouncementService(repo)
 	healthService := service.NewHealthService(repo, imageCache)
@@ -193,9 +192,6 @@ func main() {
 }
 
 func enforceRequiredSecrets(cfg config.AppConfig) error {
-	if cfg.AdminPassword == "" {
-		return errors.New("ADMIN_PASSWORD must be set in .env")
-	}
 	if cfg.JWTSecret == "" || len(cfg.JWTSecret) < 32 {
 		return errors.New("JWT_SECRET must be set in .env and be at least 32 characters")
 	}

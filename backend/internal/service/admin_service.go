@@ -130,6 +130,7 @@ type CloudflareImageCachePurgeResult struct {
 
 const (
 	adminPasswordHashConfigKey = "admin_password_hash"
+	defaultAdminPassword       = "admin123"
 )
 
 type adminStorageManager interface {
@@ -152,7 +153,6 @@ type AdminEnvMetadata struct {
 	DatabasePath     string
 	RedisURL         string
 	UIDEncryptionKey string
-	AdminPassword    string
 }
 
 func NewAdminService(repo *repository.Repository, storageManager *storage.Manager, settingsManager *RuntimeSettingsManager, imageService *ImageService, jwtSecret string, adminEnv AdminEnvMetadata) *AdminService {
@@ -166,9 +166,13 @@ func NewAdminService(repo *repository.Repository, storageManager *storage.Manage
 	}
 }
 
-func (s *AdminService) isPasswordSet(ctx context.Context) bool {
-	_, err := s.repo.GetConfigValue(ctx, adminPasswordHashConfigKey)
-	return err == nil
+func (s *AdminService) isPasswordChanged(ctx context.Context) bool {
+	storedHash, err := s.repo.GetConfigValue(ctx, adminPasswordHashConfigKey)
+	if err != nil {
+		// No hash stored yet means still on default.
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(defaultAdminPassword)) != nil
 }
 
 func (s *AdminService) Login(ctx context.Context, password string) (string, error) {
@@ -239,11 +243,8 @@ func (s *AdminService) verifyAdminPassword(ctx context.Context, password string)
 		if !repository.IsNotFound(err) {
 			return fmt.Errorf("%w: password lookup failed", ErrDependencyUnavailable)
 		}
-		// First boot: no hash stored yet, bootstrap from ADMIN_PASSWORD env.
-		if s.adminEnv.AdminPassword == "" {
-			return fmt.Errorf("%w: admin password not configured", ErrDependencyUnavailable)
-		}
-		bootstrapHash, hashErr := bcrypt.GenerateFromPassword([]byte(s.adminEnv.AdminPassword), bcrypt.DefaultCost)
+		// First boot: no hash stored yet, seed default password hash.
+		bootstrapHash, hashErr := bcrypt.GenerateFromPassword([]byte(defaultAdminPassword), bcrypt.DefaultCost)
 		if hashErr != nil {
 			return fmt.Errorf("%w: password hash failed", ErrDependencyUnavailable)
 		}
@@ -550,7 +551,7 @@ func (s *AdminService) loadSystemSettingsView(ctx context.Context) (AdminSystemS
 					Configured: strings.TrimSpace(s.jwtSecret) != "",
 				},
 				AdminPassword: SecretStatus{
-					Configured: s.isPasswordSet(ctx),
+					Configured: s.isPasswordChanged(ctx),
 				},
 				UIDEncryptionKey: SecretStatus{
 					Configured: strings.TrimSpace(s.adminEnv.UIDEncryptionKey) != "",

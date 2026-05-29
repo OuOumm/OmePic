@@ -301,7 +301,7 @@ const en: TranslationMap = {
   "admin.runtimeWarningUidDefault":
     "UID encryption key is still using the default value. Set a strong UID_ENCRYPTION_KEY in production.",
   "admin.runtimeWarningAdminPasswordBootstrap":
-    "Admin password hash has not been initialized yet. The documented first-boot default can still bootstrap login until you change it.",
+    "Admin password is still using the default value (admin123). Change it immediately in the settings page.",
   "admin.changePassword": "Change password",
   "admin.oldPassword": "Current password",
   "admin.newPassword": "New password",
@@ -704,7 +704,7 @@ const zh: TranslationMap = {
   "admin.runtimeWarningUidDefault":
     "UID 加密密钥仍在使用默认值。生产环境请设置强随机 UID_ENCRYPTION_KEY。",
   "admin.runtimeWarningAdminPasswordBootstrap":
-    "管理员密码哈希尚未初始化。在你修改密码前，系统仍可使用文档中的首次启动默认密码完成引导登录。",
+    "管理员密码仍在使用默认值（admin123）。请立即在设置页修改密码。",
   "admin.changePassword": "修改密码",
   "admin.oldPassword": "当前密码",
   "admin.newPassword": "新密码",

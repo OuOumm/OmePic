@@ -21,7 +21,7 @@ import (
 	"omepic/backend/internal/storage"
 )
 
-const testAdminPassword = "Admin-start!"
+const testAdminPassword = "admin123"
 
 func TestAdminChangePasswordWrongOldPasswordReturnsClearMessage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -258,5 +258,5 @@ func newTestAdminServiceWithRepo(t *testing.T) (*service.AdminService, *reposito
 		t.Fatalf("storage.NewManager returned error: %v", err)
 	}
 	settings := service.NewRuntimeSettingsManager()
-	return service.NewAdminService(repo, manager, settings, nil, "test-secret", service.AdminEnvMetadata{AdminPassword: testAdminPassword}), repo
+	return service.NewAdminService(repo, manager, settings, nil, "test-secret", service.AdminEnvMetadata{}), repo
 }

@@ -20,7 +20,6 @@ type AppConfig struct {
 	UIDPrefix        string
 	UIDEncryptionKey string
 	JWTSecret        string
-	AdminPassword    string
 	AppEnv           string
 	PublicBaseURL    string
 }
@@ -98,7 +97,6 @@ func Load() AppConfig {
 		UIDPrefix:        envOrDefault("UID_PREFIX", "omeo_"),
 		UIDEncryptionKey: strings.TrimSpace(os.Getenv("UID_ENCRYPTION_KEY")),
 		JWTSecret:        strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		AdminPassword:    strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")),
 		AppEnv:           envOrDefault("APP_ENV", ""),
 		PublicBaseURL:    strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "/"),
 	}

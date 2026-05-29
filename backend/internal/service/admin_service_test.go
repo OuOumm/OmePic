@@ -14,7 +14,7 @@ import (
 	"omepic/backend/internal/storage"
 )
 
-const testAdminPassword = "Admin-start!"
+const testAdminPassword = "admin123"
 
 func TestGetConfigMasksSecrets(t *testing.T) {
 	ctx := context.Background()
@@ -674,30 +674,44 @@ func TestGetSystemSettingsReportsRequiredSecurityConfiguration(t *testing.T) {
 		t.Fatalf("expected uid_encryption_key.configured to be true")
 	}
 	if view.Readonly.Security.AdminPassword.Configured {
-		t.Fatalf("expected admin_password.configured to be false before password bootstrap")
+		t.Fatalf("expected admin_password.configured to be false when using default password")
 	}
 
+	// Login seeds the default password hash into the database.
 	if _, err := adminService.Login(ctx, testAdminPassword); err != nil {
-		t.Fatalf("expected first-boot ADMIN_PASSWORD login to succeed, got %v", err)
+		t.Fatalf("expected default password login to succeed, got %v", err)
+	}
+	// After login, password is still the default, so configured remains false.
+	view, err = adminService.GetSystemSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetSystemSettings after login returned error: %v", err)
+	}
+	if view.Readonly.Security.AdminPassword.Configured {
+		t.Fatalf("expected admin_password.configured to remain false when still on default password")
+	}
+
+	// After changing the password, configured becomes true.
+	if err := adminService.ChangePassword(ctx, testAdminPassword, "New-secret!"); err != nil {
+		t.Fatalf("ChangePassword returned error: %v", err)
 	}
 	view, err = adminService.GetSystemSettings(ctx)
 	if err != nil {
-		t.Fatalf("GetSystemSettings after bootstrap returned error: %v", err)
+		t.Fatalf("GetSystemSettings after password change returned error: %v", err)
 	}
 	if !view.Readonly.Security.AdminPassword.Configured {
-		t.Fatalf("expected admin_password.configured to be true after password bootstrap")
+		t.Fatalf("expected admin_password.configured to be true after changing from default")
 	}
 }
 
-func TestChangePasswordUsesBootstrapAdminPassword(t *testing.T) {
+func TestChangePasswordFromDefault(t *testing.T) {
 	ctx := context.Background()
 	adminService, _ := newAdminServiceTestHarness(t)
 
 	if err := adminService.ChangePassword(ctx, testAdminPassword, "New-secret!"); err != nil {
-		t.Fatalf("ChangePassword from ADMIN_PASSWORD returned error: %v", err)
+		t.Fatalf("ChangePassword from default returned error: %v", err)
 	}
 	if _, err := adminService.Login(ctx, testAdminPassword); err == nil || !containsError(err, ErrForbidden) {
-		t.Fatalf("expected bootstrap password to fail after change, got %v", err)
+		t.Fatalf("expected default password to fail after change, got %v", err)
 	}
 	if _, err := adminService.Login(ctx, "New-secret!"); err != nil {
 		t.Fatalf("expected new password login to succeed, got %v", err)
@@ -783,10 +797,10 @@ func unlockAdminHighRiskSettings(t *testing.T, ctx context.Context, adminService
 }
 
 func newAdminServiceTestHarness(t *testing.T) (*AdminService, *repository.Repository) {
-	return newAdminServiceTestHarnessWithEnv(t, "secret", "uid-secret", testAdminPassword)
+	return newAdminServiceTestHarnessWithEnv(t, "secret", "uid-secret")
 }
 
-func newAdminServiceTestHarnessWithEnv(t *testing.T, jwtSecret string, uidSecret string, adminPassword string) (*AdminService, *repository.Repository) {
+func newAdminServiceTestHarnessWithEnv(t *testing.T, jwtSecret string, uidSecret string) (*AdminService, *repository.Repository) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -825,7 +839,7 @@ func newAdminServiceTestHarnessWithEnv(t *testing.T, jwtSecret string, uidSecret
 		t.Fatalf("settingsManager.Load returned error: %v", err)
 	}
 	imageService := NewImageService(repo, newFakeCache(), manager, settingsManager, nil, nil, logger)
-	return NewAdminService(repo, manager, settingsManager, imageService, jwtSecret, AdminEnvMetadata{HTTPAddr: ":8080", DatabasePath: ":memory:", RedisURL: "", UIDEncryptionKey: uidSecret, AdminPassword: adminPassword}), repo
+	return NewAdminService(repo, manager, settingsManager, imageService, jwtSecret, AdminEnvMetadata{HTTPAddr: ":8080", DatabasePath: ":memory:", RedisURL: "", UIDEncryptionKey: uidSecret}), repo
 }
 
 func modelImageRecord(uid string, storageKey string, backend string) model.ImageRecord {
