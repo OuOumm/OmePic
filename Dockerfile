@@ -8,6 +8,7 @@ RUN npm run build:backend
 
 # Stage 2: Build Go backend (lilliput requires CGO + C libraries)
 FROM golang:1.25-alpine AS backend-build
+ARG TARGETARCH
 RUN apk add --no-cache \
     libavif-dev libwebp-dev libjpeg-turbo-dev \
     libpng16-dev giflib-dev pkgconf build-base && \
@@ -17,6 +18,18 @@ RUN apk add --no-cache \
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
+RUN set -eux; \
+    moddir="$(go list -m -f '{{.Dir}}' github.com/discord/lilliput)"; \
+    case "${TARGETARCH:-amd64}" in \
+      amd64) dep_arch="amd64" ;; \
+      arm64) dep_arch="aarch64" ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH}"; exit 1 ;; \
+    esac; \
+    inc="$moddir/deps/linux/$dep_arch/include"; \
+    chmod -R u+w "$inc"; \
+    ln -sf libpng16/png.h "$inc/png.h"; \
+    ln -sf libpng16/pngconf.h "$inc/pngconf.h"; \
+    ln -sf libpng16/pnglibconf.h "$inc/pnglibconf.h"
 COPY backend/ ./
 COPY --from=frontend-build /app/backend/web ./web/
 RUN CGO_ENABLED=1 go build -ldflags="-s -w" -trimpath -o /server ./cmd/server/
