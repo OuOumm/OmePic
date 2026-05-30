@@ -1,0 +1,8 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend pre-development checklist and guide index"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "SQLite config table and persistence rules"}
+{"file": ".trellis/spec/backend/security.md", "reason": "Password/JWT secret redaction and auth security rules"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Admin API error response mapping"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend tests and layering requirements"}
+{"file": ".trellis/spec/backend/runtime-settings.md", "reason": "SQLite runtime settings and public base URL contract"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend admin settings password UI and API type sync"}

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/index.md","reason":"Review backend guideline coverage against the backend spec structure."}
+{"file":".trellis/spec/frontend/index.md","reason":"Review frontend guideline coverage against the frontend spec structure."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check that the bootstrap guidelines avoid introducing duplicated conventions."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check that the bootstrap guidelines cover backend/frontend and storage/API boundaries coherently."}
+{"file":".trellis/tasks/00-bootstrap-guidelines/research/bootstrap-discovery.md","reason":"Review the written spec against the recorded bootstrap-state evidence and start.md baseline."}

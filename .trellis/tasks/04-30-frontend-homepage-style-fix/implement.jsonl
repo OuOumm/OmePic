@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend task entrypoint and pre-development checklist for current Next.js app conventions."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Keep route files thin and preserve feature/shared component boundaries while updating homepage UI."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Shared visual primitives and homepage-facing component composition rules apply directly to this task."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Required frontend verification bar and accessibility expectations for the homepage polish."}
+{"file":".trellis/tasks/04-30-frontend-homepage-style-fix/research/homepage-audit.md","reason":"Task-local audit of the homepage hierarchy problems and directly related shared style defects."}

@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/index.md","reason":"Load backend conventions before changing duplicate-upload delete semantics."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"This task is primarily about logical deletion, md5 cache repair, and physical-file retention policy."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Delete semantics and not-found/ownership behavior must remain consistent while changing storage-retention policy."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"The change needs targeted backend tests and must preserve handler/service/repository boundaries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Deletion and cache-repair logic should stay centralized instead of forking duplicate code paths."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The policy change spans SQL state, Redis mappings, storage retention, and public access behavior."}

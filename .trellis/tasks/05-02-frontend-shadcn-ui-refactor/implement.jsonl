@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend pre-development checklist and source-of-truth index for this UI refactor."}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Keep route, feature, shared component, and ui primitive layout consistent during shadcn migration."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Guide component boundaries, client/server split, accessibility, and reusable UI composition."}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Preserve hook/data-fetching boundaries while refactoring UI surfaces."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Preserve Zustand and persisted language/theme preference behavior."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Keep API contracts and TypeScript surfaces stable during refactor."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Apply frontend accessibility, lint, typecheck, and build expectations."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Search before changing shared primitives, tokens, or config values."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Preserve frontend/backend data contracts for upload, storage, and admin flows."}
+{"file": ".trellis/tasks/05-02-frontend-shadcn-ui-refactor/research/shadcn-official-examples.md", "reason": "Official shadcn/ui setup, theming, component, dashboard, and migration notes for this task."}

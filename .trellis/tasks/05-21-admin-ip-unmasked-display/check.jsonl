@@ -1,0 +1,15 @@
+{"file":".trellis/spec/backend/index.md","reason":"检查 backend 变更是否同步更新相关规范。"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"确认没有把 SQL/业务逻辑放错层。"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"核对 ip_bans schema 与持久化规则已移除 masked IP。"}
+{"file":".trellis/spec/backend/security.md","reason":"核对后台安全分析/IP-ban 展示契约已统一为 ip_address。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"确认接口错误码与响应结构未漂移。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"确认没有顺手把真实 IP 引入不合规日志。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"核对 backend 测试覆盖与本地校验命令执行情况。"}
+{"file":".trellis/spec/frontend/index.md","reason":"检查 frontend admin 页面契约是否仍一致。"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"确认类型/API/组件改动位置正确。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"确认 ImageDetailDrawer/IPDetailPanel/安全页仍遵循现有职责边界。"}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"确认没有把 fetch 逻辑散落进多个组件。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"确认前端共享类型与后端响应收口一致。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"核对 lint/typecheck/build:backend 已完成。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"复查 masked IP 删除是否有遗漏引用。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"复查数据库、API、前端页面、测试与文档是否整体一致。"}

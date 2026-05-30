@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Load the frontend checklist and route to the specific guidance files relevant to a global UI-preference feature."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"The feature adds shared preference infrastructure and must stay consistent with the repo's app/feature/shared boundaries."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Header controls and page copy updates should follow existing client/server component boundaries."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Language/theme helpers should use lightweight shared hooks instead of scattering browser logic across pages."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Global persisted UI preferences need to follow the repo's Zustand and local state guidance."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Translation dictionaries and preference models should remain strongly typed."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"The change affects accessibility, hydration behavior, and broad visible UI text coverage."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"The translation/theme plumbing should be centralized and reused across pages rather than duplicated."}

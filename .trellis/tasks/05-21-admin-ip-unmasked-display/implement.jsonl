@@ -1,0 +1,15 @@
+{"file":".trellis/spec/backend/index.md","reason":"实施前确认 backend 预开发检查与契约同步要求。"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"确保 backend handler/service/repository 变更仍落在既有边界内。"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"同步 ip_bans schema 与 repository 契约，删除 masked IP 持久化描述。"}
+{"file":".trellis/spec/backend/security.md","reason":"同步后台 IP-ban / abuse-analysis 契约从 masked IP 改为真实 IP 展示。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"确认后台安全相关接口错误语义保持不变。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"确认本任务只改展示契约，不额外放宽日志敏感信息策略。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"执行 backend 测试与质量门禁时作为检查依据。"}
+{"file":".trellis/spec/frontend/index.md","reason":"确认 frontend 变更仍符合当前 SvelteKit 管理端契约。"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"确保 admin 页面、组件、类型改动落在既有结构中。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"更新后台安全组件与图片详情组件时遵循现有职责边界。"}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"保持 API 调用仍集中在 frontend/src/lib/api.ts。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"同步删除 AdminImage/AdminIPBan/AdminAbuse* 中的 masked IP 契约。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"执行 lint/typecheck/build:backend 的前端质量门禁依据。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"删除字段前搜索全仓库引用，避免遗漏 masked IP 使用点。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"本任务跨 SQLite、repository、service、API、types、Svelte 页面，需要做跨层收口。"}

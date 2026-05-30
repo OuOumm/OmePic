@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend checklist and spec index for review."}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Verify refactor keeps approved frontend organization."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Review component boundaries, client/server split, accessibility, and UI consistency."}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Review hook/data-fetching boundaries after UI refactor."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify persisted preferences and Zustand selector stability."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify API contracts and TypeScript safety."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Run and evaluate frontend quality gates."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Check shared primitive and token reuse decisions."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Check that frontend refactor did not drift backend-facing contracts."}
+{"file": ".trellis/tasks/05-02-frontend-shadcn-ui-refactor/research/shadcn-official-examples.md", "reason": "Verify implementation follows the selected official shadcn/ui reference patterns."}

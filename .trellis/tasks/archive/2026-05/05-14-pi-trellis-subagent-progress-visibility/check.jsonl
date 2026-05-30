@@ -1,0 +1,3 @@
+{"file":".pi/skills/trellis-meta/references/local-architecture/overview.md","reason":"Verify customization stays project-local"}
+{"file":".pi/skills/trellis-meta/references/customize-local/change-hooks.md","reason":"Verify extension/hook changes match Trellis meta guidance"}
+{"file":".pi/skills/trellis-meta/references/local-architecture/context-injection.md","reason":"Verify sub-agent context injection remains intact"}

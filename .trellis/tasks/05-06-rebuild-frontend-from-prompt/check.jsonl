@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend quality check entry point"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Lint, typecheck, build verification criteria"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify component patterns: shadcn/ui usage, a11y, no div-buttons"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify store patterns: Zustand selectors, hydration, no duplicate state"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify TypeScript coverage, no any types on API boundaries"}
+{"file": "FRONTEND_FEATURES_PROMPT.md", "reason": "Primary acceptance criteria — all checklist items must pass"}

@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend pre-development checklist and SvelteKit route conventions for editing the public API page."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Keep public runtime settings and API example shapes aligned with the shared frontend contract."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Apply frontend verification and i18n/build expectations for visible API page copy changes."}
+{"file":"docs/api-reference.md","reason":"Use the authoritative upload, delete, and runtime-settings contracts when expanding page examples."}

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/index.md","reason":"Review backend changes against the current backend conventions."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify md5/dedup semantics, cache behavior, and delete flow stay correct after the change."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Ensure tests cover the changed deduplication path."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review for duplicated hashing or conversion helper logic."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review the changed upload flow across cache, storage, and persistence boundaries."}

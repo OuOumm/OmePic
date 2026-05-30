@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend pre-development checklist and package conventions for runtime/admin changes."}
+{"file":".trellis/spec/backend/runtime-settings.md","reason":"Runtime settings persistence, admin system settings, Cloudflare purge enablement, and cross-layer contracts."}
+{"file":".trellis/spec/backend/security.md","reason":"Secret handling, logging redaction, and admin/security expectations for runtime Cloudflare token."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Service error categories and invalid_input/dependency_unavailable mapping for settings and purge failures."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend test and quality expectations for service/config changes."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend pre-development checklist for Svelte settings UI changes."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Shared RuntimeSettings type alignment with admin system settings API."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend typecheck/test/build expectations for settings UI changes."}

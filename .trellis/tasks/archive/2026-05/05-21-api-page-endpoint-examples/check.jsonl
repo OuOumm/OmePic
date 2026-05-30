@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Review the API route page against current frontend route/component conventions."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify the example page still reflects the current public runtime and upload/delete contracts."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run the expected frontend checks for a visible route-page change."}
+{"file":"docs/api-reference.md","reason":"Check the final request/response examples against the documented API contract."}

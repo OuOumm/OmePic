@@ -1,0 +1,4 @@
+{"file":".pi/skills/trellis-meta/references/local-architecture/overview.md","reason":"Pi/Trellis local customization target and boundaries"}
+{"file":".pi/skills/trellis-meta/references/platform-files/platform-map.md","reason":"Pi platform file locations"}
+{"file":".pi/skills/trellis-meta/references/customize-local/change-hooks.md","reason":"Extension/hook behavior customization guidance"}
+{"file":".pi/skills/trellis-meta/references/local-architecture/context-injection.md","reason":"Trellis active task and sub-agent context injection contracts"}

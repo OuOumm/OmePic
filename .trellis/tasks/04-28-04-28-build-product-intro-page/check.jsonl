@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend checklist for validating the resulting page against repo guidance."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Semantic structure and accessibility checks for the final HTML."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review criteria for maintainability, clarity, and overall UI quality."}
+{"file":".trellis/tasks/04-28-04-28-build-product-intro-page/research/ui-aesthetics-brief.md","reason":"Verify the output matches the intended visual direction and restraint."}

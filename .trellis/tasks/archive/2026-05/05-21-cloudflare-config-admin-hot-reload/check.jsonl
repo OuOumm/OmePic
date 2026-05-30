@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend checklist and guideline index for reviewing runtime/admin changes."}
+{"file":".trellis/spec/backend/runtime-settings.md","reason":"Verify runtime settings persistence, validation, admin API, and Cloudflare purge contracts."}
+{"file":".trellis/spec/backend/security.md","reason":"Verify Cloudflare API token remains admin-only, masked, and not logged/exposed."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify invalid settings and purge failures map to the expected error categories."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify backend tests and separation of service/repository/handler concerns."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend guideline index for settings UI review."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify TypeScript RuntimeSettings and API fixtures match backend payloads."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify frontend typecheck/test/build expectations."}
