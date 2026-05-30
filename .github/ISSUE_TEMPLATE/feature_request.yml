@@ -1,0 +1,63 @@
+name: 功能请求
+description: 提出新功能或改进建议
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的功能建议！请先搜索 [Issues](https://github.com/your-username/OmePic/issues) 确认没有重复。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题或使用场景
+      description: 这个功能要解决什么问题？或者你希望用它做什么？
+      placeholder: "每次上传大量图片后，想快速查看某段时间内的上传统计，但目前只能手动翻页..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 预期方案
+      description: 描述你期望的交互方式或实现方式
+      placeholder: |
+        在管理后台「统计」页面添加日期范围筛选器，
+        支持按天/周/月维度查看上传量趋势图。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 功能涉及的模块
+      multiple: true
+      options:
+        - 后端 API
+        - 管理后台前端
+        - 用户上传前端
+        - Docker / 部署
+        - 存储后端
+        - 文档
+        - 其他
+    validations:
+      required: false
+
+  - type: dropdown
+    id: willing
+    attributes:
+      label: 是否愿意自己实现？
+      options:
+        - 是，我愿意提交 PR
+        - 可以，但需要指导
+        - 暂时没有时间
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 参考链接、竞品功能截图、或其他相关上下文
+    validations:
+      required: false

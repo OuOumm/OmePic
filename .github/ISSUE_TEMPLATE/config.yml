@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 提问与讨论
+    url: https://github.com/your-username/OmePic/discussions
+    about: 使用问题、部署疑问或想法讨论请到 Discussions
+  - name: 📖 查看文档
+    url: https://github.com/your-username/OmePic#readme
+    about: 先查阅 README 了解项目配置和使用方式

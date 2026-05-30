@@ -399,6 +399,72 @@ Dockerfile 使用多阶段构建：前端 Node.js 构建 → Go 后端编译 →
 
 > lilliput 目前仅支持 Linux 和 macOS，不支持 Windows。Windows 本地开发时自动回退到 gen2brain/avif（纯 Go，无需 CGO），但只支持静态图片。
 
+## 🤝 贡献
+
+欢迎任何形式的贡献！无论是 Bug 报告、功能建议、文档改进还是代码提交，都非常感谢。
+
+### 如何贡献
+
+1. **Fork** 本仓库
+2. 从 `main` 分支创建你的特性分支：`git checkout -b feat/your-feature`
+3. 进行修改，确保通过本地验证
+4. 编写清晰、描述性的 [约定式提交](https://www.conventionalcommits.org/zh-hans/) 信息
+5. **Push** 到你的 Fork：`git push origin feat/your-feature`
+6. 提交 **Pull Request** 到本仓库的 `main` 分支
+
+### 提交规范
+
+本项目使用约定式提交格式：
+
+```
+<类型>(<范围>): <描述>
+
+类型: feat, fix, docs, style, refactor, perf, test, chore, ci
+范围: backend, frontend, docker, docs 等
+```
+
+示例：
+- `feat(backend): 添加 WebP 上传支持`
+- `fix(frontend): 修复移动端上传按钮无法点击`
+- `docs: 补全 API 文档`
+
+### PR 提交前检查
+
+确保你的代码通过本地完整验证（与 CI 一致）：
+
+```bash
+# 后端
+cd backend && go vet ./... && go test ./... && go build ./...
+
+# 前端
+cd frontend && npm run lint && npm run typecheck && npm run test && npm run build:backend
+```
+
+### 报告 Bug
+
+提交 Issue 时请包含以下信息，方便快速定位：
+
+- **运行环境**：Docker / 本地编译、操作系统、Go 和 Node.js 版本
+- **复现步骤**：产生问题的具体操作
+- **预期行为** vs **实际行为**
+- **相关日志**：后端日志中的报错信息
+- **截图**（如适用）
+
+### 功能请求
+
+提出新功能前，请先在 Issues 中搜索是否已有类似讨论。描述功能时说明：
+
+- 要解决的问题或使用场景
+- 预期的交互方式
+- 是否愿意自己实现（如果是则非常欢迎！）
+
+### 代码规范
+
+- **后端**：遵循 Go 标准代码风格（`go vet` 无警告）
+- **前端**：遵循项目的 ESLint + Prettier 配置
+- **新功能**：为关键逻辑编写测试
+- **架构**：参考 `.trellis/spec/` 中的编码规范
+
 ## 🙏 致谢
 
 感谢 [Linux.do](https://linux.do/) 社区的支持与反馈。
