@@ -119,7 +119,7 @@
 ### 克隆项目
 
 ```bash
-git clone https://github.com/your-username/OmePic.git
+git clone https://github.com/OuOumm/OmePic.git
 cd OmePic
 ```
 
