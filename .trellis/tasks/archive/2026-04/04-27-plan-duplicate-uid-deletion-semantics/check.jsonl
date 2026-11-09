@@ -1,6 +1,0 @@
-{"file":".trellis/spec/backend/index.md","reason":"Review backend changes against the current backend conventions."}
-{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify logical deletion, md5 mapping repair, and retained physical-file policy are implemented consistently."}
-{"file":".trellis/spec/backend/error-handling.md","reason":"Check delete-route behavior and error responses after the retention-policy change."}
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Ensure tests cover duplicate-uid deletion and last-reference retention semantics."}
-{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review for duplicated delete/cache repair logic."}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review coherence across SQL deletion, Redis cleanup, storage retention, and public access behavior."}

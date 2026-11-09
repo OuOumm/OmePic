@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "前端开发总规范索引"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码审查、测试和可访问性检查标准"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规范：检查组件边界和客户端/服务端拆分是否正确"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript 类型安全检查"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "目录结构规范：检查文件是否放在正确位置"}
-{"file": ".trellis/tasks/05-06-shadcn-ui-ux-ui/prd.md", "reason": "本任务 PRD：验收标准检查清单"}

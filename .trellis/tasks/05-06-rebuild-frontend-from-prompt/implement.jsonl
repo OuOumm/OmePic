@@ -1,8 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development entry point with pre-dev checklist"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "App Router layout, feature/module boundaries, naming conventions"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Server/Client component rules, shadcn/ui primitives, accessibility requirements"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand stores, IndexedDB persistence, hydration guardrails"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript contracts, API response types"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Lint, typecheck, build, review expectations"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Custom hook scope and data-fetching rules"}
-{"file": ".trellis/spec/guides/index.md", "reason": "Cross-package thinking guides for code reuse"}
